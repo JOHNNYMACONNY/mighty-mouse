@@ -1,0 +1,11 @@
+{
+  "id": "task_02_data_parse",
+  "title": "CSV Data Parser",
+  "description": "Implement a function 'parse_scores' that takes a CSV string. The CSV has two columns: 'name' and 'score'. The function should return a dictionary mapping names to scores (as integers). If a score is non-numeric, ignore that row.",
+  "expected_files": ["parser.py"],
+  "test_script": "import unittest\nfrom parser import parse_scores\n\nclass TestParser(unittest.TestCase):\n    def test_basic_parse(self):\n        csv = 'name,score\\nAlice,90\\nBob,85'\n        result = parse_scores(csv)\n        self.assertEqual(result, {'Alice': 90, 'Bob': 85})\n    def test_invalid_score(self):\n        csv = 'name,score\\nAlice,90\\nBob,invalid'\n        result = parse_scores(csv)\n        self.assertEqual(result, {'Alice': 90})\n\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

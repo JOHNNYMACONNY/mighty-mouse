@@ -1,0 +1,11 @@
+{
+  "id": "task_06_markdown_id",
+  "title": "Markdown ID Extractor",
+  "description": "Implement a function 'extract_ids' that parses a Markdown string and finds all HTML comments in the format <!-- id: XXXXX -->. Return a list of all unique IDs found. If no IDs are found, return an empty list.",
+  "expected_files": ["md_parser.py"],
+  "test_script": "import unittest\nfrom md_parser import extract_ids\n\nclass TestMdParser(unittest.TestCase):\n    def test_basic_extract(self):\n        md = '# Title\\n<!-- id: abc-123 -->\\nSome text.\\n<!-- id: def-456 -->'\n        self.assertEqual(extract_ids(md), ['abc-123', 'def-456'])\n    def test_duplicates(self):\n        md = '<!-- id: 1 -->\\n<!-- id: 1 -->'\n        self.assertEqual(extract_ids(md), ['1'])\n\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

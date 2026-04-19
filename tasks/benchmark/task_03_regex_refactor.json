@@ -1,0 +1,11 @@
+{
+  "id": "task_03_regex_refactor",
+  "title": "Standardized Phone Parser",
+  "description": "Refactor a function 'parse_phone' to extract phone numbers from text using a specific regex. The target format is (XXX) XXX-XXXX. The function should return a list of non-formatted digit strings (e.g. '1234567890'). Regex must be: \\(\\d{3}\\)\\s\\d{3}-\\d{4}",
+  "expected_files": ["phone_parser.py"],
+  "test_script": "import unittest\nfrom phone_parser import parse_phone\n\nclass TestPhoneParser(unittest.TestCase):\n    def test_basic_extract(self):\n        text = 'Call (123) 456-7890 for details.'\n        self.assertEqual(parse_phone(text), ['1234567890'])\n    def test_missing_format(self):\n        text = '123-456-7890 is wrong.' # Matches should be strict\n        self.assertEqual(parse_phone(text), [])\n\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

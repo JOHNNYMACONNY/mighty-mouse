@@ -1,0 +1,28 @@
+{
+  "tiers": {
+    "tier_1": [
+      "task_01_simple_calc.json",
+      "task_02_data_parse.json",
+      "task_08_multi_file_api.json",
+      "task_09_verification_sensitive.json",
+      "task_10_constraint_compliance.json"
+    ],
+    "tier_2": "all"
+  },
+  "weights": {
+    "simple": 1.0,
+    "complex": 3.0
+  },
+  "task_metadata": {
+    "task_01_simple_calc.json": "simple",
+    "task_02_data_parse.json": "simple",
+    "task_03_regex_refactor.json": "simple",
+    "task_04_error_handler.json": "simple",
+    "task_05_list_merger.json": "simple",
+    "task_06_markdown_id.json": "simple",
+    "task_07_env_config.json": "simple",
+    "task_08_multi_file_api.json": "complex",
+    "task_09_verification_sensitive.json": "complex",
+    "task_10_constraint_compliance.json": "complex"
+  }
+}

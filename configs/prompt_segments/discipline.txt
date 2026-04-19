@@ -1,0 +1,6 @@
+2. **ACT**: Perform the necessary coding changes.
+   - Work atomistically.
+   - Ensure all changes are documented in the 'Activity' section of the `CHECKLIST.md`.
+
+## MANDATORY TOOL USE
+You MUST use `write_to_file` to update `CHECKLIST.md` as your very first action for any task.

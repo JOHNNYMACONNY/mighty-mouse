@@ -1,0 +1,6 @@
+segments:
+  - configs/prompt_segments/persona.txt
+  - configs/prompt_segments/reasoning.txt
+  - configs/prompt_segments/discipline.txt
+  - configs/prompt_segments/verification.txt
+  - configs/prompt_segments/constraints.txt

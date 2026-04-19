@@ -1,15 +1,17 @@
 # Project State: Mighty Mouse
 
 ## Current Phase
-**Phase 1: Iteration #0 Baseline Evaluation**
+**Phase 4: Prompt Engineering Iterations (Optimization Loop Active)**
 
 ## Status
-- **Foundation**: Complete. SPEC and ROADMAP finalized.
-- **Scaffolding**: Complete. Directory structure and Git init finalized.
-- **Next Action**: Implement the baseline benchmark runner in `src/orchestrator/` or a standalone script to measure raw Gemini 3 Flash.
+- **Foundation**: Complete. SPEC, ROADMAP, STATE, and AUTORESEARCH-SPEC finalized.
+- **Orchestration**: Complete. `CHECKLIST.md` enforcement logic active and verified.
+- **Baseline**: Iteration #0 captured (100% simple tasks, 0% complex tasks).
+- **Optimization**: The first "Mighty Mouse" system prompt (v0.1) has been initialized. The `/autoresearch` infrastructure is configured.
 
 ## Active Blockers
 None.
 
 ## Recent Milestones
 - [x] Project Initialization (2026-04-19)
+- [x] Milestone 1: Baseline & Orchestration Foundation (2026-04-19)

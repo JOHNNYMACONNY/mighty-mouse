@@ -1,0 +1,23 @@
+{
+  "project_name": "Mighty Mouse",
+  "version": "1.0.0",
+  "archetype": "reliability-agent",
+  "orchestration": {
+    "mode": "benchmarked",
+    "enforcement": "strict",
+    "phases": ["PLAN", "ACT", "VERIFY"],
+    "target_model": "gemini-3-flash"
+  },
+  "autoresearch": {
+    "workflow": "native",
+    "metrics_file": "autoresearch-results.tsv",
+    "lessons_file": "autoresearch-lessons.md"
+  },
+  "paths": {
+    "orchestrator": "src/orchestrator/",
+    "tasks": "tasks/benchmark/",
+    "eval": "eval/",
+    "configs": "configs/",
+    "logs": "logs/"
+  }
+}

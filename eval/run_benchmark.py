@@ -4,6 +4,18 @@ import json
 import pandas as pd
 from datetime import datetime
 
+def get_modified_files():
+    """Returns a list of files modified or added in the workspace."""
+    result = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True)
+    modified = []
+    for line in result.stdout.splitlines():
+        if line.strip():
+            # git status --porcelain output: XY path
+            # We take everything from index 3 onwards
+            path = line[3:].strip()
+            modified.append(path)
+    return modified
+
 def verify_task(task_config):
     task_id = task_config['id']
     test_script = task_config['test_script']
@@ -13,6 +25,14 @@ def verify_task(task_config):
     adherence_check = subprocess.run(['python3', 'src/orchestrator/enforce_workflow.py', 'CHECKLIST.md'], capture_output=True, text=True)
     adherence_passed = (adherence_check.returncode == 0)
     adherence_logs = adherence_check.stdout + adherence_check.stderr
+
+    # Check for Unnecessary Edits (Strict File Scope)
+    modified_files = get_modified_files()
+    # Normalize paths for comparison (optional but safe)
+    unexpected_files = [f for f in modified_files if f not in expected_files and f != 'CHECKLIST.md']
+    
+    scope_passed = len(unexpected_files) == 0
+    scope_msg = f"Unexpected files modified: {unexpected_files}" if not scope_passed else "Scope verified."
 
     # Check if expected files exist
     files_exist = all(os.path.exists(f) for f in expected_files)
@@ -42,10 +62,14 @@ def verify_task(task_config):
     if os.path.exists('test_runner.py'):
         os.remove('test_runner.py')
         
+    status = "success" if (passed and adherence_passed and scope_passed) else "fail"
+    
     return {
         "task_id": task_id,
-        "status": "success" if (passed and adherence_passed) else "fail",
+        "status": status,
         "adherence": "PASS" if adherence_passed else "FAIL",
+        "scope": "PASS" if scope_passed else "FAIL",
+        "reason": scope_msg if not scope_passed else ("Tests failed" if not passed else "Workflow failed"),
         "adherence_logs": adherence_logs,
         "test_logs": logs,
         "timestamp": datetime.now().isoformat()

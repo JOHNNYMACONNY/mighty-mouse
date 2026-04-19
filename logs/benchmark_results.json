@@ -3,46 +3,68 @@
     "task_id": "task_01_simple_calc",
     "status": "fail",
     "adherence": "FAIL",
+    "scope": "FAIL",
+    "reason": "Unexpected files modified: ['eval/run_benchmark.py', 'tasks/benchmark/._task_08_multi_file_api.json', 'tasks/benchmark/._task_09_verification_sensitive.json', 'tasks/benchmark/._task_10_constraint_compliance.json', 'tasks/benchmark/task_08_multi_file_api.json', 'tasks/benchmark/task_09_verification_sensitive.json', 'tasks/benchmark/task_10_constraint_compliance.json']",
     "adherence_logs": "FAIL: Section Planning still contains placeholder text '<Briefly describe what needs to be built>'.\n",
     "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
-    "timestamp": "2026-04-19T13:23:34.852082"
+    "timestamp": "2026-04-19T13:33:25.991228"
   },
   {
     "task_id": "task_02_data_parse",
     "status": "fail",
     "adherence": "FAIL",
+    "scope": "FAIL",
+    "reason": "Unexpected files modified: ['eval/run_benchmark.py', 'tasks/benchmark/._task_08_multi_file_api.json', 'tasks/benchmark/._task_09_verification_sensitive.json', 'tasks/benchmark/._task_10_constraint_compliance.json', 'tasks/benchmark/task_08_multi_file_api.json', 'tasks/benchmark/task_09_verification_sensitive.json', 'tasks/benchmark/task_10_constraint_compliance.json']",
     "adherence_logs": "FAIL: Section Planning still contains placeholder text '<Briefly describe what needs to be built>'.\n",
     "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
-    "timestamp": "2026-04-19T13:23:34.923518"
+    "timestamp": "2026-04-19T13:33:26.084423"
   },
   {
     "task_id": "task_03_regex_refactor",
     "status": "fail",
     "reason": "Missing expected files",
-    "timestamp": "2026-04-19T13:23:34.953393"
+    "timestamp": "2026-04-19T13:33:26.137375"
   },
   {
     "task_id": "task_04_error_handler",
     "status": "fail",
     "reason": "Missing expected files",
-    "timestamp": "2026-04-19T13:23:34.982428"
+    "timestamp": "2026-04-19T13:33:26.195930"
   },
   {
     "task_id": "task_05_list_merger",
     "status": "fail",
     "reason": "Missing expected files",
-    "timestamp": "2026-04-19T13:23:35.019658"
+    "timestamp": "2026-04-19T13:33:26.248517"
   },
   {
     "task_id": "task_06_markdown_id",
     "status": "fail",
     "reason": "Missing expected files",
-    "timestamp": "2026-04-19T13:23:35.048573"
+    "timestamp": "2026-04-19T13:33:26.300396"
   },
   {
     "task_id": "task_07_env_config",
     "status": "fail",
     "reason": "Missing expected files",
-    "timestamp": "2026-04-19T13:23:35.077666"
+    "timestamp": "2026-04-19T13:33:26.348569"
+  },
+  {
+    "task_id": "task_08_multi_file_api",
+    "status": "fail",
+    "reason": "Missing expected files",
+    "timestamp": "2026-04-19T13:33:26.396088"
+  },
+  {
+    "task_id": "task_09_verification_sensitive",
+    "status": "fail",
+    "reason": "Missing expected files",
+    "timestamp": "2026-04-19T13:33:26.443837"
+  },
+  {
+    "task_id": "task_10_constraint_compliance",
+    "status": "fail",
+    "reason": "Missing expected files",
+    "timestamp": "2026-04-19T13:33:26.493008"
   }
 ]

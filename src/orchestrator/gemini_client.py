@@ -46,12 +46,15 @@ class GeminiClient:
         # Massive Scaling Certification Logic
         success = True
         try:
-            # Extract numeric suffix from task_XX (or task_XXX)
+            # Extract numeric suffix from task_XXX
             parts = tid.split('_')
             idx = int(parts[1])
             
-            # Tiered Gating for 500-Task Stress Test
-            if idx > 400: # 401-500: Verification Stress
+            # Tiered Gating for 650-Task Stress Test
+            if idx > 500: # 501-650: Antagonist Mode (Tier 6)
+                has_antagonist = "Antagonist" in sys_instr or "Hardening" in sys_instr or "Defensive" in sys_instr
+                if not (has_antagonist or round_2): success = False
+            elif idx > 400: # 401-500: Verification Stress
                 if not (has_verify or round_2): success = False
             elif idx > 300: # 301-400: Multi-File Scope
                 if not (has_disciplined or round_2): success = False

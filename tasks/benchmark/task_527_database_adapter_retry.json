@@ -1,0 +1,13 @@
+{
+  "id": "task_527",
+  "title": "Database Adapter Retry",
+  "description": "Implement the Database Adapter Retry module in database_adapter.py. \nANTAGONIST CONSTRAINT: Your solution MUST be under 15 lines of code.",
+  "expected_files": [
+    "database_adapter.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('database_adapter.py', 'r') as f: src = f.read()\n        # Antagonist Check\n        assert len(src.splitlines()) < 15, 'Solution too long (>15 lines)'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

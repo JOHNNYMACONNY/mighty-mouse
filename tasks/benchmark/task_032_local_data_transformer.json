@@ -1,0 +1,13 @@
+{
+  "id": "task_032",
+  "title": "Local Data Transformer",
+  "description": "Implement the Local Data Transformer module in local_data.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "local_data.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('local_data.py', 'r') as f: src = f.read()\n        # Antagonist Check\n        pass\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

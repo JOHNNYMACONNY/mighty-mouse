@@ -14,8 +14,8 @@ def main():
         res = json.load(f)
 
     if args.tier:
-        # Tier logic: 100-tasks-per-tier (approx)
-        # Tier 1: 1-100, Tier 2: 101-200, Tier 3: 201-300, Tier 4: 301-400, Tier 5: 401+
+        # Tier logic: 100-tasks-per-tier
+        # Tier 1: 1-100, Tier 2: 101-200, Tier 3: 201-300, Tier 4: 301-400, Tier 5: 401-500, Tier 6: 501-650
         t = int(args.tier)
         filtered = []
         for r in res:
@@ -23,9 +23,11 @@ def main():
                 # Extract numeric suffix from task_XXX
                 parts = r['task_id'].split('_')
                 idx = int(parts[1])
-                if (t-1)*100 < idx <= t*100:
+                if t == 6 and idx > 500:
                     filtered.append(r)
-                elif t == 5 and idx > 400: # Catch-all for Tier 5
+                elif t == 5 and 400 < idx <= 500:
+                    filtered.append(r)
+                elif (t-1)*100 < idx <= t*100:
                     filtered.append(r)
             except: continue
         res = filtered

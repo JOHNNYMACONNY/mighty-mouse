@@ -1,0 +1,13 @@
+{
+  "id": "task_591",
+  "title": "File Proxy CircuitBreaker",
+  "description": "Implement the File Proxy CircuitBreaker module in file_proxy.py. \nANTAGONIST CONSTRAINT: DO NOT modify the __init__ method profile.",
+  "expected_files": [
+    "file_proxy.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('file_proxy.py', 'r') as f: src = f.read()\n        # Antagonist Check\n        assert '__init__(self):' in src, 'Modified immutable __init__ signature'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

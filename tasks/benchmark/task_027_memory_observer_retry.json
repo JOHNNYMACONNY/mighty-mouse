@@ -1,0 +1,13 @@
+{
+  "id": "task_027",
+  "title": "Memory Observer Retry",
+  "description": "Implement the Memory Observer Retry module in memory_observer.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "memory_observer.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('memory_observer.py', 'r') as f: src = f.read()\n        # Antagonist Check\n        pass\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

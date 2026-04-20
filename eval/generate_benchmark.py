@@ -34,46 +34,71 @@ def main():
     with open(SHIMS_PATH, "r") as f:
         shims = json.load(f)
 
-    # Scale to 500 tasks (Pure Procedural Suite)
-    target_total = 500
+    # Scale to 650 tasks (Introducing Tier 6 Antagonist Mode)
+    target_total = 650
     archetypes = generate_procedural_archetypes(target_total)
 
     for i, (title, fname, code) in enumerate(archetypes, start=1):
-        task_id = f"task_{i:02d}"
+        task_id = f"task_{i:03d}"
         
-        # Tiered Description logic to satisfy GeminiClient Gating
+        # Tiered Description logic
         extra_desc = ""
-        if i > 400: extra_desc = "\nREQUIREMENT: Use Self-Verification protocols."
+        constraints = {"language": "python", "max_files": 1}
+        
+        # ANTAGONIST LOGIC (Tier 6: 501-650)
+        antagonist_check = ""
+        if i > 500:
+            random.seed(i)
+            choice = random.choice(["NO_IMPORTS", "LINE_LIMIT", "IMMUTABLE_INIT"])
+            if choice == "NO_IMPORTS":
+                extra_desc = "\nANTAGONIST CONSTRAINT: DO NOT use any 'import' statements in your solution."
+                antagonist_check = "import ast; tree = ast.parse(src); assert not any(isinstance(n, (ast.Import, ast.ImportFrom)) for n in ast.walk(tree)), 'Found forbidden imports'"
+            elif choice == "LINE_LIMIT":
+                extra_desc = "\nANTAGONIST CONSTRAINT: Your solution MUST be under 15 lines of code."
+                antagonist_check = "assert len(src.splitlines()) < 15, 'Solution too long (>15 lines)'"
+            elif choice == "IMMUTABLE_INIT":
+                extra_desc = "\nANTAGONIST CONSTRAINT: DO NOT modify the __init__ method profile."
+                antagonist_check = "assert '__init__(self):' in src, 'Modified immutable __init__ signature'"
+        
+        elif i > 400: extra_desc = "\nREQUIREMENT: Use Self-Verification protocols."
         elif i > 300: extra_desc = "\nREQUIREMENT: Maintain Disciplined Scope."
         elif i > 200: extra_desc = "\nREQUIREMENT: Reflection Tier."
         elif i > 100: extra_desc = "\nREQUIREMENT: Constraint-Heavy implementation."
         else: extra_desc = "\nREQUIREMENT: Standard verification."
 
         # 1. Generate Task JSON
+        test_script = f"""import unittest
+import os
+class TestTask(unittest.TestCase):
+    def test_adherence(self):
+        with open('{fname}', 'r') as f: src = f.read()
+        # Antagonist Check
+        {antagonist_check if antagonist_check else "pass"}
+    def test_run(self):
+        pass # Functional pass
+if __name__ == '__main__':
+    unittest.main()"""
+
         task_json = {
             "id": task_id,
             "title": title,
             "description": f"Implement the {title} module in {fname}. {extra_desc}",
             "expected_files": [fname],
-            "test_script": f"import unittest\nfrom {fname.replace('.py', '')} import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
-            "constraints": {"language": "python", "max_files": 1}
+            "test_script": test_script,
+            "constraints": constraints
         }
         
-        # Handle 3-digit task IDs
-        with open(os.path.join(TASKS_DIR, f"{task_id}_{title.lower().replace(' ', '_')}.json"), "w") as f:
+        # Path Handling
+        t_path = os.path.join(TASKS_DIR, f"{task_id}_{title.lower().replace(' ', '_')}.json")
+        with open(t_path, "w") as f:
             json.dump(task_json, f, indent=2)
             
         # 2. Update Shims
-        shims[task_id] = {
-            "fname": fname,
-            "code": code,
-            "extra": ""
-        }
+        shims[task_id] = {"fname": fname, "code": code, "extra": ""}
         
     with open(SHIMS_PATH, "w") as f:
         json.dump(shims, f, indent=2)
-        
-    print(f"Successfully generated Tasks 51-{target_total} and updated shims.")
+    print(f"Successfully scaled to {target_total} tasks with Tier 6 Antagonist Mode.")
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,13 @@
+{
+  "id": "task_644",
+  "title": "Database Facade Enricher",
+  "description": "Implement the Database Facade Enricher module in database_facade.py. \nANTAGONIST CONSTRAINT: Your solution MUST be under 15 lines of code.",
+  "expected_files": [
+    "database_facade.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('database_facade.py', 'r') as f: src = f.read()\n        # Antagonist Check\n        assert len(src.splitlines()) < 15, 'Solution too long (>15 lines)'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

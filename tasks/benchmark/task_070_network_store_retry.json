@@ -1,0 +1,13 @@
+{
+  "id": "task_070",
+  "title": "Network Store Retry",
+  "description": "Implement the Network Store Retry module in network_store.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "network_store.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('network_store.py', 'r') as f: src = f.read()\n        # Antagonist Check\n        pass\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

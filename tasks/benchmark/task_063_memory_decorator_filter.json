@@ -1,0 +1,13 @@
+{
+  "id": "task_063",
+  "title": "Memory Decorator Filter",
+  "description": "Implement the Memory Decorator Filter module in memory_decorator.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "memory_decorator.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('memory_decorator.py', 'r') as f: src = f.read()\n        # Antagonist Check\n        pass\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

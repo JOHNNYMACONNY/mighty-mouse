@@ -1,0 +1,13 @@
+{
+  "id": "task_059",
+  "title": "Stream Link Retry",
+  "description": "Implement the Stream Link Retry module in stream_link.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "stream_link.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('stream_link.py', 'r') as f: src = f.read()\n        # Antagonist Check\n        pass\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

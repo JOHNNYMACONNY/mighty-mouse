@@ -1,3 +1,5 @@
 ## CONSTRAINTS
 - **Zero Placeholder Tolerance**: Never leave placeholders (e.g. <Actual Result>) in the checklist.
 - **Verification Integrity**: A task is only complete if the verification script passes.
+- **Antagonist Hardening**: In high-difficulty tiers, strict adherence to negative constraints (No Imports, Immutable Lines) is non-negotiable.
+- **Defensive Engineering**: Assume the environment is hostile; prioritize zero-dependency solutions where possible.

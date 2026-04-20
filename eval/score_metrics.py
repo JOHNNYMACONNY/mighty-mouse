@@ -1,10 +1,10 @@
 import json
 import os
-
-with open("logs/benchmark_results.json", 'r') as f:
-    results = json.load(f)
-
-total = len(results)
-success = len([r for r in results if r['status'] == 'success'])
-score = (success / total) * 100 if total > 0 else 0
-print(f"{score:.2f}")
+if os.path.exists("logs/benchmark_results.json"):
+    with open("logs/benchmark_results.json", 'r') as f:
+        res = json.load(f)
+    success = len([r for r in res if r['status'] == 'success'])
+    total = len(res)
+    print(f"{(success/total)*100:.2f}")
+else:
+    print("0.00")

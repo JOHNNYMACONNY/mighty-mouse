@@ -644,3 +644,8 @@ Total Failures: 10
 - **task_35_decorator_arg**: [LOGIC] Scope fail. Unexp: ['decorator.py'] Miss: ['auth.py']
 - **task_36_config_parser**: [LOGIC] Scope fail. Unexp: ['semver.py'] Miss: ['config_parser.py']
 - **task_37_semver**: [LOGIC] Scope fail. Unexp: ['singleton.py'] Miss: ['semver.py']
+
+## Failure Analysis - 2026-04-19 20:58:19
+Total Failures: 2
+- **task_01_simple_calc**: [LOGIC] Tests failed
+- **task_02_data_parse**: [LOGIC] Tests failed

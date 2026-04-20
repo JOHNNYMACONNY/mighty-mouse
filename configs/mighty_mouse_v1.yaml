@@ -1,9 +1,9 @@
 name: "Mighty Mouse v1 - Optimized"
 version: "0.2.0"
 prompt_segments:
-  - "prompt_segments/candidates/reasoning_v2.txt"
-  - "prompt_segments/candidates/discipline_v2.txt"
-  - "prompt_segments/candidates/verification_v2.txt"
+  - "prompt_segments/persona.txt"
+  - "prompt_segments/reasoning.txt"
+  - "prompt_segments/constraints.txt"
+  - "prompt_segments/verification.txt"
   - "prompt_segments/discipline.txt"
   - "prompt_segments/tools.txt"
-  - "prompt_segments/constraints.txt"

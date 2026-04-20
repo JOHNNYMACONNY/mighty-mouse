@@ -1,74 +1,94 @@
 [
   {
     "task_id": "task_01_simple_calc",
-    "status": "success",
+    "status": "fail",
     "adherence": "PASS",
-    "scope": "PASS",
-    "reason": "Workflow failed",
+    "scope": "FAIL",
+    "reason": "Unexpected files modified: ['encoder.py']",
     "adherence_logs": "PASS: Workflow adherence verified.\n",
     "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
-    "timestamp": "2026-04-19T13:34:15.248205"
+    "timestamp": "2026-04-19T19:42:41.587175"
   },
   {
     "task_id": "task_02_data_parse",
-    "status": "success",
+    "status": "fail",
     "adherence": "PASS",
-    "scope": "PASS",
-    "reason": "Workflow failed",
+    "scope": "FAIL",
+    "reason": "Unexpected files modified: ['encoder.py']",
     "adherence_logs": "PASS: Workflow adherence verified.\n",
     "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
-    "timestamp": "2026-04-19T13:34:15.341361"
+    "timestamp": "2026-04-19T19:42:41.670372"
   },
   {
     "task_id": "task_03_regex_refactor",
-    "status": "success",
+    "status": "fail",
     "adherence": "PASS",
-    "scope": "PASS",
-    "reason": "Workflow failed",
+    "scope": "FAIL",
+    "reason": "Unexpected files modified: ['encoder.py']",
     "adherence_logs": "PASS: Workflow adherence verified.\n",
     "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
-    "timestamp": "2026-04-19T13:34:15.433712"
+    "timestamp": "2026-04-19T19:42:41.757825"
   },
   {
     "task_id": "task_04_error_handler",
     "status": "fail",
-    "reason": "Missing expected files",
-    "timestamp": "2026-04-19T13:34:15.483256"
+    "adherence": "PASS",
+    "scope": "FAIL",
+    "reason": "Unexpected files modified: ['encoder.py']",
+    "adherence_logs": "PASS: Workflow adherence verified.\n",
+    "test_logs": ".\n----------------------------------------------------------------------\nRan 1 test in 0.306s\n\nOK\n",
+    "timestamp": "2026-04-19T19:42:42.153880"
   },
   {
     "task_id": "task_05_list_merger",
     "status": "fail",
-    "reason": "Missing expected files",
-    "timestamp": "2026-04-19T13:34:15.532393"
+    "adherence": "PASS",
+    "scope": "FAIL",
+    "reason": "Unexpected files modified: ['encoder.py']",
+    "adherence_logs": "PASS: Workflow adherence verified.\n",
+    "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
+    "timestamp": "2026-04-19T19:42:42.252878"
   },
   {
     "task_id": "task_06_markdown_id",
     "status": "fail",
-    "reason": "Missing expected files",
-    "timestamp": "2026-04-19T13:34:15.580795"
+    "adherence": "PASS",
+    "scope": "FAIL",
+    "reason": "Unexpected files modified: ['encoder.py']",
+    "adherence_logs": "PASS: Workflow adherence verified.\n",
+    "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
+    "timestamp": "2026-04-19T19:42:42.337994"
   },
   {
     "task_id": "task_07_env_config",
     "status": "fail",
-    "reason": "Missing expected files",
-    "timestamp": "2026-04-19T13:34:15.628047"
+    "adherence": "PASS",
+    "scope": "FAIL",
+    "reason": "Unexpected files modified: ['encoder.py']",
+    "adherence_logs": "PASS: Workflow adherence verified.\n",
+    "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
+    "timestamp": "2026-04-19T19:42:42.418987"
   },
   {
     "task_id": "task_08_multi_file_api",
     "status": "fail",
     "reason": "Missing expected files",
-    "timestamp": "2026-04-19T13:34:15.678574"
+    "timestamp": "2026-04-19T19:42:42.463618"
   },
   {
     "task_id": "task_09_verification_sensitive",
     "status": "fail",
     "reason": "Missing expected files",
-    "timestamp": "2026-04-19T13:34:15.726576"
+    "timestamp": "2026-04-19T19:42:42.509000"
   },
   {
     "task_id": "task_10_constraint_compliance",
-    "status": "fail",
-    "reason": "Missing expected files",
-    "timestamp": "2026-04-19T13:34:15.777254"
+    "status": "success",
+    "adherence": "PASS",
+    "scope": "PASS",
+    "reason": "Workflow failed",
+    "adherence_logs": "PASS: Workflow adherence verified.\n",
+    "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
+    "timestamp": "2026-04-19T19:42:42.588840"
   }
 ]

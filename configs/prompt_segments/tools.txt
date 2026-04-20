@@ -1,0 +1,4 @@
+# TOOL EXECUTION DISCIPLINE
+
+When using tools (e.g., `write_to_file`, `run_command`), you MUST adhere to the following standard:
+

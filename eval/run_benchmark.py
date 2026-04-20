@@ -1,7 +1,7 @@
 import os, json, sys, subprocess
 from datetime import datetime
 from verifiers.adherence import check_adherence
-from verifiers.scope import check_scope
+from verifiers.scope import verify as check_scope
 from verifiers.tester import run_task_tests
 
 def update_checkpoint(task_id):

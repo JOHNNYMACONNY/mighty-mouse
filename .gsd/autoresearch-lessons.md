@@ -616,3 +616,18 @@ Total Failures: 50
 - **task_48_state_machine**: [ADHERENCE] Workflow failed
 - **task_49_serialization**: [ADHERENCE] Workflow failed
 - **task_50_stress_orchestrator**: [ADHERENCE] Workflow failed
+
+## Failure Analysis - 2026-04-19 20:56:15
+Total Failures: 12
+- **task_01_simple_calc**: [LOGIC] Tests failed
+- **task_02_data_parse**: [LOGIC] Tests failed
+- **task_03_regex_refactor**: [LOGIC] Tests failed
+- **task_04_error_handler**: [LOGIC] Tests failed
+- **task_05_list_merger**: [LOGIC] Tests failed
+- **task_06_markdown_id**: [LOGIC] Tests failed
+- **task_07_env_config**: [LOGIC] Tests failed
+- **task_31_abstract_factory**: [LOGIC] Scope fail. Unexp: [] Miss: ['widgets.py']
+- **task_33_multi_file_reg**: [LOGIC] Scope fail. Unexp: [] Miss: ['main.py']
+- **task_35_decorator_arg**: [LOGIC] Scope fail. Unexp: ['decorator.py'] Miss: ['auth.py']
+- **task_36_config_parser**: [LOGIC] Scope fail. Unexp: ['semver.py'] Miss: ['config_parser.py']
+- **task_37_semver**: [LOGIC] Scope fail. Unexp: ['singleton.py'] Miss: ['semver.py']

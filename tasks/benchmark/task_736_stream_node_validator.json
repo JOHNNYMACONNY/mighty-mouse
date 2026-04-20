@@ -1,6 +1,6 @@
 {
   "id": "task_736",
-  "title": "CONTRADICTION: Stream Node Validator",
+  "title": "Stream Node Validator",
   "description": "Implement the Stream Node Validator module in stream_node.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_node.py"

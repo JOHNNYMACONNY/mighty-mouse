@@ -1,6 +1,6 @@
 {
   "id": "task_775",
-  "title": "CONTRADICTION: Async Facade Transformer",
+  "title": "Async Facade Transformer",
   "description": "Implement the Async Facade Transformer module in async_facade.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "async_facade.py"

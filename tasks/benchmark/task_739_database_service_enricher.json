@@ -1,6 +1,6 @@
 {
   "id": "task_739",
-  "title": "CONTRADICTION: Database Service Enricher",
+  "title": "Database Service Enricher",
   "description": "Implement the Database Service Enricher module in database_service.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "database_service.py"

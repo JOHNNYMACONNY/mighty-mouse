@@ -1,6 +1,6 @@
 {
   "id": "task_704",
-  "title": "CONTRADICTION: Database Iterator Retry",
+  "title": "Database Iterator Retry",
   "description": "Implement the Database Iterator Retry module in database_iterator.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "database_iterator.py"

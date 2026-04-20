@@ -1,6 +1,6 @@
 {
   "id": "task_732",
-  "title": "CONTRADICTION: Stream State RateLimiter",
+  "title": "Stream State RateLimiter",
   "description": "Implement the Stream State RateLimiter module in stream_state.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_state.py"

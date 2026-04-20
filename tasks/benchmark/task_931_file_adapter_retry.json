@@ -1,0 +1,14 @@
+{
+  "id": "task_931",
+  "title": "File Adapter Retry",
+  "description": "Implement the File Adapter Retry module in file_adapter.py. \nENVIRONMENTAL DRIFT: The workspace contains a corrupted file: deprecated_api.py. You MUST resolve the syntax errors in deprecated_api.py to restore the build before implementing file_adapter.py.",
+  "expected_files": [
+    "file_adapter.py",
+    "deprecated_api.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('file_adapter.py', 'r') as f: src = f.read()\n        # Requirement Check\n        import deprecated_api; assert True, 'Failed to resolve drift in deprecated_api.py'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 2
+  }
+}

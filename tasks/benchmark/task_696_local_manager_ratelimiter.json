@@ -1,6 +1,6 @@
 {
   "id": "task_696",
-  "title": "CONTRADICTION: Local Manager RateLimiter",
+  "title": "Local Manager RateLimiter",
   "description": "Implement the Local Manager RateLimiter module in local_manager.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "local_manager.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_702",
-  "title": "CONTRADICTION: Stream Visitor Transformer",
+  "title": "Stream Visitor Transformer",
   "description": "Implement the Stream Visitor Transformer module in stream_visitor.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_visitor.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_760",
-  "title": "CONTRADICTION: Stream Registry RateLimiter",
+  "title": "Stream Registry RateLimiter",
   "description": "Implement the Stream Registry RateLimiter module in stream_registry.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_registry.py"

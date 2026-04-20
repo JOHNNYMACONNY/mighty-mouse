@@ -1,6 +1,6 @@
 {
   "id": "task_773",
-  "title": "CONTRADICTION: Memory Manager Retry",
+  "title": "Memory Manager Retry",
   "description": "Implement the Memory Manager Retry module in memory_manager.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_manager.py"

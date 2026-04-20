@@ -1,6 +1,6 @@
 {
   "id": "task_668",
-  "title": "CONTRADICTION: Stream Decorator Validator",
+  "title": "Stream Decorator Validator",
   "description": "Implement the Stream Decorator Validator module in stream_decorator.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_decorator.py"

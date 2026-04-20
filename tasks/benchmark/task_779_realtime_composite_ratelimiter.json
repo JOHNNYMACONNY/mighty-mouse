@@ -1,6 +1,6 @@
 {
   "id": "task_779",
-  "title": "CONTRADICTION: Realtime Composite RateLimiter",
+  "title": "Realtime Composite RateLimiter",
   "description": "Implement the Realtime Composite RateLimiter module in realtime_composite.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "realtime_composite.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_776",
-  "title": "CONTRADICTION: Legacy Decorator Retry",
+  "title": "Legacy Decorator Retry",
   "description": "Implement the Legacy Decorator Retry module in legacy_decorator.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_decorator.py"

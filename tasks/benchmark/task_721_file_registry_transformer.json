@@ -1,6 +1,6 @@
 {
   "id": "task_721",
-  "title": "CONTRADICTION: File Registry Transformer",
+  "title": "File Registry Transformer",
   "description": "Implement the File Registry Transformer module in file_registry.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "file_registry.py"

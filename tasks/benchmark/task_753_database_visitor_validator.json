@@ -1,6 +1,6 @@
 {
   "id": "task_753",
-  "title": "CONTRADICTION: Database Visitor Validator",
+  "title": "Database Visitor Validator",
   "description": "Implement the Database Visitor Validator module in database_visitor.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "database_visitor.py"

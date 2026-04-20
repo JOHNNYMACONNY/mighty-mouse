@@ -1,6 +1,6 @@
 {
   "id": "task_749",
-  "title": "CONTRADICTION: Memory Visitor Retry",
+  "title": "Memory Visitor Retry",
   "description": "Implement the Memory Visitor Retry module in memory_visitor.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_visitor.py"

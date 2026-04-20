@@ -1,6 +1,6 @@
 {
   "id": "task_682",
-  "title": "CONTRADICTION: Local Bridge Transformer",
+  "title": "Local Bridge Transformer",
   "description": "Implement the Local Bridge Transformer module in local_bridge.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "local_bridge.py"

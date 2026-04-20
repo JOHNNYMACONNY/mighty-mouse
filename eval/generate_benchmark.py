@@ -34,11 +34,12 @@ def main():
     with open(SHIMS_PATH, "r") as f:
         shims = json.load(f)
 
-    # Scale to 800 tasks (Introducing Tier 7 Zero-Trust Stress)
-    target_total = 800
+    # Scale to 1000 tasks (Introducing Tier 8 Stochastic Hardening)
+    target_total = 1000
     archetypes = generate_procedural_archetypes(target_total)
 
     CONFLICTS = ["Stack-Queue", "Memory-less Cache", "Immutable State", "Stateless Store"]
+    DRIFT_FILES = ["legacy_utils.py", "deprecated_api.py", "old_config.py"]
 
     for i, (title, fname, code) in enumerate(archetypes, start=1):
         task_id = f"task_{i:03d}"
@@ -46,16 +47,23 @@ def main():
         # Tiered Description logic
         extra_desc = ""
         constraints = {"language": "python", "max_files": 1}
-        antagonist_check = ""
+        adherence_check = ""
+        drift_file = None
+        
+        # STOCHASTIC DRIFT (Tier 8: 801-1000)
+        if i > 800:
+            random.seed(i)
+            drift_file = random.choice(DRIFT_FILES)
+            extra_desc = f"\nENVIRONMENTAL DRIFT: The workspace contains a corrupted file: {drift_file}. You MUST resolve the syntax errors in {drift_file} to restore the build before implementing {fname}."
+            adherence_check = f"import {drift_file.replace('.py', '')}; assert True, 'Failed to resolve drift in {drift_file}'"
+            constraints["max_files"] = 2
         
         # ADVERSARIAL CONTRADICTIONS (Tier 7: 651-800)
-        is_contradiction = False
-        if i > 650:
+        elif i > 650:
             random.seed(i)
-            is_contradiction = True
             conflict = random.choice(CONFLICTS)
             extra_desc = f"\nZERO-TRUST CHALLENGE: Implement {conflict}. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles."
-            antagonist_check = f"assert 'RESOLVED CONFLICT' in src or 'SAFETY' in src, 'Failed to document conflict resolution in {fname}'"
+            adherence_check = f"assert 'RESOLVED CONFLICT' in src or 'SAFETY' in src, 'Failed to document conflict resolution in {fname}'"
         
         # ANTAGONIST LOGIC (Tier 6: 501-650)
         elif i > 500:
@@ -63,13 +71,13 @@ def main():
             choice = random.choice(["NO_IMPORTS", "LINE_LIMIT", "IMMUTABLE_INIT"])
             if choice == "NO_IMPORTS":
                 extra_desc = "\nANTAGONIST CONSTRAINT: DO NOT use any 'import' statements in your solution."
-                antagonist_check = "import ast; tree = ast.parse(src); assert not any(isinstance(n, (ast.Import, ast.ImportFrom)) for n in ast.walk(tree)), 'Found forbidden imports'"
+                adherence_check = "import ast; tree = ast.parse(src); assert not any(isinstance(n, (ast.Import, ast.ImportFrom)) for n in ast.walk(tree)), 'Found forbidden imports'"
             elif choice == "LINE_LIMIT":
                 extra_desc = "\nANTAGONIST CONSTRAINT: Your solution MUST be under 15 lines of code."
-                antagonist_check = "assert len(src.splitlines()) < 15, 'Solution too long (>15 lines)'"
+                adherence_check = "assert len(src.splitlines()) < 15, 'Solution too long (>15 lines)'"
             elif choice == "IMMUTABLE_INIT":
                 extra_desc = "\nANTAGONIST CONSTRAINT: DO NOT modify the __init__ method profile."
-                antagonist_check = "assert '__init__(self):' in src, 'Modified immutable __init__ signature'"
+                adherence_check = "assert '__init__(self):' in src, 'Modified immutable __init__ signature'"
         
         elif i > 400: extra_desc = "\nREQUIREMENT: Use Self-Verification protocols."
         elif i > 300: extra_desc = "\nREQUIREMENT: Maintain Disciplined Scope."
@@ -84,7 +92,7 @@ class TestTask(unittest.TestCase):
     def test_adherence(self):
         with open('{fname}', 'r') as f: src = f.read()
         # Requirement Check
-        {antagonist_check if antagonist_check else "pass"}
+        {adherence_check if adherence_check else "pass"}
     def test_run(self):
         pass # Functional pass
 if __name__ == '__main__':
@@ -92,9 +100,9 @@ if __name__ == '__main__':
 
         task_json = {
             "id": task_id,
-            "title": title if not is_contradiction else f"CONTRADICTION: {title}",
+            "title": title,
             "description": f"Implement the {title} module in {fname}. {extra_desc}",
-            "expected_files": [fname],
+            "expected_files": [fname] + ([drift_file] if drift_file else []),
             "test_script": test_script,
             "constraints": constraints
         }
@@ -106,10 +114,12 @@ if __name__ == '__main__':
             
         # 2. Update Shims
         shims[task_id] = {"fname": fname, "code": code, "extra": ""}
+        if drift_file:
+            shims[f"{task_id}_drift"] = {"fname": drift_file, "code": "def drift(): pass (SYNTAX_ERROR", "extra": ""}
         
     with open(SHIMS_PATH, "w") as f:
         json.dump(shims, f, indent=2)
-    print(f"Successfully scaled to {target_total} tasks with Tier 7 Zero-Trust Stress.")
+    print(f"Successfully scaled to {target_total} tasks with Tier 8 Stochastic Hardening.")
 
 if __name__ == "__main__":
     main()

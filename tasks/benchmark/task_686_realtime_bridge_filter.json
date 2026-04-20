@@ -1,6 +1,6 @@
 {
   "id": "task_686",
-  "title": "CONTRADICTION: Realtime Bridge Filter",
+  "title": "Realtime Bridge Filter",
   "description": "Implement the Realtime Bridge Filter module in realtime_bridge.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "realtime_bridge.py"

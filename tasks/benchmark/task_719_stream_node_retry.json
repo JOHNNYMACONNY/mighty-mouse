@@ -1,6 +1,6 @@
 {
   "id": "task_719",
-  "title": "CONTRADICTION: Stream Node Retry",
+  "title": "Stream Node Retry",
   "description": "Implement the Stream Node Retry module in stream_node.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_node.py"

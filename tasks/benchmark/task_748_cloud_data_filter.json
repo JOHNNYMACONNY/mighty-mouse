@@ -1,6 +1,6 @@
 {
   "id": "task_748",
-  "title": "CONTRADICTION: Cloud Data Filter",
+  "title": "Cloud Data Filter",
   "description": "Implement the Cloud Data Filter module in cloud_data.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "cloud_data.py"

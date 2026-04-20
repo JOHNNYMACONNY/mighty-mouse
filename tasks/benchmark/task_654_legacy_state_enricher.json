@@ -1,6 +1,6 @@
 {
   "id": "task_654",
-  "title": "CONTRADICTION: Legacy State Enricher",
+  "title": "Legacy State Enricher",
   "description": "Implement the Legacy State Enricher module in legacy_state.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_state.py"

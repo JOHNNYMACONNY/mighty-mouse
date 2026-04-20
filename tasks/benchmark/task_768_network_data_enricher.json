@@ -1,6 +1,6 @@
 {
   "id": "task_768",
-  "title": "CONTRADICTION: Network Data Enricher",
+  "title": "Network Data Enricher",
   "description": "Implement the Network Data Enricher module in network_data.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_data.py"

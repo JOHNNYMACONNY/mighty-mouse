@@ -1,6 +1,6 @@
 {
   "id": "task_741",
-  "title": "CONTRADICTION: Realtime Link Retry",
+  "title": "Realtime Link Retry",
   "description": "Implement the Realtime Link Retry module in realtime_link.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "realtime_link.py"

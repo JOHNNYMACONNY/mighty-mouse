@@ -1,6 +1,6 @@
 {
   "id": "task_737",
-  "title": "CONTRADICTION: Legacy Auth Transformer",
+  "title": "Legacy Auth Transformer",
   "description": "Implement the Legacy Auth Transformer module in legacy_auth.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_auth.py"

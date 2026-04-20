@@ -1,6 +1,6 @@
 {
   "id": "task_720",
-  "title": "CONTRADICTION: Cloud Template Validator",
+  "title": "Cloud Template Validator",
   "description": "Implement the Cloud Template Validator module in cloud_template.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "cloud_template.py"

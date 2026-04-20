@@ -1,6 +1,6 @@
 {
   "id": "task_653",
-  "title": "CONTRADICTION: Memory Template CircuitBreaker",
+  "title": "Memory Template CircuitBreaker",
   "description": "Implement the Memory Template CircuitBreaker module in memory_template.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_template.py"

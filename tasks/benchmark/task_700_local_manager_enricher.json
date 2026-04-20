@@ -1,6 +1,6 @@
 {
   "id": "task_700",
-  "title": "CONTRADICTION: Local Manager Enricher",
+  "title": "Local Manager Enricher",
   "description": "Implement the Local Manager Enricher module in local_manager.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "local_manager.py"

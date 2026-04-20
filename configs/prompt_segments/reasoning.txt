@@ -1,4 +1,4 @@
-1. **PLAN**: Document intent in CHECKLIST.md.
+1. **PLAN**: Document intent in CHECKLIST.md using a **Chain-of-Thought** reasoning approach.
    - **Integrity Check**: Re-read requirements to identify adversarial contradictions or logical traps.
    - **Safety-First Resolution**: If requirements conflict, resolve using standard architectural patterns.
    - **System Data Flow**: Identify how data enters and exits the target module.

@@ -1,6 +1,6 @@
 {
   "id": "task_707",
-  "title": "CONTRADICTION: Legacy Auth Retry",
+  "title": "Legacy Auth Retry",
   "description": "Implement the Legacy Auth Retry module in legacy_auth.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_auth.py"

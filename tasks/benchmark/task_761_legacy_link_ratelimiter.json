@@ -1,6 +1,6 @@
 {
   "id": "task_761",
-  "title": "CONTRADICTION: Legacy Link RateLimiter",
+  "title": "Legacy Link RateLimiter",
   "description": "Implement the Legacy Link RateLimiter module in legacy_link.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_link.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_758",
-  "title": "CONTRADICTION: Stream Queue RateLimiter",
+  "title": "Stream Queue RateLimiter",
   "description": "Implement the Stream Queue RateLimiter module in stream_queue.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_queue.py"

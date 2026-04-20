@@ -1,6 +1,6 @@
 {
   "id": "task_767",
-  "title": "CONTRADICTION: Stream Template Validator",
+  "title": "Stream Template Validator",
   "description": "Implement the Stream Template Validator module in stream_template.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_template.py"

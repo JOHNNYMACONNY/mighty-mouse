@@ -1,6 +1,6 @@
 {
   "id": "task_727",
-  "title": "CONTRADICTION: Cloud Bridge CircuitBreaker",
+  "title": "Cloud Bridge CircuitBreaker",
   "description": "Implement the Cloud Bridge CircuitBreaker module in cloud_bridge.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "cloud_bridge.py"

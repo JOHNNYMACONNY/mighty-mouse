@@ -1,6 +1,6 @@
 {
   "id": "task_699",
-  "title": "CONTRADICTION: Local Stack RateLimiter",
+  "title": "Local Stack RateLimiter",
   "description": "Implement the Local Stack RateLimiter module in local_stack.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "local_stack.py"

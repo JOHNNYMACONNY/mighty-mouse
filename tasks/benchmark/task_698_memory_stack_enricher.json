@@ -1,6 +1,6 @@
 {
   "id": "task_698",
-  "title": "CONTRADICTION: Memory Stack Enricher",
+  "title": "Memory Stack Enricher",
   "description": "Implement the Memory Stack Enricher module in memory_stack.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_stack.py"

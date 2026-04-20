@@ -1,6 +1,6 @@
 {
   "id": "task_664",
-  "title": "CONTRADICTION: Realtime Strategy Enricher",
+  "title": "Realtime Strategy Enricher",
   "description": "Implement the Realtime Strategy Enricher module in realtime_strategy.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "realtime_strategy.py"

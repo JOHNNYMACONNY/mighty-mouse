@@ -1,6 +1,6 @@
 {
   "id": "task_718",
-  "title": "CONTRADICTION: Local Node Enricher",
+  "title": "Local Node Enricher",
   "description": "Implement the Local Node Enricher module in local_node.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "local_node.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_685",
-  "title": "CONTRADICTION: Stream Buffer Transformer",
+  "title": "Stream Buffer Transformer",
   "description": "Implement the Stream Buffer Transformer module in stream_buffer.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_buffer.py"

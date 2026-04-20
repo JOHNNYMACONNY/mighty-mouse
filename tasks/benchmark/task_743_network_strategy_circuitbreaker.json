@@ -1,6 +1,6 @@
 {
   "id": "task_743",
-  "title": "CONTRADICTION: Network Strategy CircuitBreaker",
+  "title": "Network Strategy CircuitBreaker",
   "description": "Implement the Network Strategy CircuitBreaker module in network_strategy.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_strategy.py"

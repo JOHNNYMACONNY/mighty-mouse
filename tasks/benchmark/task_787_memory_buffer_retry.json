@@ -1,6 +1,6 @@
 {
   "id": "task_787",
-  "title": "CONTRADICTION: Memory Buffer Retry",
+  "title": "Memory Buffer Retry",
   "description": "Implement the Memory Buffer Retry module in memory_buffer.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_buffer.py"

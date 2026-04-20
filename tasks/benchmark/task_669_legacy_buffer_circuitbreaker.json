@@ -1,6 +1,6 @@
 {
   "id": "task_669",
-  "title": "CONTRADICTION: Legacy Buffer CircuitBreaker",
+  "title": "Legacy Buffer CircuitBreaker",
   "description": "Implement the Legacy Buffer CircuitBreaker module in legacy_buffer.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_buffer.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_724",
-  "title": "CONTRADICTION: Network Template RateLimiter",
+  "title": "Network Template RateLimiter",
   "description": "Implement the Network Template RateLimiter module in network_template.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_template.py"

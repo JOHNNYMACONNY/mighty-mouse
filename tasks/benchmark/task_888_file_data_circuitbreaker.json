@@ -1,0 +1,14 @@
+{
+  "id": "task_888",
+  "title": "File Data CircuitBreaker",
+  "description": "Implement the File Data CircuitBreaker module in file_data.py. \nENVIRONMENTAL DRIFT: The workspace contains a corrupted file: legacy_utils.py. You MUST resolve the syntax errors in legacy_utils.py to restore the build before implementing file_data.py.",
+  "expected_files": [
+    "file_data.py",
+    "legacy_utils.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('file_data.py', 'r') as f: src = f.read()\n        # Requirement Check\n        import legacy_utils; assert True, 'Failed to resolve drift in legacy_utils.py'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 2
+  }
+}

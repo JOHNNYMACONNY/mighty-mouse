@@ -1,6 +1,6 @@
 {
   "id": "task_701",
-  "title": "CONTRADICTION: Network Template Enricher",
+  "title": "Network Template Enricher",
   "description": "Implement the Network Template Enricher module in network_template.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_template.py"

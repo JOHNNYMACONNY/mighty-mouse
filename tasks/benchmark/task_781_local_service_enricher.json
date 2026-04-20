@@ -1,6 +1,6 @@
 {
   "id": "task_781",
-  "title": "CONTRADICTION: Local Service Enricher",
+  "title": "Local Service Enricher",
   "description": "Implement the Local Service Enricher module in local_service.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "local_service.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_677",
-  "title": "CONTRADICTION: Stream Observer Retry",
+  "title": "Stream Observer Retry",
   "description": "Implement the Stream Observer Retry module in stream_observer.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_observer.py"

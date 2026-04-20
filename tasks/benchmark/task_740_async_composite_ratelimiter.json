@@ -1,6 +1,6 @@
 {
   "id": "task_740",
-  "title": "CONTRADICTION: Async Composite RateLimiter",
+  "title": "Async Composite RateLimiter",
   "description": "Implement the Async Composite RateLimiter module in async_composite.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "async_composite.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_735",
-  "title": "CONTRADICTION: Cloud Adapter Validator",
+  "title": "Cloud Adapter Validator",
   "description": "Implement the Cloud Adapter Validator module in cloud_adapter.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "cloud_adapter.py"

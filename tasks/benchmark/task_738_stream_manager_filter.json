@@ -1,6 +1,6 @@
 {
   "id": "task_738",
-  "title": "CONTRADICTION: Stream Manager Filter",
+  "title": "Stream Manager Filter",
   "description": "Implement the Stream Manager Filter module in stream_manager.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_manager.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_711",
-  "title": "CONTRADICTION: Memory Iterator Enricher",
+  "title": "Memory Iterator Enricher",
   "description": "Implement the Memory Iterator Enricher module in memory_iterator.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_iterator.py"

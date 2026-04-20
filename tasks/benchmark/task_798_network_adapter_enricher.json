@@ -1,6 +1,6 @@
 {
   "id": "task_798",
-  "title": "CONTRADICTION: Network Adapter Enricher",
+  "title": "Network Adapter Enricher",
   "description": "Implement the Network Adapter Enricher module in network_adapter.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_adapter.py"

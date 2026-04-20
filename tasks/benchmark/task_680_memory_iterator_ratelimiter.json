@@ -1,6 +1,6 @@
 {
   "id": "task_680",
-  "title": "CONTRADICTION: Memory Iterator RateLimiter",
+  "title": "Memory Iterator RateLimiter",
   "description": "Implement the Memory Iterator RateLimiter module in memory_iterator.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_iterator.py"

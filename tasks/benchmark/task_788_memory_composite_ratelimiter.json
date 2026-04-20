@@ -1,6 +1,6 @@
 {
   "id": "task_788",
-  "title": "CONTRADICTION: Memory Composite RateLimiter",
+  "title": "Memory Composite RateLimiter",
   "description": "Implement the Memory Composite RateLimiter module in memory_composite.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_composite.py"

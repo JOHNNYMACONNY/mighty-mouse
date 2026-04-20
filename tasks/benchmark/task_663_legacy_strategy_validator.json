@@ -1,6 +1,6 @@
 {
   "id": "task_663",
-  "title": "CONTRADICTION: Legacy Strategy Validator",
+  "title": "Legacy Strategy Validator",
   "description": "Implement the Legacy Strategy Validator module in legacy_strategy.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_strategy.py"

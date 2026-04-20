@@ -1,6 +1,6 @@
 {
   "id": "task_715",
-  "title": "CONTRADICTION: Stream Bridge Transformer",
+  "title": "Stream Bridge Transformer",
   "description": "Implement the Stream Bridge Transformer module in stream_bridge.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_bridge.py"

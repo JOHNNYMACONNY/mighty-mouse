@@ -1,5 +1,6 @@
-2. **ACT**: Perform the necessary coding changes.
-   - Work atomistically.
+2. **ACT**: Perform the necessary coding changes under a **Disciplined Scope**.
+   - **Environmental Audit**: Perform a workspace check to identify and fix any corrupted files (e.g. SyntaxErrors) to preserve build **Hygiene**.
+   - Work atomistically on specified files only.
    - Ensure all changes are documented in the 'Activity' section of the `CHECKLIST.md`.
 
 ## MANDATORY TOOL USE

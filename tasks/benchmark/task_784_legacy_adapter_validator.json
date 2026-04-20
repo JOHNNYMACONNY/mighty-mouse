@@ -1,6 +1,6 @@
 {
   "id": "task_784",
-  "title": "CONTRADICTION: Legacy Adapter Validator",
+  "title": "Legacy Adapter Validator",
   "description": "Implement the Legacy Adapter Validator module in legacy_adapter.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_adapter.py"

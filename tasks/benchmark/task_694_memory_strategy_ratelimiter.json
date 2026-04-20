@@ -1,6 +1,6 @@
 {
   "id": "task_694",
-  "title": "CONTRADICTION: Memory Strategy RateLimiter",
+  "title": "Memory Strategy RateLimiter",
   "description": "Implement the Memory Strategy RateLimiter module in memory_strategy.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_strategy.py"

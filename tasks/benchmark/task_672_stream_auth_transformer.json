@@ -1,6 +1,6 @@
 {
   "id": "task_672",
-  "title": "CONTRADICTION: Stream Auth Transformer",
+  "title": "Stream Auth Transformer",
   "description": "Implement the Stream Auth Transformer module in stream_auth.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_auth.py"

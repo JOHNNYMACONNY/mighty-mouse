@@ -1,6 +1,6 @@
 {
   "id": "task_791",
-  "title": "CONTRADICTION: Local State CircuitBreaker",
+  "title": "Local State CircuitBreaker",
   "description": "Implement the Local State CircuitBreaker module in local_state.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "local_state.py"

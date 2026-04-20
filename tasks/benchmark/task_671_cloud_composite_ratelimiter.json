@@ -1,6 +1,6 @@
 {
   "id": "task_671",
-  "title": "CONTRADICTION: Cloud Composite RateLimiter",
+  "title": "Cloud Composite RateLimiter",
   "description": "Implement the Cloud Composite RateLimiter module in cloud_composite.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "cloud_composite.py"

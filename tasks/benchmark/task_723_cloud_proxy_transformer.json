@@ -1,6 +1,6 @@
 {
   "id": "task_723",
-  "title": "CONTRADICTION: Cloud Proxy Transformer",
+  "title": "Cloud Proxy Transformer",
   "description": "Implement the Cloud Proxy Transformer module in cloud_proxy.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "cloud_proxy.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_667",
-  "title": "CONTRADICTION: Realtime Store Enricher",
+  "title": "Realtime Store Enricher",
   "description": "Implement the Realtime Store Enricher module in realtime_store.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "realtime_store.py"

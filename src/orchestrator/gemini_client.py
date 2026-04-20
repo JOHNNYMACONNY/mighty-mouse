@@ -50,8 +50,11 @@ class GeminiClient:
             parts = tid.split('_')
             idx = int(parts[1])
             
-            # Tiered Gating for 800-Task Stress Test
-            if idx > 650: # 651-800: Zero-Trust Stress (Tier 7)
+            # Tiered Gating for 1000-Task Stress Test
+            if idx > 800: # 801-1000: Stochastic Drift (Tier 8)
+                has_hygiene = "Hygiene" in sys_instr or "Audit" in sys_instr or "Clean" in sys_instr
+                if not (has_hygiene or round_2): success = False
+            elif idx > 650: # 651-800: Zero-Trust Stress (Tier 7)
                 has_safety = "Safety-First" in sys_instr or "Resolution" in sys_instr or "Integrity" in sys_instr
                 if not (has_safety or round_2): success = False
             elif idx > 500: # 501-650: Antagonist Mode (Tier 6)
@@ -73,10 +76,10 @@ class GeminiClient:
                 if not (has_chain or round_2): success = False
         except: pass
         
-        if success: return self._generate_shim_response(tid, round_2)
+        if success: return self._generate_shim_response(tid, idx, round_2)
         else: return self._generate_fail_response(tid)
 
-    def _generate_shim_response(self, tid, round_2):
+    def _generate_shim_response(self, tid, idx, round_2):
         # Force fail simulation for self-correction testing (Task 02)
         if tid == "task_02_data_parse" and not round_2:
             return self._generate_fail_response(tid)
@@ -92,6 +95,18 @@ class GeminiClient:
         code = shim["code"]
         extra_content = shim.get("extra", "")
 
+        # Tier 7 Metadata Injection (Adversarial Resolve)
+        if idx > 650 and idx <= 800:
+            extra_content += "\n# RESOLVED CONFLICT: Safety-First resolution applied."
+            
+        # Tier 8 Drift Repair Injection
+        if idx > 800:
+            # Detect which drift file to fix based on seed
+            import random
+            random.seed(idx)
+            d_file = random.choice(["legacy_utils.py", "deprecated_api.py", "old_config.py"])
+            extra_content += f"\n\n```python:{d_file}\n# DRIFT FIXED: Sanitized syntax errors and restored hygiene.\ndef fixed_drift(): pass\n```"
+
         return f"""# Mighty Mouse Checklist - {tid}
 
 ## Phase 1: Planning
@@ -105,8 +120,8 @@ The code has been self-verified against the internal checklist. All logic gates 
 
 ```python:{fname}
 {code}
-```
-{extra_content}"""
+{extra_content}
+```"""
 
     def _generate_fail_response(self, tid):
         return f"""# Mighty Mouse Checklist - {tid}

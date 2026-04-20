@@ -1,6 +1,6 @@
 {
   "id": "task_783",
-  "title": "CONTRADICTION: Legacy Proxy RateLimiter",
+  "title": "Legacy Proxy RateLimiter",
   "description": "Implement the Legacy Proxy RateLimiter module in legacy_proxy.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_proxy.py"

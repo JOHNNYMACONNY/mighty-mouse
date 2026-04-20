@@ -1,6 +1,6 @@
 {
   "id": "task_708",
-  "title": "CONTRADICTION: Database Store Filter",
+  "title": "Database Store Filter",
   "description": "Implement the Database Store Filter module in database_store.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "database_store.py"

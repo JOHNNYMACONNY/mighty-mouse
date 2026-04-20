@@ -1,6 +1,6 @@
 {
   "id": "task_756",
-  "title": "CONTRADICTION: Network Decorator CircuitBreaker",
+  "title": "Network Decorator CircuitBreaker",
   "description": "Implement the Network Decorator CircuitBreaker module in network_decorator.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_decorator.py"

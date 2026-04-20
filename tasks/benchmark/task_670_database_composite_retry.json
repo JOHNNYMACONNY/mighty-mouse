@@ -1,6 +1,6 @@
 {
   "id": "task_670",
-  "title": "CONTRADICTION: Database Composite Retry",
+  "title": "Database Composite Retry",
   "description": "Implement the Database Composite Retry module in database_composite.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "database_composite.py"

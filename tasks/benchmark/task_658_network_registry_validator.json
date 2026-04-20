@@ -1,6 +1,6 @@
 {
   "id": "task_658",
-  "title": "CONTRADICTION: Network Registry Validator",
+  "title": "Network Registry Validator",
   "description": "Implement the Network Registry Validator module in network_registry.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_registry.py"

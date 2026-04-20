@@ -1,6 +1,6 @@
 {
   "id": "task_799",
-  "title": "CONTRADICTION: File Service Enricher",
+  "title": "File Service Enricher",
   "description": "Implement the File Service Enricher module in file_service.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "file_service.py"

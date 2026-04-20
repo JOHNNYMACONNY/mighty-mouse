@@ -1,6 +1,6 @@
 {
   "id": "task_777",
-  "title": "CONTRADICTION: Memory Link Enricher",
+  "title": "Memory Link Enricher",
   "description": "Implement the Memory Link Enricher module in memory_link.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_link.py"

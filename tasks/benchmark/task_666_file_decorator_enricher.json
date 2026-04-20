@@ -1,6 +1,6 @@
 {
   "id": "task_666",
-  "title": "CONTRADICTION: File Decorator Enricher",
+  "title": "File Decorator Enricher",
   "description": "Implement the File Decorator Enricher module in file_decorator.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "file_decorator.py"

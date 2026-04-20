@@ -1,6 +1,6 @@
 {
   "id": "task_651",
-  "title": "CONTRADICTION: Legacy Cache Transformer",
+  "title": "Legacy Cache Transformer",
   "description": "Implement the Legacy Cache Transformer module in legacy_cache.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_cache.py"

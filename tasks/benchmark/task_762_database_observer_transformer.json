@@ -1,6 +1,6 @@
 {
   "id": "task_762",
-  "title": "CONTRADICTION: Database Observer Transformer",
+  "title": "Database Observer Transformer",
   "description": "Implement the Database Observer Transformer module in database_observer.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "database_observer.py"

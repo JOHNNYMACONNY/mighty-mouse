@@ -1,0 +1,14 @@
+{
+  "id": "task_844",
+  "title": "Realtime Observer CircuitBreaker",
+  "description": "Implement the Realtime Observer CircuitBreaker module in realtime_observer.py. \nENVIRONMENTAL DRIFT: The workspace contains a corrupted file: old_config.py. You MUST resolve the syntax errors in old_config.py to restore the build before implementing realtime_observer.py.",
+  "expected_files": [
+    "realtime_observer.py",
+    "old_config.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('realtime_observer.py', 'r') as f: src = f.read()\n        # Requirement Check\n        import old_config; assert True, 'Failed to resolve drift in old_config.py'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 2
+  }
+}

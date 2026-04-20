@@ -1,6 +1,6 @@
 {
   "id": "task_706",
-  "title": "CONTRADICTION: Network Iterator Retry",
+  "title": "Network Iterator Retry",
   "description": "Implement the Network Iterator Retry module in network_iterator.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_iterator.py"

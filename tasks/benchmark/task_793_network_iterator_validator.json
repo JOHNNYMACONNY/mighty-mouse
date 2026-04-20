@@ -1,6 +1,6 @@
 {
   "id": "task_793",
-  "title": "CONTRADICTION: Network Iterator Validator",
+  "title": "Network Iterator Validator",
   "description": "Implement the Network Iterator Validator module in network_iterator.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_iterator.py"

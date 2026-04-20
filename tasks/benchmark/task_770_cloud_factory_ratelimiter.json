@@ -1,6 +1,6 @@
 {
   "id": "task_770",
-  "title": "CONTRADICTION: Cloud Factory RateLimiter",
+  "title": "Cloud Factory RateLimiter",
   "description": "Implement the Cloud Factory RateLimiter module in cloud_factory.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "cloud_factory.py"

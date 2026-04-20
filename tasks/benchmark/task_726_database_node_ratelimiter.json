@@ -1,6 +1,6 @@
 {
   "id": "task_726",
-  "title": "CONTRADICTION: Database Node RateLimiter",
+  "title": "Database Node RateLimiter",
   "description": "Implement the Database Node RateLimiter module in database_node.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "database_node.py"

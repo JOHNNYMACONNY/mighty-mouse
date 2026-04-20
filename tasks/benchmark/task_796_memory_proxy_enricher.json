@@ -1,6 +1,6 @@
 {
   "id": "task_796",
-  "title": "CONTRADICTION: Memory Proxy Enricher",
+  "title": "Memory Proxy Enricher",
   "description": "Implement the Memory Proxy Enricher module in memory_proxy.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_proxy.py"

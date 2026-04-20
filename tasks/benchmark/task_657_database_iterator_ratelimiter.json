@@ -1,6 +1,6 @@
 {
   "id": "task_657",
-  "title": "CONTRADICTION: Database Iterator RateLimiter",
+  "title": "Database Iterator RateLimiter",
   "description": "Implement the Database Iterator RateLimiter module in database_iterator.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "database_iterator.py"

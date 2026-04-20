@@ -1,6 +1,6 @@
 {
   "id": "task_713",
-  "title": "CONTRADICTION: Network Factory Filter",
+  "title": "Network Factory Filter",
   "description": "Implement the Network Factory Filter module in network_factory.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_factory.py"

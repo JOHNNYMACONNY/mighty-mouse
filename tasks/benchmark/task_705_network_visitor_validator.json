@@ -1,6 +1,6 @@
 {
   "id": "task_705",
-  "title": "CONTRADICTION: Network Visitor Validator",
+  "title": "Network Visitor Validator",
   "description": "Implement the Network Visitor Validator module in network_visitor.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_visitor.py"

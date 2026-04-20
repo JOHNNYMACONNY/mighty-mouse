@@ -1,6 +1,6 @@
 {
   "id": "task_754",
-  "title": "CONTRADICTION: Memory Manager Transformer",
+  "title": "Memory Manager Transformer",
   "description": "Implement the Memory Manager Transformer module in memory_manager.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_manager.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_717",
-  "title": "CONTRADICTION: Cloud Link RateLimiter",
+  "title": "Cloud Link RateLimiter",
   "description": "Implement the Cloud Link RateLimiter module in cloud_link.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "cloud_link.py"

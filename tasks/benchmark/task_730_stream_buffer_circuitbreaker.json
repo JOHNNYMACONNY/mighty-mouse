@@ -1,6 +1,6 @@
 {
   "id": "task_730",
-  "title": "CONTRADICTION: Stream Buffer CircuitBreaker",
+  "title": "Stream Buffer CircuitBreaker",
   "description": "Implement the Stream Buffer CircuitBreaker module in stream_buffer.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "stream_buffer.py"

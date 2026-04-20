@@ -1,6 +1,6 @@
 {
   "id": "task_751",
-  "title": "CONTRADICTION: Realtime Visitor Validator",
+  "title": "Realtime Visitor Validator",
   "description": "Implement the Realtime Visitor Validator module in realtime_visitor.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "realtime_visitor.py"

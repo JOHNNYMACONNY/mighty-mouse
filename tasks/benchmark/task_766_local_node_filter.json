@@ -1,6 +1,6 @@
 {
   "id": "task_766",
-  "title": "CONTRADICTION: Local Node Filter",
+  "title": "Local Node Filter",
   "description": "Implement the Local Node Filter module in local_node.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "local_node.py"

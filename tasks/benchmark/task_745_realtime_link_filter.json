@@ -1,6 +1,6 @@
 {
   "id": "task_745",
-  "title": "CONTRADICTION: Realtime Link Filter",
+  "title": "Realtime Link Filter",
   "description": "Implement the Realtime Link Filter module in realtime_link.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "realtime_link.py"

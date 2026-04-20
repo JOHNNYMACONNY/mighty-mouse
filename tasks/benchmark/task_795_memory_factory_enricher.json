@@ -1,6 +1,6 @@
 {
   "id": "task_795",
-  "title": "CONTRADICTION: Memory Factory Enricher",
+  "title": "Memory Factory Enricher",
   "description": "Implement the Memory Factory Enricher module in memory_factory.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_factory.py"

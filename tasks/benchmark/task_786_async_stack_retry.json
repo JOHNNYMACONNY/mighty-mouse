@@ -1,6 +1,6 @@
 {
   "id": "task_786",
-  "title": "CONTRADICTION: Async Stack Retry",
+  "title": "Async Stack Retry",
   "description": "Implement the Async Stack Retry module in async_stack.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "async_stack.py"

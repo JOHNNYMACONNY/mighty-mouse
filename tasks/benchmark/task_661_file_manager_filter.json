@@ -1,6 +1,6 @@
 {
   "id": "task_661",
-  "title": "CONTRADICTION: File Manager Filter",
+  "title": "File Manager Filter",
   "description": "Implement the File Manager Filter module in file_manager.py. \nZERO-TRUST CHALLENGE: Implement Memory-less Cache. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "file_manager.py"

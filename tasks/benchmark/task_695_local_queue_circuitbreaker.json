@@ -1,6 +1,6 @@
 {
   "id": "task_695",
-  "title": "CONTRADICTION: Local Queue CircuitBreaker",
+  "title": "Local Queue CircuitBreaker",
   "description": "Implement the Local Queue CircuitBreaker module in local_queue.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "local_queue.py"

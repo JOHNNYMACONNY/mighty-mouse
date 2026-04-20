@@ -1,6 +1,6 @@
 {
   "id": "task_712",
-  "title": "CONTRADICTION: Legacy Buffer Enricher",
+  "title": "Legacy Buffer Enricher",
   "description": "Implement the Legacy Buffer Enricher module in legacy_buffer.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_buffer.py"

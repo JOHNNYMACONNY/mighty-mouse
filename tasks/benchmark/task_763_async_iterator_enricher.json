@@ -1,6 +1,6 @@
 {
   "id": "task_763",
-  "title": "CONTRADICTION: Async Iterator Enricher",
+  "title": "Async Iterator Enricher",
   "description": "Implement the Async Iterator Enricher module in async_iterator.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "async_iterator.py"

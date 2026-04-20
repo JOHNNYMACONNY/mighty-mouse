@@ -1,6 +1,6 @@
 {
   "id": "task_676",
-  "title": "CONTRADICTION: Legacy Auth Enricher",
+  "title": "Legacy Auth Enricher",
   "description": "Implement the Legacy Auth Enricher module in legacy_auth.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_auth.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_673",
-  "title": "CONTRADICTION: Database Bridge Enricher",
+  "title": "Database Bridge Enricher",
   "description": "Implement the Database Bridge Enricher module in database_bridge.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "database_bridge.py"

@@ -1,6 +1,6 @@
 {
   "id": "task_744",
-  "title": "CONTRADICTION: Realtime Buffer RateLimiter",
+  "title": "Realtime Buffer RateLimiter",
   "description": "Implement the Realtime Buffer RateLimiter module in realtime_buffer.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "realtime_buffer.py"

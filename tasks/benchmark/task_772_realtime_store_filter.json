@@ -1,6 +1,6 @@
 {
   "id": "task_772",
-  "title": "CONTRADICTION: Realtime Store Filter",
+  "title": "Realtime Store Filter",
   "description": "Implement the Realtime Store Filter module in realtime_store.py. \nZERO-TRUST CHALLENGE: Implement Stack-Queue. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "realtime_store.py"

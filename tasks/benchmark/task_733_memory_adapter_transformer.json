@@ -1,6 +1,6 @@
 {
   "id": "task_733",
-  "title": "CONTRADICTION: Memory Adapter Transformer",
+  "title": "Memory Adapter Transformer",
   "description": "Implement the Memory Adapter Transformer module in memory_adapter.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "memory_adapter.py"

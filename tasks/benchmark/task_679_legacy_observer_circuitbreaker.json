@@ -1,6 +1,6 @@
 {
   "id": "task_679",
-  "title": "CONTRADICTION: Legacy Observer CircuitBreaker",
+  "title": "Legacy Observer CircuitBreaker",
   "description": "Implement the Legacy Observer CircuitBreaker module in legacy_observer.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "legacy_observer.py"

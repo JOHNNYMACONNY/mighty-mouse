@@ -1,6 +1,6 @@
 {
   "id": "task_742",
-  "title": "CONTRADICTION: Network Adapter Transformer",
+  "title": "Network Adapter Transformer",
   "description": "Implement the Network Adapter Transformer module in network_adapter.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_adapter.py"

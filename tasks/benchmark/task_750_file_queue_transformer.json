@@ -1,6 +1,6 @@
 {
   "id": "task_750",
-  "title": "CONTRADICTION: File Queue Transformer",
+  "title": "File Queue Transformer",
   "description": "Implement the File Queue Transformer module in file_queue.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "file_queue.py"

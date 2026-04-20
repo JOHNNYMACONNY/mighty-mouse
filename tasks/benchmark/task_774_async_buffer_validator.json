@@ -1,6 +1,6 @@
 {
   "id": "task_774",
-  "title": "CONTRADICTION: Async Buffer Validator",
+  "title": "Async Buffer Validator",
   "description": "Implement the Async Buffer Validator module in async_buffer.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "async_buffer.py"

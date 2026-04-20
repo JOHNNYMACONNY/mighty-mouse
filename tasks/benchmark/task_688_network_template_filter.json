@@ -1,6 +1,6 @@
 {
   "id": "task_688",
-  "title": "CONTRADICTION: Network Template Filter",
+  "title": "Network Template Filter",
   "description": "Implement the Network Template Filter module in network_template.py. \nZERO-TRUST CHALLENGE: Implement Immutable State. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "network_template.py"

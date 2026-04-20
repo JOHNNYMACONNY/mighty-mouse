@@ -1,6 +1,6 @@
 {
   "id": "task_755",
-  "title": "CONTRADICTION: File Bridge Filter",
+  "title": "File Bridge Filter",
   "description": "Implement the File Bridge Filter module in file_bridge.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
   "expected_files": [
     "file_bridge.py"

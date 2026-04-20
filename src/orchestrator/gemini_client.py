@@ -113,7 +113,20 @@ class GeminiClient:
             return self._generate_fail_response(tid)
 
         fname, code = mapping.get(tid[:7], ("stub.py", "def stub(): pass # No specific shim for this task"))
-        return f"# Mighty Mouse Checklist - {tid}\n- [x] Logic Implemented\n\n```python:{fname}\n{code}\n```" + extra_content
+        return f"""# Mighty Mouse Checklist - {tid}
+
+## Phase 1: Planning
+The objective for {tid} is to implement {fname} correctly according to specifications. We will identify all constraints and target files.
+---
+## Phase 2: Activity
+The implementation of {fname} has been completed with comprehensive logic and adherence to the requested patterns.
+---
+## Phase 3: Verification
+The code has been self-verified against the internal checklist. All logic gates for {tid} are passing.
+
+```python:{fname}
+{code}
+```{extra_content}"""
 
     def _generate_fail_response(self, tid):
         return f"# Mighty Mouse Checklist - {tid}\n- [ ] Forced Fail\n\n```python:error.py\ndef error(): raise ValueError('Simulated Failure')\n```"

@@ -1,4 +1,3 @@
-# TOOL EXECUTION DISCIPLINE
-
-When using tools (e.g., `write_to_file`, `run_command`), you MUST adhere to the following standard:
-
+3. **TOOL USE**: Execute changes atomistically.
+   - Specify precise ranges and content for edits.
+   - Ensure commands are safe and verified.

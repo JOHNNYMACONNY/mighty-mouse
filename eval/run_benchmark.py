@@ -1,7 +1,7 @@
 import subprocess
 import os
 import json
-import pandas as pd
+import sys
 from datetime import datetime
 
 def get_modified_files():
@@ -23,12 +23,7 @@ def verify_task(task_config):
     adherence_logs = adherence_check.stdout + adherence_check.stderr
 
     modified_files = get_modified_files()
-    
-    # PROTECT THE RESEARCH ENVIRONMENT
-    ignored_prefixes = [
-        '.gsd/', 'src/orchestrator/', 'eval/', '.DS_Store', 'logs/', 
-        'autoresearch-results', 'baseline_run.log', 'configs/'
-    ]
+    ignored_prefixes = ['.gsd/', 'src/orchestrator/', 'eval/', '.DS_Store', 'logs/', 'autoresearch-results', 'baseline_run.log', 'configs/']
     
     unexpected_files = [
         f for f in modified_files 
@@ -45,7 +40,7 @@ def verify_task(task_config):
 
     files_exist = all(os.path.exists(f) for f in expected_files)
     if not files_exist:
-        return {"task_id": task_id, "status": "fail", "reason": "Missing expected files", "timestamp": datetime.now().isoformat()}
+        return {"task_id": task_id, "status": "fail", "reason": f"Missing expected files: {expected_files}", "timestamp": datetime.now().isoformat()}
 
     with open('test_runner.py', 'w') as f: f.write(test_script)
     try:
@@ -67,19 +62,31 @@ def verify_task(task_config):
     }
 
 def main():
-    benchmark_dir = "tasks/benchmark"
     logs_dir = "logs"
     os.makedirs(logs_dir, exist_ok=True)
-    results = []
-    for filename in sorted(os.listdir(benchmark_dir)):
-        if filename.endswith(".json") and not filename.startswith("."):
-            with open(os.path.join(benchmark_dir, filename), 'r') as f:
-                task_config = json.load(f)
-                res = verify_task(task_config)
-                results.append(res)
-    with open(os.path.join(logs_dir, "benchmark_results.json"), 'w') as f:
-        json.dump(results, f, indent=2)
-    print(f"Verified {len(results)} tasks. Results logged to {logs_dir}/benchmark_results.json")
+    
+    # Check if we are running for a single task
+    if len(sys.argv) > 1:
+        task_path = sys.argv[1]
+        with open(task_path, 'r') as f:
+            task_config = json.load(f)
+            res = verify_task(task_config)
+            
+            # Load existing or start new
+            history_path = os.path.join(logs_dir, "benchmark_results.json")
+            if os.path.exists(history_path):
+                with open(history_path, 'r') as f: history = json.load(f)
+            else:
+                history = []
+            
+            # Update or append
+            history = [h for h in history if h['task_id'] != res['task_id']]
+            history.append(res)
+            
+            with open(history_path, 'w') as f: json.dump(history, f, indent=2)
+            print(f"Task {res['task_id']} {res['status']} verified.")
+    else:
+        print("Usage: run_benchmark.py <task_json_path>")
 
 if __name__ == "__main__":
     main()

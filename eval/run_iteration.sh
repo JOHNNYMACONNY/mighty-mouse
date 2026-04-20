@@ -1,18 +1,23 @@
 #!/bin/bash
-# Master verification script for autoresearch loop
-# Usage: ./eval/run_iteration.sh [tier]
-
+# Mighty Mouse Iteration Runner
 TIER=${1:-tier_1}
-
 echo "Starting Mighty Mouse Optimization Iteration (Tier: $TIER)..."
 
-# 1. Run the benchmark solver
-python3 eval/solve_benchmark.py "$TIER"
+# Initial cleanup of the results file to ensure a fresh score
+rm -f logs/benchmark_results.json
 
-# 2. Score the results (Weighted)
-SCORE=$(python3 eval/score_metrics.py)
+SOLVER="src/orchestrator/mighty_mouse_agent.py"
+CONFIG="configs/mighty_mouse_v1.yaml"
+TASK_DIR="tasks/benchmark"
 
-echo "Iteration Score: $SCORE"
+for task in $TASK_DIR/*.json; do
+    bash eval/reset_workspace.sh
+    python3 "$SOLVER" "$CONFIG" "$task"
+    python3 eval/run_benchmark.py "$task"
+done
 
-# Autoresearch expects the score as the final output
-echo "$SCORE"
+# Analyze Failures
+python3 src/orchestrator/analyze_failure.py
+
+# Score Extract
+python3 eval/score_metrics.py

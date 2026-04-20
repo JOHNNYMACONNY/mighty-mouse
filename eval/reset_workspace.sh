@@ -1,15 +1,19 @@
 #!/bin/bash
-# Reset workspace to clean state for next task
-git checkout .
+# Mighty Mouse: Workspace Reset Utility (Hardened for autonomous loop)
+
+# 1. Revert tracked changes (Protects established infrastructure)
+git checkout src/ tasks/ eval/ .gsd/ configs/ requirements.txt
+
+# 2. Clean untracked files (Removes transient agent outputs)
+# We exclude the infrastructure directories to avoid destructive side effects during rapid iteration.
 git clean -fd \
-    --exclude=eval/results/ \
-    --exclude=configs/prompt_segments/ \
-    --exclude=configs/mighty_mouse_v1.yaml \
-    --exclude=src/orchestrator/ \
-    --exclude=eval/test_orchestrator_rejection.py \
-    --exclude=.gsd/ \
-    --exclude=*.tsv \
-    --exclude=*.log \
-    --exclude=.gitignore \
-    --exclude=eval/*.sh \
-    --exclude=tasks/
+    -e src/ \
+    -e tasks/ \
+    -e eval/ \
+	-e logs/ \
+	-e .gsd/ \
+	-e .planning/ \
+	-e configs/ \
+	-e requirements.txt
+
+echo "[*] Workspace reset: Infrastructure preserved, transient implementations purged."

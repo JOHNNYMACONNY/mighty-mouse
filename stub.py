@@ -1,0 +1,1 @@
+def stub(): pass # No specific shim for this task

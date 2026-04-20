@@ -1,0 +1,8 @@
+{
+  "id": "task_16_circular_logic",
+  "title": "Circular Logic Resolution",
+  "description": "Extract 'VERSION' and 'STATUS' constants from 'app.py' and 'utils.py' into a new 'constants.py' file to resolve circular dependencies.",
+  "expected_files": ["constants.py", "app.py", "utils.py"],
+  "test_script": "import unittest\nimport constants\nimport app\nimport utils\n\nclass TestConstants(unittest.TestCase):\n    def test_values(self):\n        self.assertEqual(constants.VERSION, '1.0.0')\n        self.assertEqual(app.VERSION, '1.0.0')\n        self.assertEqual(utils.VERSION, '1.0.0')\n\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {"language": "python", "max_files": 3}
+}

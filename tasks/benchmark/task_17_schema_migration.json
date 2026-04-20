@@ -1,0 +1,8 @@
+{
+  "id": "task_17_schema_migration",
+  "title": "Schema Migration",
+  "description": "Add a 'description' field to the 'User' class in 'models.py' and update the 'UserSchema' in 'schemas.py' to include it.",
+  "expected_files": ["models.py", "schemas.py"],
+  "test_script": "import unittest\nfrom models import User\nfrom schemas import UserSchema\n\nclass TestSchema(unittest.TestCase):\n    def test_migration(self):\n        u = User(name='Bob', description='Dev')\n        s = UserSchema()\n        self.assertEqual(s.dump(u)['description'], 'Dev')\n\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {"language": "python", "max_files": 2}
+}

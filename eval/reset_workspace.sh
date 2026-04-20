@@ -10,4 +10,5 @@ git clean -fd \
     --exclude=.gsd/ \
     --exclude=*.tsv \
     --exclude=*.log \
-    --exclude=.gitignore
+    --exclude=.gitignore \
+    --exclude=tasks/

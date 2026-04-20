@@ -1,0 +1,6 @@
+{
+  "id": "task_12_types",
+  "objective": "Implement a function with strict type hints for everything.",
+  "expected_files": ["typed.py"],
+  "test_script": "import unittest\nfrom typed import greet\nclass TestTypes(unittest.TestCase):\n    def test_greet(self):\n        self.assertEqual(greet('Alice'), 'Hello, Alice')\n"
+}

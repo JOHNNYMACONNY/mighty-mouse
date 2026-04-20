@@ -1,0 +1,6 @@
+{
+  "id": "task_13_math_edge",
+  "objective": "Implement safe_log that handles zero and negative numbers.",
+  "expected_files": ["math_edge.py"],
+  "test_script": "import unittest\nfrom math_edge import safe_log\nclass TestMathEdge(unittest.TestCase):\n    def test_log(self):\n        self.assertIsNone(safe_log(0))\n        self.assertIsNone(safe_log(-1))\n"
+}

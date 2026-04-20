@@ -1,0 +1,6 @@
+{
+  "id": "task_11_recursion",
+  "objective": "Implement a recursive directory walker that returns a list of all .py files.",
+  "expected_files": ["walker.py"],
+  "test_script": "import unittest\nfrom walker import walk_py\nimport os\nclass TestWalker(unittest.TestCase):\n    def test_walk(self):\n        os.makedirs('subdir', exist_ok=True)\n        with open('subdir/test.py', 'w') as f: f.write('')\n        res = walk_py('.')\n        self.assertIn('./subdir/test.py', res)\n"
+}

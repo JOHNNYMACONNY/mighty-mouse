@@ -457,3 +457,56 @@ Total Failures: 50
 - **task_48_state_machine**: [ADHERENCE] Workflow failed
 - **task_49_serialization**: [ADHERENCE] Workflow failed
 - **task_50_stress_orchestrator**: [ADHERENCE] Workflow failed
+
+## Failure Analysis - 2026-04-19 20:54:14
+Total Failures: 50
+- **task_01_simple_calc**: [LOGIC] Tests failed
+- **task_02_data_parse**: [LOGIC] Tests failed
+- **task_03_regex_refactor**: [LOGIC] Tests failed
+- **task_04_error_handler**: [LOGIC] Tests failed
+- **task_05_list_merger**: [LOGIC] Tests failed
+- **task_06_markdown_id**: [LOGIC] Tests failed
+- **task_07_env_config**: [LOGIC] Tests failed
+- **task_08_multi_file_api**: [ADHERENCE] Workflow failed
+- **task_09_verification_sensitive**: [LOGIC] Scope fail. Unexp: ['service.py'] Miss: []
+- **task_10_constraint_compliance**: [LOGIC] Scope fail. Unexp: ['service.py'] Miss: []
+- **task_11_recursion**: [LOGIC] Scope fail. Unexp: ['service.py'] Miss: []
+- **task_12_types**: [LOGIC] Scope fail. Unexp: ['service.py'] Miss: []
+- **task_13_math_edge**: [LOGIC] Scope fail. Unexp: ['service.py'] Miss: []
+- **task_14_api_refactor**: [ADHERENCE] Workflow failed
+- **task_15_interface_enforcement**: [LOGIC] Scope fail. Unexp: ['service.py'] Miss: []
+- **task_16_circular_logic**: [LOGIC] Scope fail. Unexp: ['service.py'] Miss: []
+- **task_17_schema_migration**: [LOGIC] Scope fail. Unexp: ['app.py', 'service.py', 'utils.py'] Miss: []
+- **task_18_global_registration**: [LOGIC] Scope fail. Unexp: ['app.py', 'service.py', 'utils.py'] Miss: []
+- **task_19_verification_multi_step**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_20_scope_stress**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_21_async_wait**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_22_context_timer**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_23_lazy_generator**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_24_dynamic_attrs**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_25_closure_state**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_26_custom_list**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_27_recursive_validator**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_28_thread_singleton**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_29_handler_chain**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_30_memoize**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_31_abstract_factory**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: ['widgets.py']
+- **task_32_observer_pattern**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_33_multi_file_reg**: [LOGIC] Scope fail. Unexp: ['app.py', 'service.py', 'utils.py'] Miss: ['main.py']
+- **task_34_fluent_interface**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_35_decorator_arg**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py', 'decorator.py'] Miss: ['auth.py']
+- **task_36_config_parser**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py', 'semver.py'] Miss: ['config_parser.py']
+- **task_37_semver**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py', 'singleton.py'] Miss: ['semver.py']
+- **task_38_circular_split**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_39_di_container**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_40_retry_strategy**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_41_circular_buffer**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_42_exception_map**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_43_lru_manual**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_44_type_container**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_45_async_ctx**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_46_reflection**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_47_undo_command**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_48_state_machine**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_49_serialization**: [LOGIC] Scope fail. Unexp: ['app.py', 'registry.py', 'service.py', 'utils.py'] Miss: []
+- **task_50_stress_orchestrator**: [ADHERENCE] Workflow failed

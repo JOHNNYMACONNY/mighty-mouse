@@ -1,8 +1,0 @@
-{
-  "id": "task_24_dynamic_attrs",
-  "title": "Strict Dynamic Proxy",
-  "description": "Implement a class 'Proxy' that takes an object and a list of 'allowed_attrs'. It should only allow access to attributes in the allowed list via __getattr__. Raise AttributeError otherwise.",
-  "expected_files": ["proxy.py"],
-  "test_script": "import unittest\nfrom proxy import Proxy\nclass Obj: a=1; b=2\nclass TestProxy(unittest.TestCase):\n    def test_access(self):\n        p = Proxy(Obj(), ['a'])\n        self.assertEqual(p.a, 1)\n        with self.assertRaises(AttributeError): p.b\n",
-  "constraints": {"language": "python"}
-}

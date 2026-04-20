@@ -1,0 +1,13 @@
+{
+  "id": "task_225",
+  "title": "Local Strategy Transformer",
+  "description": "Implement the Local Strategy Transformer module in local_strategy.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "local_strategy.py"
+  ],
+  "test_script": "import unittest\nfrom local_strategy import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

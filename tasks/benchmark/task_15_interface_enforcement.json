@@ -1,8 +1,0 @@
-{
-  "id": "task_15_interface_enforcement",
-  "title": "Interface Enforcement",
-  "description": "Implement a new ABC 'Encoder' in 'interfaces.py' and a concrete 'Base64Encoder' in 'impl.py'. Ensure the implementation adheres to the abstract method 'encode(data)'.",
-  "expected_files": ["interfaces.py", "impl.py"],
-  "test_script": "import unittest\nfrom interfaces import Encoder\nfrom impl import Base64Encoder\n\nclass TestInterface(unittest.TestCase):\n    def test_inheritance(self):\n        self.assertTrue(issubclass(Base64Encoder, Encoder))\n        enc = Base64Encoder()\n        self.assertEqual(enc.encode(b'A'), 'QQ==')\n\nif __name__ == '__main__':\n    unittest.main()",
-  "constraints": {"language": "python", "max_files": 2}
-}

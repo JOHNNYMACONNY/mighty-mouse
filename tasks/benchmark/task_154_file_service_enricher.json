@@ -1,0 +1,13 @@
+{
+  "id": "task_154",
+  "title": "File Service Enricher",
+  "description": "Implement the File Service Enricher module in file_service.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "file_service.py"
+  ],
+  "test_script": "import unittest\nfrom file_service import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

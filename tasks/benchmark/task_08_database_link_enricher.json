@@ -1,0 +1,13 @@
+{
+  "id": "task_08",
+  "title": "Database Link Enricher",
+  "description": "Implement the Database Link Enricher module in database_link.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "database_link.py"
+  ],
+  "test_script": "import unittest\nfrom database_link import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

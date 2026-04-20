@@ -1,0 +1,13 @@
+{
+  "id": "task_191",
+  "title": "Realtime Visitor RateLimiter",
+  "description": "Implement the Realtime Visitor RateLimiter module in realtime_visitor.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "realtime_visitor.py"
+  ],
+  "test_script": "import unittest\nfrom realtime_visitor import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

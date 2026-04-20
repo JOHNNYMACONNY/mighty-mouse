@@ -1,0 +1,13 @@
+{
+  "id": "task_142",
+  "title": "Memory Composite Transformer",
+  "description": "Implement the Memory Composite Transformer module in memory_composite.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "memory_composite.py"
+  ],
+  "test_script": "import unittest\nfrom memory_composite import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

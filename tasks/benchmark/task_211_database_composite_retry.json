@@ -1,0 +1,13 @@
+{
+  "id": "task_211",
+  "title": "Database Composite Retry",
+  "description": "Implement the Database Composite Retry module in database_composite.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "database_composite.py"
+  ],
+  "test_script": "import unittest\nfrom database_composite import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

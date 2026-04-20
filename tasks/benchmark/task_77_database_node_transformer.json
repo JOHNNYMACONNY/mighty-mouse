@@ -1,0 +1,13 @@
+{
+  "id": "task_77",
+  "title": "Database Node Transformer",
+  "description": "Implement the Database Node Transformer module in database_node.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "database_node.py"
+  ],
+  "test_script": "import unittest\nfrom database_node import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

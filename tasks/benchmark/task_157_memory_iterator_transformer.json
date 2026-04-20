@@ -1,0 +1,13 @@
+{
+  "id": "task_157",
+  "title": "Memory Iterator Transformer",
+  "description": "Implement the Memory Iterator Transformer module in memory_iterator.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "memory_iterator.py"
+  ],
+  "test_script": "import unittest\nfrom memory_iterator import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

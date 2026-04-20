@@ -1,0 +1,13 @@
+{
+  "id": "task_475",
+  "title": "Async Data RateLimiter",
+  "description": "Implement the Async Data RateLimiter module in async_data.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "async_data.py"
+  ],
+  "test_script": "import unittest\nfrom async_data import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

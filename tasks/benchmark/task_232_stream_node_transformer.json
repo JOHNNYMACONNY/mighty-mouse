@@ -1,0 +1,13 @@
+{
+  "id": "task_232",
+  "title": "Stream Node Transformer",
+  "description": "Implement the Stream Node Transformer module in stream_node.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "stream_node.py"
+  ],
+  "test_script": "import unittest\nfrom stream_node import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

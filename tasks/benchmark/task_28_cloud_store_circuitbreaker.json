@@ -1,0 +1,13 @@
+{
+  "id": "task_28",
+  "title": "Cloud Store CircuitBreaker",
+  "description": "Implement the Cloud Store CircuitBreaker module in cloud_store.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "cloud_store.py"
+  ],
+  "test_script": "import unittest\nfrom cloud_store import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

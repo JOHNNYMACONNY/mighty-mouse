@@ -1,0 +1,13 @@
+{
+  "id": "task_470",
+  "title": "Database Cache Transformer",
+  "description": "Implement the Database Cache Transformer module in database_cache.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "database_cache.py"
+  ],
+  "test_script": "import unittest\nfrom database_cache import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

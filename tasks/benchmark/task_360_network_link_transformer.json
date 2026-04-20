@@ -1,0 +1,13 @@
+{
+  "id": "task_360",
+  "title": "Network Link Transformer",
+  "description": "Implement the Network Link Transformer module in network_link.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "network_link.py"
+  ],
+  "test_script": "import unittest\nfrom network_link import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

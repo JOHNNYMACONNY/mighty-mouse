@@ -1,8 +1,0 @@
-{
-  "id": "task_22_context_timer",
-  "title": "Execution Timer Context Manager",
-  "description": "Implement a context manager 'TaskTimer' using the 'with' statement. It should record the start time on entry and set 'self.duration' on exit. If an exception occurs, it should still calculate the duration before re-raising.",
-  "expected_files": ["timer.py"],
-  "test_script": "import unittest, time\nfrom timer import TaskTimer\nclass TestTimer(unittest.TestCase):\n    def test_duration(self):\n        with TaskTimer() as t:\n            time.sleep(0.1)\n        self.assertGreaterEqual(t.duration, 0.1)\n",
-  "constraints": {"language": "python"}
-}

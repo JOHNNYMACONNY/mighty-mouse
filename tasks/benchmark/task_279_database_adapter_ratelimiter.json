@@ -1,0 +1,13 @@
+{
+  "id": "task_279",
+  "title": "Database Adapter RateLimiter",
+  "description": "Implement the Database Adapter RateLimiter module in database_adapter.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "database_adapter.py"
+  ],
+  "test_script": "import unittest\nfrom database_adapter import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

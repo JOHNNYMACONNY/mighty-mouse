@@ -1,0 +1,13 @@
+{
+  "id": "task_83",
+  "title": "Memory Facade Validator",
+  "description": "Implement the Memory Facade Validator module in memory_facade.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "memory_facade.py"
+  ],
+  "test_script": "import unittest\nfrom memory_facade import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

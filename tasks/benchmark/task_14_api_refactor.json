@@ -1,8 +1,0 @@
-{
-  "id": "task_14_api_refactor",
-  "title": "API Refactor: Method Upstreaming",
-  "description": "Move the 'process' method logic from 'Service' class to its parent 'BaseHandler'. Ensure 'service.py' only contains the class definition and 'core.py' contains the logic.",
-  "expected_files": ["core.py", "service.py"],
-  "test_script": "import unittest\nfrom core import BaseHandler\nfrom service import DataService\n\nclass TestRefactor(unittest.TestCase):\n    def test_logic_moved(self):\n        self.assertTrue(hasattr(BaseHandler, 'process'))\n        ds = DataService()\n        ds.process('data', {'v':1})\n        self.assertEqual(ds.last_metadata, {'v':1})\n\nif __name__ == '__main__':\n    unittest.main()",
-  "constraints": {"language": "python", "max_files": 2}
-}

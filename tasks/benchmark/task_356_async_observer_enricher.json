@@ -1,0 +1,13 @@
+{
+  "id": "task_356",
+  "title": "Async Observer Enricher",
+  "description": "Implement the Async Observer Enricher module in async_observer.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "async_observer.py"
+  ],
+  "test_script": "import unittest\nfrom async_observer import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

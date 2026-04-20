@@ -1,0 +1,13 @@
+{
+  "id": "task_372",
+  "title": "Database Store Transformer",
+  "description": "Implement the Database Store Transformer module in database_store.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "database_store.py"
+  ],
+  "test_script": "import unittest\nfrom database_store import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

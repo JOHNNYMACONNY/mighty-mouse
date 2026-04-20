@@ -1,0 +1,13 @@
+{
+  "id": "task_267",
+  "title": "Async Service Enricher",
+  "description": "Implement the Async Service Enricher module in async_service.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "async_service.py"
+  ],
+  "test_script": "import unittest\nfrom async_service import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

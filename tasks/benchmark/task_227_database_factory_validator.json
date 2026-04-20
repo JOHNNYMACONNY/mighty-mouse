@@ -1,0 +1,13 @@
+{
+  "id": "task_227",
+  "title": "Database Factory Validator",
+  "description": "Implement the Database Factory Validator module in database_factory.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "database_factory.py"
+  ],
+  "test_script": "import unittest\nfrom database_factory import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

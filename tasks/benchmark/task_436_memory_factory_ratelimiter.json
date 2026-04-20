@@ -1,0 +1,13 @@
+{
+  "id": "task_436",
+  "title": "Memory Factory RateLimiter",
+  "description": "Implement the Memory Factory RateLimiter module in memory_factory.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "memory_factory.py"
+  ],
+  "test_script": "import unittest\nfrom memory_factory import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

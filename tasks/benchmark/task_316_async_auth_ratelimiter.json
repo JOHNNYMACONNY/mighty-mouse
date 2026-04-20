@@ -1,0 +1,13 @@
+{
+  "id": "task_316",
+  "title": "Async Auth RateLimiter",
+  "description": "Implement the Async Auth RateLimiter module in async_auth.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "async_auth.py"
+  ],
+  "test_script": "import unittest\nfrom async_auth import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

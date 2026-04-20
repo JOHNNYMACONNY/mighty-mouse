@@ -1,8 +1,0 @@
-{
-  "id": "task_18_global_registration",
-  "title": "Global Plugin Registration",
-  "description": "Create a 'LoggerPlugin' in 'plugins/logger.py' and register it in 'registry.py' using the 'GLOBAL_REGISTRY' list.",
-  "expected_files": ["plugins/logger.py", "registry.py"],
-  "test_script": "import unittest\nfrom registry import GLOBAL_REGISTRY\n\nclass TestRegistry(unittest.TestCase):\n    def test_registration(self):\n        names = [p.__class__.__name__ for p in GLOBAL_REGISTRY]\n        self.assertIn('LoggerPlugin', names)\n\nif __name__ == '__main__':\n    unittest.main()",
-  "constraints": {"language": "python", "max_files": 2}
-}

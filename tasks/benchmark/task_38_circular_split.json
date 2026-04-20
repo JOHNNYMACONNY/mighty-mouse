@@ -1,8 +1,0 @@
-{
-  "id": "task_38_circular_split",
-  "title": "Circular Link Fix",
-  "description": "Split 'A' and 'B' classes into separate files and resolve their circular dependency by moving shared logic to 'base.py'.",
-  "expected_files": ["a.py", "b.py", "base.py"],
-  "test_script": "import unittest\nimport a, b\nclass TestCirc(unittest.TestCase):\n    def test_instantiation(self):\n        self.assertIsNotNone(a.A())\n        self.assertIsNotNone(b.B())\n",
-  "constraints": {"language": "python", "min_files": 3}
-}

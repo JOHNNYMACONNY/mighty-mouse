@@ -1,0 +1,13 @@
+{
+  "id": "task_102",
+  "title": "Legacy Registry Filter",
+  "description": "Implement the Legacy Registry Filter module in legacy_registry.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "legacy_registry.py"
+  ],
+  "test_script": "import unittest\nfrom legacy_registry import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

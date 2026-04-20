@@ -1,8 +1,0 @@
-{
-  "id": "task_19_verification_multi_step",
-  "title": "Multi-Step Verification",
-  "description": "Implement a chained calculation: 'calc.py' computes root, 'norm.py' normalizes it, and 'verify.py' checks it against a target range.",
-  "expected_files": ["calc.py", "norm.py", "verify.py"],
-  "test_script": "import unittest\nimport verify\n\nclass TestChained(unittest.TestCase):\n    def test_chain(self):\n        self.assertTrue(verify.check(100))\n\nif __name__ == '__main__':\n    unittest.main()",
-  "constraints": {"language": "python", "max_files": 3}
-}

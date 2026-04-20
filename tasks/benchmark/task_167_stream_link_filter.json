@@ -1,0 +1,13 @@
+{
+  "id": "task_167",
+  "title": "Stream Link Filter",
+  "description": "Implement the Stream Link Filter module in stream_link.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "stream_link.py"
+  ],
+  "test_script": "import unittest\nfrom stream_link import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

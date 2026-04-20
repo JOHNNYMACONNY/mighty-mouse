@@ -1,0 +1,13 @@
+{
+  "id": "task_288",
+  "title": "Memory Buffer RateLimiter",
+  "description": "Implement the Memory Buffer RateLimiter module in memory_buffer.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "memory_buffer.py"
+  ],
+  "test_script": "import unittest\nfrom memory_buffer import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

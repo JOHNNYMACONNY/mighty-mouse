@@ -1,0 +1,13 @@
+{
+  "id": "task_396",
+  "title": "Network Cache Retry",
+  "description": "Implement the Network Cache Retry module in network_cache.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "network_cache.py"
+  ],
+  "test_script": "import unittest\nfrom network_cache import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

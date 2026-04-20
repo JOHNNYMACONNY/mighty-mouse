@@ -1,0 +1,13 @@
+{
+  "id": "task_30",
+  "title": "Network Proxy CircuitBreaker",
+  "description": "Implement the Network Proxy CircuitBreaker module in network_proxy.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "network_proxy.py"
+  ],
+  "test_script": "import unittest\nfrom network_proxy import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

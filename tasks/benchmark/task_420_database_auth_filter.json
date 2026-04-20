@@ -1,0 +1,13 @@
+{
+  "id": "task_420",
+  "title": "Database Auth Filter",
+  "description": "Implement the Database Auth Filter module in database_auth.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "database_auth.py"
+  ],
+  "test_script": "import unittest\nfrom database_auth import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

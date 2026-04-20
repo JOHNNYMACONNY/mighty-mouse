@@ -1,0 +1,13 @@
+{
+  "id": "task_317",
+  "title": "Async Decorator Retry",
+  "description": "Implement the Async Decorator Retry module in async_decorator.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "async_decorator.py"
+  ],
+  "test_script": "import unittest\nfrom async_decorator import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

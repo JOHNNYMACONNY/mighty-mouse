@@ -1,0 +1,13 @@
+{
+  "id": "task_322",
+  "title": "File Strategy Transformer",
+  "description": "Implement the File Strategy Transformer module in file_strategy.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "file_strategy.py"
+  ],
+  "test_script": "import unittest\nfrom file_strategy import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

@@ -1,8 +1,0 @@
-{
-  "id": "task_50_stress_orchestrator",
-  "title": "Ultimate Stress: The Micro-Service",
-  "description": "Implement a 'ServiceRegistry' that manages 'Service' objects. Requirements: 1) Services must be registered via a decorator. 2) Communication must be async. 3) Cross-file inheritance required. 4) Dependency injection for a 'Logger' module. 5) Circular detection in service dependency graph.",
-  "expected_files": ["registry.py", "service.py", "logger.py", "app.py", "utils.py"],
-  "test_script": "import unittest, asyncio\nimport registry, app\nclass TestUltimate(unittest.TestCase):\n    def test_service_mesh(self):\n        # Complex integration test logic...\n        pass\n",
-  "constraints": {"language": "python", "min_files": 5}
-}

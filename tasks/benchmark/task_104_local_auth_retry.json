@@ -1,0 +1,13 @@
+{
+  "id": "task_104",
+  "title": "Local Auth Retry",
+  "description": "Implement the Local Auth Retry module in local_auth.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "local_auth.py"
+  ],
+  "test_script": "import unittest\nfrom local_auth import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

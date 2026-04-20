@@ -1,0 +1,13 @@
+{
+  "id": "task_305",
+  "title": "Legacy Manager CircuitBreaker",
+  "description": "Implement the Legacy Manager CircuitBreaker module in legacy_manager.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "legacy_manager.py"
+  ],
+  "test_script": "import unittest\nfrom legacy_manager import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

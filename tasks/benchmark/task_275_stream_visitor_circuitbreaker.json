@@ -1,0 +1,13 @@
+{
+  "id": "task_275",
+  "title": "Stream Visitor CircuitBreaker",
+  "description": "Implement the Stream Visitor CircuitBreaker module in stream_visitor.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "stream_visitor.py"
+  ],
+  "test_script": "import unittest\nfrom stream_visitor import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

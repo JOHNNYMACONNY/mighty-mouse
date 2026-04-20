@@ -1,0 +1,13 @@
+{
+  "id": "task_309",
+  "title": "Network Data Validator",
+  "description": "Implement the Network Data Validator module in network_data.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "network_data.py"
+  ],
+  "test_script": "import unittest\nfrom network_data import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

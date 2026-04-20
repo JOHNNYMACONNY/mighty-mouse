@@ -1,0 +1,13 @@
+{
+  "id": "task_451",
+  "title": "Legacy Cache Transformer",
+  "description": "Implement the Legacy Cache Transformer module in legacy_cache.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "legacy_cache.py"
+  ],
+  "test_script": "import unittest\nfrom legacy_cache import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

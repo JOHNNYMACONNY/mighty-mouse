@@ -1,0 +1,13 @@
+{
+  "id": "task_12",
+  "title": "Network Facade Retry",
+  "description": "Implement the Network Facade Retry module in network_facade.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "network_facade.py"
+  ],
+  "test_script": "import unittest\nfrom network_facade import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

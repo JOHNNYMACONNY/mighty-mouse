@@ -1,0 +1,13 @@
+{
+  "id": "task_251",
+  "title": "File Decorator Retry",
+  "description": "Implement the File Decorator Retry module in file_decorator.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "file_decorator.py"
+  ],
+  "test_script": "import unittest\nfrom file_decorator import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

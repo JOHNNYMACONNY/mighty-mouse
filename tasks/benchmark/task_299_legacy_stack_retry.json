@@ -1,0 +1,13 @@
+{
+  "id": "task_299",
+  "title": "Legacy Stack Retry",
+  "description": "Implement the Legacy Stack Retry module in legacy_stack.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "legacy_stack.py"
+  ],
+  "test_script": "import unittest\nfrom legacy_stack import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

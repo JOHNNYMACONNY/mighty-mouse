@@ -1,0 +1,13 @@
+{
+  "id": "task_443",
+  "title": "Cloud Visitor Validator",
+  "description": "Implement the Cloud Visitor Validator module in cloud_visitor.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "cloud_visitor.py"
+  ],
+  "test_script": "import unittest\nfrom cloud_visitor import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

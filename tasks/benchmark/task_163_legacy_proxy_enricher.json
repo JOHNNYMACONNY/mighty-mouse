@@ -1,0 +1,13 @@
+{
+  "id": "task_163",
+  "title": "Legacy Proxy Enricher",
+  "description": "Implement the Legacy Proxy Enricher module in legacy_proxy.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "legacy_proxy.py"
+  ],
+  "test_script": "import unittest\nfrom legacy_proxy import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

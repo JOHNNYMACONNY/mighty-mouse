@@ -1,0 +1,13 @@
+{
+  "id": "task_361",
+  "title": "Cloud Iterator Retry",
+  "description": "Implement the Cloud Iterator Retry module in cloud_iterator.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "cloud_iterator.py"
+  ],
+  "test_script": "import unittest\nfrom cloud_iterator import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

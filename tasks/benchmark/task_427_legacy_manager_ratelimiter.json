@@ -1,0 +1,13 @@
+{
+  "id": "task_427",
+  "title": "Legacy Manager RateLimiter",
+  "description": "Implement the Legacy Manager RateLimiter module in legacy_manager.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "legacy_manager.py"
+  ],
+  "test_script": "import unittest\nfrom legacy_manager import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

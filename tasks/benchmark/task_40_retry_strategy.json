@@ -1,8 +1,0 @@
-{
-  "id": "task_40_retry_strategy",
-  "title": "Strategy-Based Retry",
-  "description": "Implement a 'RetryRunner' that takes an 'ExceptionStrategy' object. The strategy defines 'should_retry(exception)' and 'get_delay(attempt)'.",
-  "expected_files": ["retry_core.py", "strategies.py"],
-  "test_script": "import unittest\nfrom retry_core import RetryRunner\nfrom strategies import FixedDelayStrategy\nclass TestRetry(unittest.TestCase):\n    def test_strategy(self):\n        s = FixedDelayStrategy(delay=0.01)\n        r = RetryRunner(s)\n        # Test logic...\n",
-  "constraints": {"language": "python"}
-}

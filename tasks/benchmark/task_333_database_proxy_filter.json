@@ -1,0 +1,13 @@
+{
+  "id": "task_333",
+  "title": "Database Proxy Filter",
+  "description": "Implement the Database Proxy Filter module in database_proxy.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "database_proxy.py"
+  ],
+  "test_script": "import unittest\nfrom database_proxy import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

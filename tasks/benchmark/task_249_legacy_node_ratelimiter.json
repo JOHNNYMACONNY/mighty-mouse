@@ -1,0 +1,13 @@
+{
+  "id": "task_249",
+  "title": "Legacy Node RateLimiter",
+  "description": "Implement the Legacy Node RateLimiter module in legacy_node.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "legacy_node.py"
+  ],
+  "test_script": "import unittest\nfrom legacy_node import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

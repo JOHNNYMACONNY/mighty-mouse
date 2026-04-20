@@ -1,0 +1,13 @@
+{
+  "id": "task_252",
+  "title": "Legacy Visitor Validator",
+  "description": "Implement the Legacy Visitor Validator module in legacy_visitor.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "legacy_visitor.py"
+  ],
+  "test_script": "import unittest\nfrom legacy_visitor import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

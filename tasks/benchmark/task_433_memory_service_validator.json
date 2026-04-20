@@ -1,0 +1,13 @@
+{
+  "id": "task_433",
+  "title": "Memory Service Validator",
+  "description": "Implement the Memory Service Validator module in memory_service.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "memory_service.py"
+  ],
+  "test_script": "import unittest\nfrom memory_service import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

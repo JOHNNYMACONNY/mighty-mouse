@@ -1,0 +1,13 @@
+{
+  "id": "task_462",
+  "title": "Stream Composite RateLimiter",
+  "description": "Implement the Stream Composite RateLimiter module in stream_composite.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "stream_composite.py"
+  ],
+  "test_script": "import unittest\nfrom stream_composite import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

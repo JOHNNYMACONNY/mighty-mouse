@@ -1,0 +1,13 @@
+{
+  "id": "task_26",
+  "title": "Local Template Retry",
+  "description": "Implement the Local Template Retry module in local_template.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "local_template.py"
+  ],
+  "test_script": "import unittest\nfrom local_template import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

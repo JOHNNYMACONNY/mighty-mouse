@@ -1,8 +1,0 @@
-{
-  "id": "task_45_async_ctx",
-  "title": "Async Resource Context",
-  "description": "Implement an async context manager 'AsyncResource' using __aenter__ and __aexit__. It should simulate a connection with 'await self.connect()' and 'await self.close()'.",
-  "expected_files": ["async_ctx.py"],
-  "test_script": "import unittest, asyncio\nfrom async_ctx import AsyncResource\nclass TestAsyncCtx(unittest.TestCase):\n    def test_context(self):\n        async def run():\n            async with AsyncResource() as res: return True\n        self.assertTrue(asyncio.run(run()))\n",
-  "constraints": {"language": "python", "use_async": true}
-}

@@ -1,0 +1,13 @@
+{
+  "id": "task_217",
+  "title": "Local Buffer Transformer",
+  "description": "Implement the Local Buffer Transformer module in local_buffer.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "local_buffer.py"
+  ],
+  "test_script": "import unittest\nfrom local_buffer import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

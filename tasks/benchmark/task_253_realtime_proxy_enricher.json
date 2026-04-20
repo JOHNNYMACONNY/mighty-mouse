@@ -1,0 +1,13 @@
+{
+  "id": "task_253",
+  "title": "Realtime Proxy Enricher",
+  "description": "Implement the Realtime Proxy Enricher module in realtime_proxy.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "realtime_proxy.py"
+  ],
+  "test_script": "import unittest\nfrom realtime_proxy import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

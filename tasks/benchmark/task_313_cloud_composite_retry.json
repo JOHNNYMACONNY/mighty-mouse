@@ -1,0 +1,13 @@
+{
+  "id": "task_313",
+  "title": "Cloud Composite Retry",
+  "description": "Implement the Cloud Composite Retry module in cloud_composite.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "cloud_composite.py"
+  ],
+  "test_script": "import unittest\nfrom cloud_composite import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

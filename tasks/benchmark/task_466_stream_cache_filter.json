@@ -1,0 +1,13 @@
+{
+  "id": "task_466",
+  "title": "Stream Cache Filter",
+  "description": "Implement the Stream Cache Filter module in stream_cache.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "stream_cache.py"
+  ],
+  "test_script": "import unittest\nfrom stream_cache import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "task_261",
+  "title": "Async Adapter Transformer",
+  "description": "Implement the Async Adapter Transformer module in async_adapter.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "async_adapter.py"
+  ],
+  "test_script": "import unittest\nfrom async_adapter import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

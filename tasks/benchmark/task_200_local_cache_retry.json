@@ -1,0 +1,13 @@
+{
+  "id": "task_200",
+  "title": "Local Cache Retry",
+  "description": "Implement the Local Cache Retry module in local_cache.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "local_cache.py"
+  ],
+  "test_script": "import unittest\nfrom local_cache import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

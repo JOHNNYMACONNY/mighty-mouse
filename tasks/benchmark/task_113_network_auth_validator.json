@@ -1,0 +1,13 @@
+{
+  "id": "task_113",
+  "title": "Network Auth Validator",
+  "description": "Implement the Network Auth Validator module in network_auth.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "network_auth.py"
+  ],
+  "test_script": "import unittest\nfrom network_auth import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

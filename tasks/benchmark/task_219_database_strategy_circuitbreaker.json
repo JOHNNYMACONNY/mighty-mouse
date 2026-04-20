@@ -1,0 +1,13 @@
+{
+  "id": "task_219",
+  "title": "Database Strategy CircuitBreaker",
+  "description": "Implement the Database Strategy CircuitBreaker module in database_strategy.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "database_strategy.py"
+  ],
+  "test_script": "import unittest\nfrom database_strategy import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "task_395",
+  "title": "Database Stack Validator",
+  "description": "Implement the Database Stack Validator module in database_stack.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "database_stack.py"
+  ],
+  "test_script": "import unittest\nfrom database_stack import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "task_75",
+  "title": "Legacy Decorator Enricher",
+  "description": "Implement the Legacy Decorator Enricher module in legacy_decorator.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "legacy_decorator.py"
+  ],
+  "test_script": "import unittest\nfrom legacy_decorator import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

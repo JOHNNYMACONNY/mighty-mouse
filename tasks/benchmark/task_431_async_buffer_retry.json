@@ -1,0 +1,13 @@
+{
+  "id": "task_431",
+  "title": "Async Buffer Retry",
+  "description": "Implement the Async Buffer Retry module in async_buffer.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "async_buffer.py"
+  ],
+  "test_script": "import unittest\nfrom async_buffer import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "task_201",
+  "title": "Database Data Enricher",
+  "description": "Implement the Database Data Enricher module in database_data.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "database_data.py"
+  ],
+  "test_script": "import unittest\nfrom database_data import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

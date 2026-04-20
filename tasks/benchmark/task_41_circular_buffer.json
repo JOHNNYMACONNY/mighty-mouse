@@ -1,8 +1,0 @@
-{
-  "id": "task_41_circular_buffer",
-  "title": "Fixed-Size Circular Buffer",
-  "description": "Implement a 'CircularBuffer' class with a fixed 'capacity'. Method 'push(val)' adds to the buffer, overwriting the oldest if full. Method 'get_all()' returns items in order.",
-  "expected_files": ["buffer.py"],
-  "test_script": "import unittest\nfrom buffer import CircularBuffer\nclass TestBuffer(unittest.TestCase):\n    def test_overwrite(self):\n        b = CircularBuffer(3)\n        b.push(1); b.push(2); b.push(3); b.push(4)\n        self.assertEqual(b.get_all(), [2, 3, 4])\n",
-  "constraints": {"language": "python"}
-}

@@ -1,8 +1,0 @@
-{
-  "id": "task_31_abstract_factory",
-  "title": "UI Widget Factory",
-  "description": "Implement an Abstract Factory 'UIFactory' with methods 'create_button()' and 'create_window()'. Implement two concrete factories: 'DarkFactory' and 'LightFactory' returning themed widgets with a 'render()' method.",
-  "expected_files": ["factory.py", "widgets.py"],
-  "test_script": "import unittest\nfrom factory import DarkFactory, LightFactory\nclass TestFactory(unittest.TestCase):\n    def test_themes(self):\n        df = DarkFactory(); lf = LightFactory()\n        self.assertIn('Dark', df.create_button().render())\n        self.assertIn('Light', lf.create_button().render())\n",
-  "constraints": {"language": "python", "min_files": 2}
-}

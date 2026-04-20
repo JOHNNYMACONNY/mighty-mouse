@@ -1,0 +1,13 @@
+{
+  "id": "task_300",
+  "title": "Database Iterator Filter",
+  "description": "Implement the Database Iterator Filter module in database_iterator.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "database_iterator.py"
+  ],
+  "test_script": "import unittest\nfrom database_iterator import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

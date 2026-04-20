@@ -1,8 +1,0 @@
-{
-  "id": "task_39_di_container",
-  "title": "Lightweight DI Container",
-  "description": "Implement a 'Container' class with 'register(key, provider)' and 'get(key)'. Providers should be instantiated once (Lazy Singleton).",
-  "expected_files": ["di.py"],
-  "test_script": "import unittest\nfrom di import Container\nclass TestDI(unittest.TestCase):\n    def test_inject(self):\n        c = Container()\n        c.register('db', lambda: object())\n        self.assertIs(c.get('db'), c.get('db'))\n",
-  "constraints": {"language": "python"}
-}

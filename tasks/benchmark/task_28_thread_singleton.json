@@ -1,8 +1,0 @@
-{
-  "id": "task_28_thread_singleton",
-  "title": "Thread-Safe Singleton",
-  "description": "Implement a Singleton pattern class 'DatabaseConnection'. Subsequent instantiations must return the same instance. Note: Thread-safety is a requirement (use a lock).",
-  "expected_files": ["db.py"],
-  "test_script": "import unittest\nfrom db import DatabaseConnection\nclass TestSingleton(unittest.TestCase):\n    def test_identity(self):\n        db1 = DatabaseConnection()\n        db2 = DatabaseConnection()\n        self.assertIs(db1, db2)\n",
-  "constraints": {"language": "python"}
-}

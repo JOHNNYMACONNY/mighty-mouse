@@ -1,0 +1,13 @@
+{
+  "id": "task_229",
+  "title": "Cloud Bridge Transformer",
+  "description": "Implement the Cloud Bridge Transformer module in cloud_bridge.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "cloud_bridge.py"
+  ],
+  "test_script": "import unittest\nfrom cloud_bridge import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

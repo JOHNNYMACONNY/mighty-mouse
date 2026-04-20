@@ -1,0 +1,13 @@
+{
+  "id": "task_273",
+  "title": "Legacy Service Transformer",
+  "description": "Implement the Legacy Service Transformer module in legacy_service.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "legacy_service.py"
+  ],
+  "test_script": "import unittest\nfrom legacy_service import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

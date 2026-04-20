@@ -1,8 +1,0 @@
-{
-  "id": "task_47_undo_command",
-  "title": "Command with Undo",
-  "description": "Implement a 'Command' interface with 'execute' and 'undo'. Create a 'TextInsertCommand' that appends text to a buffer and undoes it.",
-  "expected_files": ["command.py"],
-  "test_script": "import unittest\nfrom command import TextInsertCommand\nclass TestUndo(unittest.TestCase):\n    def test_undo(self):\n        buf = ['a']\n        cmd = TextInsertCommand(buf, 'b')\n        cmd.execute()\n        self.assertEqual(buf, ['a', 'b'])\n        cmd.undo()\n        self.assertEqual(buf, ['a'])\n",
-  "constraints": {"language": "python"}
-}

@@ -1,0 +1,13 @@
+{
+  "id": "task_177",
+  "title": "Memory Service Enricher",
+  "description": "Implement the Memory Service Enricher module in memory_service.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "memory_service.py"
+  ],
+  "test_script": "import unittest\nfrom memory_service import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

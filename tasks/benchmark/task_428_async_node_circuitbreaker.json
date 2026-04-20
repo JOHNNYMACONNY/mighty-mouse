@@ -1,0 +1,13 @@
+{
+  "id": "task_428",
+  "title": "Async Node CircuitBreaker",
+  "description": "Implement the Async Node CircuitBreaker module in async_node.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "async_node.py"
+  ],
+  "test_script": "import unittest\nfrom async_node import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

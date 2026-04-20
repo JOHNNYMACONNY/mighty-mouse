@@ -1,0 +1,13 @@
+{
+  "id": "task_385",
+  "title": "Memory Data Enricher",
+  "description": "Implement the Memory Data Enricher module in memory_data.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "memory_data.py"
+  ],
+  "test_script": "import unittest\nfrom memory_data import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

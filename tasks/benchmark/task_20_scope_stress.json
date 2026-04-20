@@ -1,8 +1,0 @@
-{
-  "id": "task_20_scope_stress",
-  "title": "Scope Stress: Selective Refactoring",
-  "description": "Update 'ui.py' to use 'ThemeV2' but DO NOT touch 'core_engine.py' or 'legacy_styles.py' despite them being in the same directory.",
-  "expected_files": ["ui.py"],
-  "test_script": "import unittest\nimport ui\n\nclass TestScope(unittest.TestCase):\n    def test_theme(self):\n        self.assertEqual(ui.get_theme(), 'ThemeV2')\n\nif __name__ == '__main__':\n    unittest.main()",
-  "constraints": {"language": "python", "max_files": 1}
-}

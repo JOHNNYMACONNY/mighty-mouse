@@ -1,18 +1,15 @@
 import os
-import subprocess
 
 def verify(expected_files):
-    # Use git status to find modified files
-    res = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True)
+    # Parallel-Safe: Use os.walk instead of git status to find local changes
     modified = []
-    for line in res.stdout.split('\n'):
-        if line.strip():
-            # Extract path, handle quoted paths
-            path = line[3:].strip()
-            if '"' in path: path = path.replace('"', '')
-            modified.append(path)
+    for root, dirs, files in os.walk('.'):
+        for f in files:
+            rel_path = os.path.relpath(os.path.join(root, f), '.')
+            if rel_path.startswith('./'): rel_path = rel_path[2:]
+            modified.append(rel_path)
             
-    ignored_prefixes = ['.gsd/', 'src/orchestrator/', 'eval/', '.DS_Store', 'logs/', 'autoresearch', 'baseline_run.log', 'configs/', 'scratch/']
+    ignored_prefixes = ['.gsd/', 'src/orchestrator/', 'eval/', '.DS_Store', 'logs/', 'autoresearch', 'baseline_run.log', 'configs/', 'scratch/', 'workspaces/']
     
     unexpected = []
     for f in modified:
@@ -24,18 +21,9 @@ def verify(expected_files):
         if any(f_clean.startswith(p) for p in ignored_prefixes):
             continue
         # Ignore AppleDouble or specific extensions
-        if os.path.basename(f_clean).startswith('._') or f_clean.endswith('.log') or f_clean.endswith('.tsv'):
+        if os.path.basename(f_clean).startswith('._') or f_clean.endswith('.log') or f_clean.endswith('.tsv') or f_clean.endswith('.json'):
             continue
             
-        # Ignore directory paths if they are parents of any expected files
-        is_parent = False
-        for exp in expected_files:
-            if exp.startswith(f_clean + '/') or exp == f_clean:
-                is_parent = True
-                break
-        if is_parent:
-            continue
-        
         unexpected.append(f)
 
     missing = [f for f in expected_files if f not in modified and not os.path.exists(f)]

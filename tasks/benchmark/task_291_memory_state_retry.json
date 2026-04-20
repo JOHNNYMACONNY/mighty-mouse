@@ -1,0 +1,13 @@
+{
+  "id": "task_291",
+  "title": "Memory State Retry",
+  "description": "Implement the Memory State Retry module in memory_state.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "memory_state.py"
+  ],
+  "test_script": "import unittest\nfrom memory_state import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

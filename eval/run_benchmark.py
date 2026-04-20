@@ -6,6 +6,7 @@ from verifiers.tester import run_task_tests
 
 def update_checkpoint(task_id):
     checkpoint_path = "logs/session_checkpoint.json"
+    if not os.path.exists("logs"): os.makedirs("logs")
     data = {"completed_tasks": []}
     if os.path.exists(checkpoint_path):
         try:
@@ -40,6 +41,7 @@ def main():
             task_config = json.load(f)
             res = verify_task(task_config)
             history_path = "logs/benchmark_results.json"
+            if not os.path.exists("logs"): os.makedirs("logs")
             history = []
             if os.path.exists(history_path):
                 try:

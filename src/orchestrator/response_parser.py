@@ -36,15 +36,16 @@ class ResponseParser:
             
             if path:
                 path = path.strip()
-                abs_path = os.path.abspath(path)
-                print(f"[parser] Target: {path} (Absolute: {abs_path})")
+                # Ensure we write to current directory if path is relative
+                target_path = path if os.path.isabs(path) else os.path.join(os.getcwd(), path)
+                print(f"[parser] Target: {path} (Resolved: {target_path})")
                 
                 if path.lower() == "checklist.md":
                     continue
                 
-                os.makedirs(os.path.dirname(abs_path) if os.path.dirname(abs_path) else '.', exist_ok=True)
+                os.makedirs(os.path.dirname(target_path) if os.path.dirname(target_path) else '.', exist_ok=True)
                 
-                with open(abs_path, "w") as f:
+                with open(target_path, "w") as f:
                     f.write(content)
                 print(f"[parser] Wrote {len(content)} bytes to {path}")
                 extracted_files.append(path)

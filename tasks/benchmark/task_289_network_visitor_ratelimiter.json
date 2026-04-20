@@ -1,0 +1,13 @@
+{
+  "id": "task_289",
+  "title": "Network Visitor RateLimiter",
+  "description": "Implement the Network Visitor RateLimiter module in network_visitor.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "network_visitor.py"
+  ],
+  "test_script": "import unittest\nfrom network_visitor import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

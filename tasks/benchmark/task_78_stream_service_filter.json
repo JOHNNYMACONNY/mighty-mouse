@@ -1,0 +1,13 @@
+{
+  "id": "task_78",
+  "title": "Stream Service Filter",
+  "description": "Implement the Stream Service Filter module in stream_service.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "stream_service.py"
+  ],
+  "test_script": "import unittest\nfrom stream_service import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

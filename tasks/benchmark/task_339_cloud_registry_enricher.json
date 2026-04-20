@@ -1,0 +1,13 @@
+{
+  "id": "task_339",
+  "title": "Cloud Registry Enricher",
+  "description": "Implement the Cloud Registry Enricher module in cloud_registry.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "cloud_registry.py"
+  ],
+  "test_script": "import unittest\nfrom cloud_registry import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

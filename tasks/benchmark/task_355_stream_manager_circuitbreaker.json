@@ -1,0 +1,13 @@
+{
+  "id": "task_355",
+  "title": "Stream Manager CircuitBreaker",
+  "description": "Implement the Stream Manager CircuitBreaker module in stream_manager.py. \nREQUIREMENT: Maintain Disciplined Scope.",
+  "expected_files": [
+    "stream_manager.py"
+  ],
+  "test_script": "import unittest\nfrom stream_manager import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

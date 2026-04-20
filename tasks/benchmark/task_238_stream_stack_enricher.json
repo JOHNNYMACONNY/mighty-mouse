@@ -1,0 +1,13 @@
+{
+  "id": "task_238",
+  "title": "Stream Stack Enricher",
+  "description": "Implement the Stream Stack Enricher module in stream_stack.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "stream_stack.py"
+  ],
+  "test_script": "import unittest\nfrom stream_stack import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

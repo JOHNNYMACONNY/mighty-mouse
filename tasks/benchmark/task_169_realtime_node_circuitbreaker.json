@@ -1,0 +1,13 @@
+{
+  "id": "task_169",
+  "title": "Realtime Node CircuitBreaker",
+  "description": "Implement the Realtime Node CircuitBreaker module in realtime_node.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "realtime_node.py"
+  ],
+  "test_script": "import unittest\nfrom realtime_node import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

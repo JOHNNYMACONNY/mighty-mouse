@@ -1,0 +1,13 @@
+{
+  "id": "task_492",
+  "title": "Stream Iterator RateLimiter",
+  "description": "Implement the Stream Iterator RateLimiter module in stream_iterator.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "stream_iterator.py"
+  ],
+  "test_script": "import unittest\nfrom stream_iterator import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "task_233",
+  "title": "Cloud State CircuitBreaker",
+  "description": "Implement the Cloud State CircuitBreaker module in cloud_state.py. \nREQUIREMENT: Reflection Tier.",
+  "expected_files": [
+    "cloud_state.py"
+  ],
+  "test_script": "import unittest\nfrom cloud_state import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

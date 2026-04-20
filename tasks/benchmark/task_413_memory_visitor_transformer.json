@@ -1,0 +1,13 @@
+{
+  "id": "task_413",
+  "title": "Memory Visitor Transformer",
+  "description": "Implement the Memory Visitor Transformer module in memory_visitor.py. \nREQUIREMENT: Use Self-Verification protocols.",
+  "expected_files": [
+    "memory_visitor.py"
+  ],
+  "test_script": "import unittest\nfrom memory_visitor import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

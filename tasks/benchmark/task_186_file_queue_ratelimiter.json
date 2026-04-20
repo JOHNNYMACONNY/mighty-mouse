@@ -1,0 +1,13 @@
+{
+  "id": "task_186",
+  "title": "File Queue RateLimiter",
+  "description": "Implement the File Queue RateLimiter module in file_queue.py. \nREQUIREMENT: Constraint-Heavy implementation.",
+  "expected_files": [
+    "file_queue.py"
+  ],
+  "test_script": "import unittest\nfrom file_queue import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

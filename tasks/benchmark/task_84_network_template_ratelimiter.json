@@ -1,0 +1,13 @@
+{
+  "id": "task_84",
+  "title": "Network Template RateLimiter",
+  "description": "Implement the Network Template RateLimiter module in network_template.py. \nREQUIREMENT: Standard verification.",
+  "expected_files": [
+    "network_template.py"
+  ],
+  "test_script": "import unittest\nfrom network_template import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

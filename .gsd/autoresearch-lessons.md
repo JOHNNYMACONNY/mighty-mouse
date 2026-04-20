@@ -245,3 +245,56 @@ Total Failures: 50
 - **task_48_state_machine**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['state.py']
 - **task_49_serialization**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['serial.py']
 - **task_50_stress_orchestrator**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['registry.py', 'service.py', 'logger.py', 'app.py', 'utils.py']
+
+## Failure Analysis - 2026-04-19 20:49:27
+Total Failures: 50
+- **task_01_simple_calc**: [LOGIC] Tests failed
+- **task_02_data_parse**: [LOGIC] Tests failed
+- **task_03_regex_refactor**: [LOGIC] Tests failed
+- **task_04_error_handler**: [LOGIC] Tests failed
+- **task_05_list_merger**: [LOGIC] Tests failed
+- **task_06_markdown_id**: [LOGIC] Tests failed
+- **task_07_env_config**: [LOGIC] Tests failed
+- **task_08_multi_file_api**: [ADHERENCE] Workflow failed
+- **task_09_verification_sensitive**: [ADHERENCE] Workflow failed
+- **task_10_constraint_compliance**: [ADHERENCE] Workflow failed
+- **task_11_recursion**: [ADHERENCE] Workflow failed
+- **task_12_types**: [ADHERENCE] Workflow failed
+- **task_13_math_edge**: [ADHERENCE] Workflow failed
+- **task_14_api_refactor**: [ADHERENCE] Workflow failed
+- **task_15_interface_enforcement**: [ADHERENCE] Workflow failed
+- **task_16_circular_logic**: [ADHERENCE] Workflow failed
+- **task_17_schema_migration**: [ADHERENCE] Workflow failed
+- **task_18_global_registration**: [ADHERENCE] Workflow failed
+- **task_19_verification_multi_step**: [ADHERENCE] Workflow failed
+- **task_20_scope_stress**: [ADHERENCE] Workflow failed
+- **task_21_async_wait**: [ADHERENCE] Workflow failed
+- **task_22_context_timer**: [ADHERENCE] Workflow failed
+- **task_23_lazy_generator**: [ADHERENCE] Workflow failed
+- **task_24_dynamic_attrs**: [ADHERENCE] Workflow failed
+- **task_25_closure_state**: [ADHERENCE] Workflow failed
+- **task_26_custom_list**: [ADHERENCE] Workflow failed
+- **task_27_recursive_validator**: [ADHERENCE] Workflow failed
+- **task_28_thread_singleton**: [ADHERENCE] Workflow failed
+- **task_29_handler_chain**: [ADHERENCE] Workflow failed
+- **task_30_memoize**: [ADHERENCE] Workflow failed
+- **task_31_abstract_factory**: [LOGIC] Scope fail. Unexp: [] Miss: ['widgets.py']
+- **task_32_observer_pattern**: [ADHERENCE] Workflow failed
+- **task_33_multi_file_reg**: [LOGIC] Scope fail. Unexp: [] Miss: ['main.py']
+- **task_34_fluent_interface**: [ADHERENCE] Workflow failed
+- **task_35_decorator_arg**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['auth.py']
+- **task_36_config_parser**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['config_parser.py']
+- **task_37_semver**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['semver.py']
+- **task_38_circular_split**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['a.py', 'b.py', 'base.py']
+- **task_39_di_container**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['di.py']
+- **task_40_retry_strategy**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['retry_core.py', 'strategies.py']
+- **task_41_circular_buffer**: [ADHERENCE] Workflow failed
+- **task_42_exception_map**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['errors.py']
+- **task_43_lru_manual**: [ADHERENCE] Workflow failed
+- **task_44_type_container**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['typed_container.py']
+- **task_45_async_ctx**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['async_ctx.py']
+- **task_46_reflection**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['inspector.py']
+- **task_47_undo_command**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['command.py']
+- **task_48_state_machine**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['state.py']
+- **task_49_serialization**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['serial.py']
+- **task_50_stress_orchestrator**: [LOGIC] Scope fail. Unexp: ['stub.py'] Miss: ['registry.py', 'service.py', 'logger.py', 'app.py', 'utils.py']

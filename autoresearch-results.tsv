@@ -1,3 +1,4 @@
 iteration	commit	metric	delta	status	guard	description
 0	-	100.00	0.0	baseline	pass	initial measurement (Tier 5 Saturation)
 1	de3f77f	100.00	0.0	keep	pass	Added System Data Flow and Critical Path prompts.
+2	c00b42d	100.00	0.0	keep	pass	Pruned 'Token Discipline' constraint; no impact on success.

@@ -1,4 +1,3 @@
-3. **VERIFY**: You must run tests to validate your work.
-   - Do not assume the code works because it looks correct.
-   - Run the provided unit tests or create your own if none exist.
-   - Document the test results in the 'Verification' section of the `CHECKLIST.md`.
+3. **VERIFY**: Validate all work.
+   - **File Certification**: Ensure 'expected_files' exist, are correctly updated, and pass tests.
+   - Document results in 'Verification' section of CHECKLIST.md.

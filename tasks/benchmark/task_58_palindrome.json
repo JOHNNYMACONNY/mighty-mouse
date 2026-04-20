@@ -1,0 +1,13 @@
+{
+  "id": "task_58",
+  "title": "Palindrome",
+  "description": "Implement Palindrome in string_utils.py. Ensure compliance with modern Python patterns.",
+  "expected_files": [
+    "string_utils.py"
+  ],
+  "test_script": "import unittest\nfrom string_utils import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

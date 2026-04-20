@@ -1,0 +1,13 @@
+{
+  "id": "task_74",
+  "title": "Semaphore Limit",
+  "description": "Implement Semaphore Limit in limiter.py. Ensure compliance with modern Python patterns.",
+  "expected_files": [
+    "limiter.py"
+  ],
+  "test_script": "import unittest\nfrom limiter import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

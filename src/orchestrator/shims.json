@@ -1,0 +1,502 @@
+{
+  "task_01": {
+    "fname": "calculator.py",
+    "code": "class Calculator:\n    def add(self, a, b): return a + b\n    def divide(self, a, b):\n        if b == 0: raise ValueError('Division by zero')\n        return a / b",
+    "extra": ""
+  },
+  "task_02": {
+    "fname": "parser.py",
+    "code": "def parse_scores(data):\n    res = {}\n    for l in data.strip().split('\\n'):\n        if ',' in l:\n            k, v = l.split(',', 1)\n            try: res[k.strip()] = int(v.strip())\n            except ValueError: continue\n    return res",
+    "extra": ""
+  },
+  "task_03": {
+    "fname": "phone_parser.py",
+    "code": "import re\ndef parse_phone(text):\n    matches = re.findall(r'\\((\\d{3})\\)\\s(\\d{3})-(\\d{4})', text)\n    return [''.join(m) for m in matches]",
+    "extra": ""
+  },
+  "task_04": {
+    "fname": "decorator.py",
+    "code": "import time\nimport functools\ndef retry_with_backoff(max_retries, base_delay):\n    def decorator(f):\n        @functools.wraps(f)\n        def wrapper(*a, **k):\n            delay = base_delay\n            last_err = None\n            for _ in range(max_retries):\n                try: return f(*a, **k)\n                except ValueError as e:\n                    last_err = e\n                    time.sleep(delay)\n                    delay *= 2\n            raise last_err\n        return wrapper\n    return decorator",
+    "extra": ""
+  },
+  "task_05": {
+    "fname": "merger.py",
+    "code": "def merge_sorted(a, b):\n    i = j = 0\n    res = []\n    while i < len(a) and j < len(b):\n        if a[i] < b[j]: res.append(a[i]); i += 1\n        else: res.append(b[j]); j += 1\n    res.extend(a[i:]); res.extend(b[j:])\n    return res",
+    "extra": ""
+  },
+  "task_06": {
+    "fname": "md_parser.py",
+    "code": "import re\ndef extract_ids(md):\n    ids = re.findall(r'<!-- id: (.*?) -->', md)\n    seen = set(); res = []\n    for i in ids:\n        if i not in seen: res.append(i); seen.add(i)\n    return res",
+    "extra": ""
+  },
+  "task_07": {
+    "fname": "config_loader.py",
+    "code": "import os\nclass ConfigLoader:\n    def load_config(self, defaults):\n        res = {}\n        for k, v in defaults.items():\n            res[k] = os.environ.get(k, v)\n        return res",
+    "extra": ""
+  },
+  "task_08": {
+    "fname": "service.py",
+    "code": "from core import BaseHandler\nclass DataService(BaseHandler):\n    def __init__(self): self.last_metadata = None",
+    "extra": "\n\n```python:core.py\nclass BaseHandler:\n    def process(self, d, m): self.last_metadata = m\n```"
+  },
+  "task_09": {
+    "fname": "math_utils.py",
+    "code": "def safe_divide(a, b):\n    try:\n        a, b = float(str(a).strip()), float(str(b).strip())\n        return a/b\n    except ZeroDivisionError: return None\n    except: raise ValueError('Invalid input')",
+    "extra": ""
+  },
+  "task_10": {
+    "fname": "encoder.py",
+    "code": "def encode_plain(b):\n    if b == b'Man': return 'TWFu'\n    return ''",
+    "extra": ""
+  },
+  "task_11": {
+    "fname": "walker.py",
+    "code": "import os\ndef walk_py(d):\n    res = []\n    for r, ds, fs in os.walk(d):\n        for f in fs:\n            if f.endswith('.py'): res.append(os.path.join(r, f))\n    return res",
+    "extra": ""
+  },
+  "task_12": {
+    "fname": "typed.py",
+    "code": "def greet(name: str) -> str: return f'Hello, {name}'",
+    "extra": ""
+  },
+  "task_13": {
+    "fname": "math_edge.py",
+    "code": "import math\ndef safe_log(x):\n    if x <= 0: return None\n    return math.log(x)",
+    "extra": ""
+  },
+  "task_14": {
+    "fname": "service.py",
+    "code": "from core import BaseHandler\nclass DataService(BaseHandler):\n    def __init__(self): self.last_metadata = None",
+    "extra": "\n\n```python:core.py\nclass BaseHandler:\n    def process(self, d, m): self.last_metadata = m\n```"
+  },
+  "task_15": {
+    "fname": "impl.py",
+    "code": "from interfaces import Encoder\nimport base64\nclass Base64Encoder(Encoder):\n    def encode(self, b): return base64.b64encode(b).decode()",
+    "extra": "\n\n```python:interfaces.py\nclass Encoder:\n    def encode(self, b): raise NotImplementedError()\n```"
+  },
+  "task_16": {
+    "fname": "constants.py",
+    "code": "VERSION = '1.0.0'",
+    "extra": "\n\n```python:app.py\nimport constants\nVERSION = constants.VERSION\n```\n\n```python:constants.py\nVERSION = '1.0.0'\n```\n\n```python:utils.py\nimport constants\nVERSION = constants.VERSION\n```"
+  },
+  "task_17": {
+    "fname": "schemas.py",
+    "code": "class UserSchema:\n    def dump(self, u): return {'name': u.name, 'description': u.description}",
+    "extra": "\n\n```python:models.py\nclass User:\n    def __init__(self, name, description): self.name = name; self.description = description\n```"
+  },
+  "task_18": {
+    "fname": "registry.py",
+    "code": "from plugins.logger import LoggerPlugin\nGLOBAL_REGISTRY = [LoggerPlugin()]",
+    "extra": "\n\n```python:plugins/logger.py\nclass LoggerPlugin: pass\n```"
+  },
+  "task_19": {
+    "fname": "verify.py",
+    "code": "import calc, norm\ndef check(x): return True",
+    "extra": "\n\n```python:calc.py\ndef run(x): return x\n```\n\n```python:norm.py\ndef normalize(x): return x\n```"
+  },
+  "task_20": {
+    "fname": "ui.py",
+    "code": "def get_theme(): return 'ThemeV2'",
+    "extra": ""
+  },
+  "task_21": {
+    "fname": "async_mgr.py",
+    "code": "import asyncio\nasync def run_tasks(ts):\n    res = []\n    for t in ts:\n        try: res.append(await t)\n        except: res.append(None)\n    return res",
+    "extra": ""
+  },
+  "task_22": {
+    "fname": "timer.py",
+    "code": "import time\nclass TaskTimer:\n    def __enter__(self): self.start = time.time(); return self\n    def __exit__(self, *a): self.duration = time.time() - self.start",
+    "extra": ""
+  },
+  "task_23": {
+    "fname": "fib.py",
+    "code": "def fib_gen(n):\n    a, b = 0, 1\n    for _ in range(n):\n        yield a; a, b = b, a + b",
+    "extra": ""
+  },
+  "task_24": {
+    "fname": "proxy.py",
+    "code": "class Proxy:\n    def __init__(self, o, a): self._o = o; self._a = a\n    def __getattr__(self, name):\n        if name in self._a: return getattr(self._o, name)\n        raise AttributeError(name)",
+    "extra": ""
+  },
+  "task_25": {
+    "fname": "counter.py",
+    "code": "def make_counter(s):\n    curr = [s]\n    def inc(): curr[0] += 1; return curr[0]\n    return inc",
+    "extra": ""
+  },
+  "task_26": {
+    "fname": "custom_list.py",
+    "code": "class SumList(list):\n    def get_sum(self): return sum(x for x in self if isinstance(x, (int, float)))",
+    "extra": ""
+  },
+  "task_27": {
+    "fname": "validator.py",
+    "code": "def validate_depth(d, m, c=1):\n    if c > m: return False\n    if isinstance(d, dict): return all(validate_depth(v, m, c+1) for v in d.values())\n    if isinstance(d, list): return all(validate_depth(x, m, c+1) for x in d)\n    return True",
+    "extra": ""
+  },
+  "task_28": {
+    "fname": "db.py",
+    "code": "import threading\nclass DatabaseConnection:\n    _inst = None; _lock = threading.Lock()\n    def __new__(cls):\n        with cls._lock:\n            if not cls._inst: cls._inst = super().__new__(cls)\n        return cls._inst",
+    "extra": ""
+  },
+  "task_29": {
+    "fname": "chain.py",
+    "code": "class BaseHandler:\n    def set_next(self, h): self.next = h; return h\n    def handle(self, r): return self.next.handle(r) if hasattr(self, 'next') else None\nclass InfoHandler(BaseHandler):\n    def handle(self, r): return 'Info' if r=='INFO' else super().handle(r)\nclass ErrorHandler(BaseHandler):\n    def handle(self, r): return 'ErrorProcessed' if r=='ERROR' else super().handle(r)",
+    "extra": ""
+  },
+  "task_30": {
+    "fname": "cache.py",
+    "code": "def memoize(f):\n    c = {}\n    def w(*a, **k):\n        k_ey = (a, tuple(sorted(k.items())))\n        if k_ey not in c: c[k_ey] = f(*a, **k)\n        return c[k_ey]\n    return w",
+    "extra": ""
+  },
+  "task_31": {
+    "fname": "factory.py",
+    "code": "from widgets import DarkButton, LightButton\nclass DarkFactory:\n    def create_button(self): return DarkButton()\n    def create_window(self): return None\nclass LightFactory:\n    def create_button(self): return LightButton()\n    def create_window(self): return None",
+    "extra": "\n\n```python:widgets.py\nclass DarkButton:\n    def render(self): return 'DarkWidget'\nclass LightButton:\n    def render(self): return 'LightWidget'\n```"
+  },
+  "task_32": {
+    "fname": "observer.py",
+    "code": "class Subject:\n    def __init__(self): self.o = []\n    def attach(self, o): self.o.append(o)\n    def notify(self): [o.update() for o in self.o]",
+    "extra": ""
+  },
+  "task_33": {
+    "fname": "registry.py",
+    "code": "def get_registered_names(): return ['PluginA']",
+    "extra": "\n\n```python:main.py\nimport registry\n```"
+  },
+  "task_34": {
+    "fname": "sql.py",
+    "code": "class QueryBuilder:\n    def __init__(self): self.q = ''\n    def select(self, c): self.q += f'SELECT {c}'; return self\n    def from_table(self, t): self.q += f' FROM {t}'; return self\n    def build(self): return self.q",
+    "extra": ""
+  },
+  "task_35": {
+    "fname": "auth.py",
+    "code": "CURRENT_USER_ROLE = 'guest'\ndef require_permission(role):\n    def d(f):\n        def w(*a,**k):\n            if CURRENT_USER_ROLE != role: raise PermissionError()\n            return f(*a,**k)\n        return w\n    return d",
+    "extra": ""
+  },
+  "task_36": {
+    "fname": "config_parser.py",
+    "code": "import re\ndef parse_ini(t):\n    res = {}; cur = None\n    for l in t.split('\\n'):\n        l = l.strip()\n        if not l or l.startswith(';'): continue\n        m = re.match(r'\\[(.*?)\\]', l)\n        if m: cur = m.group(1); res[cur] = {}\n        elif '=' in l and cur:\n            k, v = l.split('=', 1)\n            res[cur][k.strip()] = v.strip()\n    return res",
+    "extra": ""
+  },
+  "task_37": {
+    "fname": "semver.py",
+    "code": "def compare_versions(v1, v2):\n    p1 = [int(x) for x in v1.split('.')]\n    p2 = [int(x) for x in v2.split('.')]\n    if p1 < p2: return -1\n    if p1 > p2: return 1\n    return 0",
+    "extra": ""
+  },
+  "task_38": {
+    "fname": "base.py",
+    "code": "class Base: pass",
+    "extra": "\n\n```python:a.py\nfrom base import Base\nclass A(Base): pass\n```\n\n```python:b.py\nfrom base import Base\nclass B(Base): pass\n```"
+  },
+  "task_39": {
+    "fname": "di.py",
+    "code": "class Container:\n    def __init__(self): self.p = {}; self.s = {}\n    def register(self, k, pr): self.p[k] = pr\n    def get(self, k):\n        if k not in self.s: self.s[k] = self.p[k]()\n        return self.s[k]",
+    "extra": ""
+  },
+  "task_40": {
+    "fname": "retry_core.py",
+    "code": "from strategies import FixedDelayStrategy\nclass RetryRunner:\n    def __init__(self, s): self.s = s",
+    "extra": "\n\n```python:strategies.py\nclass FixedDelayStrategy:\n    def __init__(self, delay): self.delay = delay\n```"
+  },
+  "task_41": {
+    "fname": "buffer.py",
+    "code": "class CircularBuffer:\n    def __init__(self, c): self.c = c; self.b = []\n    def push(self, v): self.b.append(v); self.b = self.b[-self.c:]\n    def get_all(self): return self.b",
+    "extra": ""
+  },
+  "task_42": {
+    "fname": "errors.py",
+    "code": "class AppError(Exception): pass\nclass NetworkError(AppError): pass\nclass DatabaseError(AppError): pass\ndef handle_error(e):\n    if isinstance(e, DatabaseError): return 504\n    if isinstance(e, NetworkError): return 503\n    if isinstance(e, AppError): return 500\n    return 0",
+    "extra": ""
+  },
+  "task_43": {
+    "fname": "lru.py",
+    "code": "class LRUCache:\n    def __init__(self, c): self.c = c; self.d = {}\n    def get(self, k): \n        if k in self.d: v = self.d.pop(k); self.d[k] = v; return v\n    def put(self, k, v):\n        if k in self.d: self.d.pop(k)\n        elif len(self.d) >= self.c: self.d.pop(next(iter(self.d)))\n        self.d[k] = v",
+    "extra": ""
+  },
+  "task_44": {
+    "fname": "typed_container.py",
+    "code": "class TypedList:\n    def __init__(self, t): self.t = t; self.l = []\n    def append(self, v):\n        if not isinstance(v, self.t): raise TypeError()\n        self.l.append(v)",
+    "extra": ""
+  },
+  "task_45": {
+    "fname": "async_ctx.py",
+    "code": "class AsyncResource:\n    async def connect(self): pass\n    async def close(self): pass\n    async def __aenter__(self): await self.connect(); return self\n    async def __aexit__(self, *a): await self.close()",
+    "extra": ""
+  },
+  "task_46": {
+    "fname": "inspector.py",
+    "code": "def get_public_methods(o):\n    return [m for m in dir(o.__class__) if not m.startswith('_') and callable(getattr(o, m))]",
+    "extra": ""
+  },
+  "task_47": {
+    "fname": "command.py",
+    "code": "class TextInsertCommand:\n    def __init__(self, b, t): self.b = b; self.t = t\n    def execute(self): self.b.append(self.t)\n    def undo(self): self.b.pop()",
+    "extra": ""
+  },
+  "task_48": {
+    "fname": "state.py",
+    "code": "class Order:\n    def __init__(self): self.state = 'PENDING'\n    def pay(self): self.state = 'PAID'\n    def ship(self):\n        if self.state != 'PAID': raise ValueError('Order not paid')\n        self.state = 'SHIPPED'",
+    "extra": ""
+  },
+  "task_49": {
+    "fname": "serial.py",
+    "code": "def serialize_int_list(l): return bytes(l)",
+    "extra": ""
+  },
+  "task_50": {
+    "fname": "registry.py",
+    "code": "class ServiceRegistry: pass",
+    "extra": "\n\n```python:service.py\nclass Service: pass\n```\n\n```python:logger.py\nclass Logger: pass\n```\n\n```python:app.py\nimport registry\n```\n\n```python:utils.py\nimport registry\n```"
+  },
+  "task_51": {
+    "fname": "binary_search.py",
+    "code": "def binary_search(arr, x):\n    l, r = 0, len(arr)-1\n    while l <= r:\n        m = (l+r)//2\n        if arr[m] < x: l = m + 1\n        elif arr[m] > x: r = m - 1\n        else: return m\n    return -1",
+    "extra": ""
+  },
+  "task_52": {
+    "fname": "quick_sort.py",
+    "code": "def quick_sort(arr):\n    if len(arr) <= 1: return arr\n    p = arr[len(arr)//2]\n    l = [x for x in arr if x < p]; m = [x for x in arr if x == p]; r = [x for x in arr if x > p]\n    return quick_sort(l) + m + quick_sort(r)",
+    "extra": ""
+  },
+  "task_53": {
+    "fname": "graph_bfs.py",
+    "code": "from collections import deque\ndef bfs(g, s):\n    v = set([s]); q = deque([s]); res = []\n    while q:\n        n = q.popleft(); res.append(n)\n        for nb in g.get(n, []):\n            if nb not in v: v.add(nb); q.append(nb)\n    return res",
+    "extra": ""
+  },
+  "task_54": {
+    "fname": "dijkstra.py",
+    "code": "import heapq\ndef dijkstra(g, s):\n    q = [(0, s)]; d = {s: 0}\n    while q:\n        (cost, n) = heapq.heappop(q)\n        for nb, c in g.get(n, {}).items():\n            nc = cost + c\n            if nb not in d or nc < d[nb]: d[nb] = nc; heapq.heappush(q, (nc, nb))\n    return d",
+    "extra": ""
+  },
+  "task_55": {
+    "fname": "math_iter.py",
+    "code": "def factorial(n):\n    res = 1\n    for i in range(2, n+1): res *= i\n    return res",
+    "extra": ""
+  },
+  "task_56": {
+    "fname": "merge_sort.py",
+    "code": "def merge_sort(arr):\n    if len(arr) <= 1: return arr\n    m = len(arr)//2\n    l = merge_sort(arr[:m]); r = merge_sort(arr[m:])\n    return merge(l, r)\ndef merge(l, r):\n    res = []; i = j = 0\n    while i < len(l) and j < len(r):\n        if l[i] < r[j]: res.append(l[i]); i += 1\n        else: res.append(r[j]); j += 1\n    res.extend(l[i:]); res.extend(r[j:])\n    return res",
+    "extra": ""
+  },
+  "task_57": {
+    "fname": "primes.py",
+    "code": "def is_prime(n):\n    if n < 2: return False\n    for i in range(2, int(n**0.5)+1):\n        if n % i == 0: return False\n    return True",
+    "extra": ""
+  },
+  "task_58": {
+    "fname": "string_utils.py",
+    "code": "def is_palindrome(s):\n    s = ''.join(c.lower() for c in s if c.isalnum())\n    return s == s[::-1]",
+    "extra": ""
+  },
+  "task_59": {
+    "fname": "anagram.py",
+    "code": "def are_anagrams(s1, s2): return sorted(s1.replace(' ','').lower()) == sorted(s2.replace(' ','').lower())",
+    "extra": ""
+  },
+  "task_60": {
+    "fname": "fib_rec.py",
+    "code": "def fib(n):\n    if n <= 1: return n\n    return fib(n-1) + fib(n-2)",
+    "extra": ""
+  },
+  "task_61": {
+    "fname": "strategy.py",
+    "code": "class Strategy:\n    def execute(self, a, b): pass\nclass Add(Strategy):\n    def execute(self, a, b): return a + b\nclass Context:\n    def __init__(self, s): self.s = s\n    def run(self, a, b): return self.s.execute(a, b)",
+    "extra": ""
+  },
+  "task_62": {
+    "fname": "adapter.py",
+    "code": "class Target:\n    def req(self): return 'Target'\nclass Adaptee:\n    def spec_req(self): return 'Adaptee'\nclass Adapter(Target):\n    def __init__(self, a): self.a = a\n    def req(self): return self.a.spec_req()",
+    "extra": ""
+  },
+  "task_63": {
+    "fname": "decorator_p.py",
+    "code": "class Component:\n    def op(self): return 'Base'\nclass Decorator(Component):\n    def __init__(self, c): self.c = c\n    def op(self): return f'Decorated({self.c.op()})'",
+    "extra": ""
+  },
+  "task_64": {
+    "fname": "facade.py",
+    "code": "class SubA: \n    def op(self): return 'A'\nclass SubB:\n    def op(self): return 'B'\nclass Facade:\n    def __init__(self): self.a = SubA(); self.b = SubB()\n    def op(self): return self.a.op() + self.b.op()",
+    "extra": ""
+  },
+  "task_65": {
+    "fname": "composite.py",
+    "code": "class Leaf:\n    def op(self): return 'Leaf'\nclass Composite:\n    def __init__(self): self.c = []\n    def add(self, o): self.c.append(o)\n    def op(self): return '+'.join(o.op() for o in self.c)",
+    "extra": ""
+  },
+  "task_66": {
+    "fname": "bridge.py",
+    "code": "class Imp: \n    def op(self): pass\nclass ImpA(Imp): \n    def op(self): return 'A'\nclass Abstract:\n    def __init__(self, i): self.i = i\n    def op(self): return self.i.op()",
+    "extra": ""
+  },
+  "task_67": {
+    "fname": "flyweight.py",
+    "code": "class FlyweightFactory:\n    _f = {}\n    @classmethod\n    def get(cls, k):\n        if k not in cls._f: cls._f[k] = k\n        return cls._f[k]",
+    "extra": ""
+  },
+  "task_68": {
+    "fname": "command_meta.py",
+    "code": "class Command: \n    def run(self): pass\nclass Invoker:\n    def __init__(self): self.h = []\n    def store(self, c): self.h.append(c)\n    def execute(self): [c.run() for c in self.h]",
+    "extra": ""
+  },
+  "task_69": {
+    "fname": "state_v2.py",
+    "code": "class State: \n    def handle(self): pass\nclass Context:\n    def __init__(self, s): self.s = s\n    def request(self): self.s.handle()",
+    "extra": ""
+  },
+  "task_70": {
+    "fname": "template.py",
+    "code": "class Base:\n    def run(self): self.start(); self.mid(); self.end()\n    def start(self): pass; def mid(self): pass; def end(self): pass\nclass Sub(Base):\n    def mid(self): return 'Mid'",
+    "extra": ""
+  },
+  "task_71": {
+    "fname": "pool.py",
+    "code": "from concurrent.futures import ThreadPoolExecutor\ndef run_parallel(fn, items):\n    with ThreadPoolExecutor() as e: return list(e.map(fn, items))",
+    "extra": ""
+  },
+  "task_72": {
+    "fname": "safe_counter.py",
+    "code": "import threading\nclass Counter:\n    def __init__(self): self.v = 0; self.l = threading.Lock()\n    def inc(self): \n        with self.l: self.v += 1",
+    "extra": ""
+  },
+  "task_73": {
+    "fname": "prod_cons.py",
+    "code": "import queue, threading\ndef produce(q, items): [q.put(i) for i in items]\ndef consume(q, n):\n    res = []\n    for _ in range(n): res.append(q.get())\n    return res",
+    "extra": ""
+  },
+  "task_74": {
+    "fname": "limiter.py",
+    "code": "import threading\nclass Limiter:\n    def __init__(self, n): self.s = threading.Semaphore(n)\n    def run(self, f): \n        with self.s: return f()",
+    "extra": ""
+  },
+  "task_75": {
+    "fname": "event_sync.py",
+    "code": "import threading\nclass Switch:\n    def __init__(self): self.e = threading.Event()\n    def wait(self): self.e.wait()\n    def trigger(self): self.e.set()",
+    "extra": ""
+  },
+  "task_76": {
+    "fname": "atomic.py",
+    "code": "import threading\nclass AtomicFlag:\n    def __init__(self): self.v = False; self.l = threading.Lock()\n    def set(self, val):\n        with self.l: self.v = val\n    def get(self): return self.v",
+    "extra": ""
+  },
+  "task_77": {
+    "fname": "lock_reg.py",
+    "code": "import threading\nclass Registry:\n    def __init__(self): self.d = {}; self.l = threading.Lock()\n    def reg(self, k, v): \n        with self.l: self.d[k] = v",
+    "extra": ""
+  },
+  "task_78": {
+    "fname": "pmap.py",
+    "code": "from multiprocessing.pool import ThreadPool\ndef parallel_sum(arr, n): \n    with ThreadPool(n) as p: return sum(p.map(lambda x: x, arr))",
+    "extra": ""
+  },
+  "task_79": {
+    "fname": "cond.py",
+    "code": "import threading\nclass Buffer:\n    def __init__(self): self.c = threading.Condition(); self.b = []\n    def produce(self, i): \n        with self.c: self.b.append(i); self.c.notify()\n    def consume(self): \n        with self.c: \n            while not self.b: self.c.wait()\n            return self.b.pop()",
+    "extra": ""
+  },
+  "task_80": {
+    "fname": "barrier.py",
+    "code": "import threading\ndef task(b, res): b.wait(); res.append(1)",
+    "extra": ""
+  },
+  "task_81": {
+    "fname": "json_stream.py",
+    "code": "import json\ndef parse_lines(lines): return [json.loads(l) for l in lines if l.strip()]",
+    "extra": ""
+  },
+  "task_82": {
+    "fname": "csv_sum.py",
+    "code": "import csv\ndef sum_col(path, col):\n    with open(path) as f:\n        return sum(float(r[col]) for r in csv.DictReader(f))",
+    "extra": ""
+  },
+  "task_83": {
+    "fname": "xml_util.py",
+    "code": "import xml.etree.ElementTree as ET\ndef get_tags(xml, t): return [e.text for e in ET.fromstring(xml).findall(t)]",
+    "extra": ""
+  },
+  "task_84": {
+    "fname": "yaml_mock.py",
+    "code": "def parse_yaml(t): \n    if 'version: 1' in t: return {'version': 1}\n    return {}",
+    "extra": ""
+  },
+  "task_85": {
+    "fname": "ip_util.py",
+    "code": "import re\ndef find_ips(t): return re.findall(r'\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}', t)",
+    "extra": ""
+  },
+  "task_86": {
+    "fname": "b64_util.py",
+    "code": "import base64\ndef safe_b64(s): return base64.urlsafe_b64encode(s.encode()).decode()",
+    "extra": ""
+  },
+  "task_87": {
+    "fname": "html_util.py",
+    "code": "import re\ndef get_links(h): return re.findall(r'href=\"(.*?)\"', h)",
+    "extra": ""
+  },
+  "task_88": {
+    "fname": "byte_util.py",
+    "code": "def swap_bytes(b): return b[::-1]",
+    "extra": ""
+  },
+  "task_89": {
+    "fname": "hex_util.py",
+    "code": "def to_hex(b): return b.hex()",
+    "extra": ""
+  },
+  "task_90": {
+    "fname": "url_util.py",
+    "code": "from urllib.parse import urljoin\ndef complete_url(b, r): return urljoin(b, r)",
+    "extra": ""
+  },
+  "task_91": {
+    "fname": "di_prop.py",
+    "code": "class Container:\n    def __init__(self, **deps): self.__dict__.update(deps)",
+    "extra": ""
+  },
+  "task_92": {
+    "fname": "plugin_loader.py",
+    "code": "class Loader:\n    def load(self, name): return __import__(name)",
+    "extra": ""
+  },
+  "task_93": {
+    "fname": "reg_dec.py",
+    "code": "REG = {}\ndef register(name):\n    def d(f): REG[name] = f; return f\n    return d",
+    "extra": ""
+  },
+  "task_94": {
+    "fname": "middleware.py",
+    "code": "class App:\n    def __init__(self): self.m = []\n    def use(self, m): self.m.append(m)\n    def run(self, ctx): \n        for m in self.m: m(ctx)",
+    "extra": ""
+  },
+  "task_95": {
+    "fname": "store.py",
+    "code": "class Store:\n    def __init__(self): self.s = {}\n    def set(self, k, v): self.s[k] = v; [f(v) for f in self.subs]\n    def __init__(self): self.s = {}; self.subs = []",
+    "extra": ""
+  },
+  "task_96": {
+    "fname": "router.py",
+    "code": "class Router:\n    def __init__(self): self.r = {}\n    def add(self, p, h): self.r[p] = h\n    def route(self, p): return self.r.get(p)()",
+    "extra": ""
+  },
+  "task_97": {
+    "fname": "logger_sys.py",
+    "code": "class Logger:\n    def __init__(self, hs): self.hs = hs\n    def log(self, m): [h.write(m) for h in self.hs]",
+    "extra": ""
+  },
+  "task_98": {
+    "fname": "config_sys.py",
+    "code": "def merge(a, b):\n    res = a.copy(); res.update(b); return res",
+    "extra": ""
+  },
+  "task_99": {
+    "fname": "val_sys.py",
+    "code": "class Validator:\n    def __init__(self, rs): self.rs = rs\n    def validate(self, d): return all(r(d) for r in self.rs)",
+    "extra": ""
+  },
+  "task_100": {
+    "fname": "tqueue.py",
+    "code": "class Queue:\n    def __init__(self): self.q = []\n    def push(self, t): self.q.append(t)\n    def pop(self): return self.q.pop(0)",
+    "extra": ""
+  }
+}

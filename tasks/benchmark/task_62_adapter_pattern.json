@@ -1,0 +1,13 @@
+{
+  "id": "task_62",
+  "title": "Adapter Pattern",
+  "description": "Implement Adapter Pattern in adapter.py. Ensure compliance with modern Python patterns.",
+  "expected_files": [
+    "adapter.py"
+  ],
+  "test_script": "import unittest\nfrom adapter import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

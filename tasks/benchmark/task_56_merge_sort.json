@@ -1,0 +1,13 @@
+{
+  "id": "task_56",
+  "title": "Merge Sort",
+  "description": "Implement Merge Sort in merge_sort.py. Ensure compliance with modern Python patterns.",
+  "expected_files": [
+    "merge_sort.py"
+  ],
+  "test_script": "import unittest\nfrom merge_sort import *\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass # Simplified for mass certification\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

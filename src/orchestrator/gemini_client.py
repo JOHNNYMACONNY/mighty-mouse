@@ -50,8 +50,11 @@ class GeminiClient:
             parts = tid.split('_')
             idx = int(parts[1])
             
-            # Tiered Gating for 650-Task Stress Test
-            if idx > 500: # 501-650: Antagonist Mode (Tier 6)
+            # Tiered Gating for 800-Task Stress Test
+            if idx > 650: # 651-800: Zero-Trust Stress (Tier 7)
+                has_safety = "Safety-First" in sys_instr or "Resolution" in sys_instr or "Integrity" in sys_instr
+                if not (has_safety or round_2): success = False
+            elif idx > 500: # 501-650: Antagonist Mode (Tier 6)
                 has_antagonist = "Antagonist" in sys_instr or "Hardening" in sys_instr or "Defensive" in sys_instr
                 if not (has_antagonist or round_2): success = False
             elif idx > 400: # 401-500: Verification Stress

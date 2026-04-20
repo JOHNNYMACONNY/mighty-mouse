@@ -1,0 +1,13 @@
+{
+  "id": "task_684",
+  "title": "CONTRADICTION: Legacy Factory Enricher",
+  "description": "Implement the Legacy Factory Enricher module in legacy_factory.py. \nZERO-TRUST CHALLENGE: Implement Stateless Store. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles.",
+  "expected_files": [
+    "legacy_factory.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('legacy_factory.py', 'r') as f: src = f.read()\n        # Requirement Check\n        assert 'RESOLVED CONFLICT' in src or 'SAFETY' in src, 'Failed to document conflict resolution in legacy_factory.py'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  }
+}

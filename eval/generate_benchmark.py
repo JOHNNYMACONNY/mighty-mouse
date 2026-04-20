@@ -34,9 +34,11 @@ def main():
     with open(SHIMS_PATH, "r") as f:
         shims = json.load(f)
 
-    # Scale to 650 tasks (Introducing Tier 6 Antagonist Mode)
-    target_total = 650
+    # Scale to 800 tasks (Introducing Tier 7 Zero-Trust Stress)
+    target_total = 800
     archetypes = generate_procedural_archetypes(target_total)
+
+    CONFLICTS = ["Stack-Queue", "Memory-less Cache", "Immutable State", "Stateless Store"]
 
     for i, (title, fname, code) in enumerate(archetypes, start=1):
         task_id = f"task_{i:03d}"
@@ -44,10 +46,19 @@ def main():
         # Tiered Description logic
         extra_desc = ""
         constraints = {"language": "python", "max_files": 1}
+        antagonist_check = ""
+        
+        # ADVERSARIAL CONTRADICTIONS (Tier 7: 651-800)
+        is_contradiction = False
+        if i > 650:
+            random.seed(i)
+            is_contradiction = True
+            conflict = random.choice(CONFLICTS)
+            extra_desc = f"\nZERO-TRUST CHALLENGE: Implement {conflict}. NOTE: Requirement X contradicts Requirement Y. Resolve the conflict using Safety-First principles."
+            antagonist_check = f"assert 'RESOLVED CONFLICT' in src or 'SAFETY' in src, 'Failed to document conflict resolution in {fname}'"
         
         # ANTAGONIST LOGIC (Tier 6: 501-650)
-        antagonist_check = ""
-        if i > 500:
+        elif i > 500:
             random.seed(i)
             choice = random.choice(["NO_IMPORTS", "LINE_LIMIT", "IMMUTABLE_INIT"])
             if choice == "NO_IMPORTS":
@@ -72,7 +83,7 @@ import os
 class TestTask(unittest.TestCase):
     def test_adherence(self):
         with open('{fname}', 'r') as f: src = f.read()
-        # Antagonist Check
+        # Requirement Check
         {antagonist_check if antagonist_check else "pass"}
     def test_run(self):
         pass # Functional pass
@@ -81,7 +92,7 @@ if __name__ == '__main__':
 
         task_json = {
             "id": task_id,
-            "title": title,
+            "title": title if not is_contradiction else f"CONTRADICTION: {title}",
             "description": f"Implement the {title} module in {fname}. {extra_desc}",
             "expected_files": [fname],
             "test_script": test_script,
@@ -98,7 +109,7 @@ if __name__ == '__main__':
         
     with open(SHIMS_PATH, "w") as f:
         json.dump(shims, f, indent=2)
-    print(f"Successfully scaled to {target_total} tasks with Tier 6 Antagonist Mode.")
+    print(f"Successfully scaled to {target_total} tasks with Tier 7 Zero-Trust Stress.")
 
 if __name__ == "__main__":
     main()

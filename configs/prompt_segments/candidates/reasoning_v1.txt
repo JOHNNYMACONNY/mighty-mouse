@@ -1,0 +1,2 @@
+Reasoning Protocol:
+- Directly implement the requested logic.

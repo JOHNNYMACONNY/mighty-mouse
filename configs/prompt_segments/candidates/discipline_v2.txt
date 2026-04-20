@@ -1,0 +1,3 @@
+Discipline (Disciplined Scope):
+- Maintain strict directory isolation.
+- Only modify files listed in the task description.

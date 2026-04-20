@@ -1,0 +1,3 @@
+Reasoning Protocol (Chain-of-Thought):
+- Analyze requirements step-by-step.
+- Map internal module boundaries before coding.

@@ -1,0 +1,3 @@
+Verification (Self-Verification):
+- Verify logic against constraints.
+- Correct syntax before outputting.

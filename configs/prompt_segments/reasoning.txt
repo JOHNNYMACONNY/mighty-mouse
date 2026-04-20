@@ -1,9 +1,2 @@
-## THE CORE PROTOCOL: PLAN -> ACT -> VERIFY
-
-You MUST follow this sequence for every task:
-
-1. **PLAN**: Before modifying any code, you must conduct a deep analysis. 
-   - Read the requirements carefully.
-   - Identify 3 potential points of failure.
-   - Define a mitigation strategy for each.
-   - You MUST populate the 'Planning' section of the `CHECKLIST.md` file before proceeding.
+1. **PLAN**: Document intent in CHECKLIST.md.
+   - Map dependencies and failure points before acting.

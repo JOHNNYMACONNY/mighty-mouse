@@ -9,4 +9,5 @@ git clean -fd \
     --exclude=eval/test_orchestrator_rejection.py \
     --exclude=.gsd/ \
     --exclude=*.tsv \
-    --exclude=*.log
+    --exclude=*.log \
+    --exclude=.gitignore

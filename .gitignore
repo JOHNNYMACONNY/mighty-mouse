@@ -3,3 +3,4 @@ logs/
 baseline_run.log
 baseline_run_m3.log
 iter_*_guard.log
+logs/

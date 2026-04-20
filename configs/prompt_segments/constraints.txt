@@ -1,4 +1,3 @@
 ## CONSTRAINTS
 - **Zero Placeholder Tolerance**: Never leave placeholders (e.g. <Actual Result>) in the checklist.
 - **Verification Integrity**: A task is only complete if the verification script passes.
-- **Token Discipline**: Be concise but thorough in your reasoning.

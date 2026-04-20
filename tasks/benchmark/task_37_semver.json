@@ -1,0 +1,8 @@
+{
+  "id": "task_37_semver",
+  "title": "Semantic Version Comparator",
+  "description": "Implement 'compare_versions(v1, v2)'. Return 1 if v1 > v2, -1 if v1 < v2, 0 if equal. Support major.minor.patch.",
+  "expected_files": ["semver.py"],
+  "test_script": "import unittest\nfrom semver import compare_versions\nclass TestSemVer(unittest.TestCase):\n    def test_comp(self):\n        self.assertEqual(compare_versions('1.2.3', '1.2.4'), -1)\n        self.assertEqual(compare_versions('2.0.0', '1.9.9'), 1)\n",
+  "constraints": {"language": "python"}
+}

@@ -1,0 +1,8 @@
+{
+  "id": "task_36_config_parser",
+  "title": "Robust INI Parser",
+  "description": "Implement 'parse_ini(text)' that returns a nested dict. Format: [Section]\\nkey=val. Ignore lines starting with ';'.",
+  "expected_files": ["config_parser.py"],
+  "test_script": "import unittest\nfrom config_parser import parse_ini\nclass TestINI(unittest.TestCase):\n    def test_parse(self):\n        text = '[db]\\nport=5432\\n;ignore me\\nhost=localhost'\n        self.assertEqual(parse_ini(text), {'db': {'port': '5432', 'host': 'localhost'}})\n",
+  "constraints": {"language": "python"}
+}

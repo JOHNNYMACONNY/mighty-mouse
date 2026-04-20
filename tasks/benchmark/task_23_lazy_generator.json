@@ -1,0 +1,8 @@
+{
+  "id": "task_23_lazy_generator",
+  "title": "Fibonacci Lazy Generator",
+  "description": "Implement a generator function 'fib_gen(n)' that yields the first n Fibonacci numbers. Ensure it uses O(1) space (excluding the yield).",
+  "expected_files": ["fib.py"],
+  "test_script": "import unittest\nfrom fib import fib_gen\nclass TestFib(unittest.TestCase):\n    def test_gen(self):\n        self.assertEqual(list(fib_gen(5)), [0, 1, 1, 2, 3])\n",
+  "constraints": {"language": "python"}
+}

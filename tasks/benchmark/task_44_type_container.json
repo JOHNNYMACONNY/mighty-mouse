@@ -1,0 +1,8 @@
+{
+  "id": "task_44_type_container",
+  "title": "Validated Typed Container",
+  "description": "Implement 'TypedList(type)' where 'append(val)' raises TypeError if val is not of 'type'.",
+  "expected_files": ["typed_container.py"],
+  "test_script": "import unittest\nfrom typed_container import TypedList\nclass TestType(unittest.TestCase):\n    def test_strict(self):\n        tl = TypedList(int)\n        tl.append(1)\n        with self.assertRaises(TypeError): tl.append('a')\n",
+  "constraints": {"language": "python"}
+}

@@ -1,0 +1,8 @@
+{
+  "id": "task_46_reflection",
+  "title": "Method Inspector",
+  "description": "Implement 'get_public_methods(obj)' that returns a list of names for all public methods (not starting with _) defined on the object's class.",
+  "expected_files": ["inspector.py"],
+  "test_script": "import unittest\nfrom inspector import get_public_methods\nclass A: \n    def start(self): pass\n    def _stop(self): pass\nclass TestInsp(unittest.TestCase):\n    def test_methods(self):\n        self.assertEqual(get_public_methods(A()), ['start'])\n",
+  "constraints": {"language": "python"}
+}

@@ -1,0 +1,8 @@
+{
+  "id": "task_42_exception_map",
+  "title": "Hierarchical Exception Mapper",
+  "description": "Create a custom exception 'AppError' and children 'NetworkError' and 'DatabaseError'. Implement 'handle_error(e)' that returns a status code: 500 for AppError, 503 for Network, 504 for DB.",
+  "expected_files": ["errors.py"],
+  "test_script": "import unittest\nfrom errors import NetworkError, handle_error\nclass TestErr(unittest.TestCase):\n    def test_mapping(self):\n        self.assertEqual(handle_error(NetworkError()), 503)\n",
+  "constraints": {"language": "python"}
+}

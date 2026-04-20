@@ -1,0 +1,8 @@
+{
+  "id": "task_33_multi_file_reg",
+  "title": "Static Registry Refactor",
+  "description": "Refactor a hardcoded list of plugins in 'main.py' to use a dynamic registration system defined in 'registry.py'. Plugins should register themselves by calling 'registry.register(name, class)'.",
+  "expected_files": ["main.py", "registry.py"],
+  "test_script": "import unittest\nimport main, registry\nclass TestReg(unittest.TestCase):\n    def test_dynamic_load(self):\n        self.assertIn('PluginA', registry.get_registered_names())\n",
+  "constraints": {"language": "python", "min_files": 2}
+}

@@ -1,0 +1,8 @@
+{
+  "id": "task_25_closure_state",
+  "title": "Persistent Counter Closure",
+  "description": "Implement a function 'make_counter(start)' that returns a closure. Each call to the closure should increment the counter and return the new value. It must support multiple independent counters.",
+  "expected_files": ["counter.py"],
+  "test_script": "import unittest\nfrom counter import make_counter\nclass TestCounter(unittest.TestCase):\n    def test_closure(self):\n        c1 = make_counter(10)\n        c2 = make_counter(0)\n        self.assertEqual(c1(), 11)\n        self.assertEqual(c2(), 1)\n",
+  "constraints": {"language": "python"}
+}

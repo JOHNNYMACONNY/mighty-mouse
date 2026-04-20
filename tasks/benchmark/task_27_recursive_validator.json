@@ -1,0 +1,8 @@
+{
+  "id": "task_27_recursive_validator",
+  "title": "Deep JSON Validator",
+  "description": "Implement a function 'validate_depth(data, max_depth)' that recursively checks the nesting depth of a dictionary/list structure. Return True if depth <= max_depth, False otherwise.",
+  "expected_files": ["validator.py"],
+  "test_script": "import unittest\nfrom validator import validate_depth\nclass TestDepth(unittest.TestCase):\n    def test_limit(self):\n        d = {'a': {'b': {'c': 1}}}\n        self.assertTrue(validate_depth(d, 3))\n        self.assertFalse(validate_depth(d, 2))\n",
+  "constraints": {"language": "python", "use_recursion": true}
+}

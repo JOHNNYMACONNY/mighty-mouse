@@ -11,4 +11,5 @@ git clean -fd \
     --exclude=*.tsv \
     --exclude=*.log \
     --exclude=.gitignore \
+    --exclude=eval/*.sh \
     --exclude=tasks/

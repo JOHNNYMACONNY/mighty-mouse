@@ -1,0 +1,8 @@
+{
+  "id": "task_32_observer_pattern",
+  "title": "State Observer",
+  "description": "Implement a 'Subject' class with 'attach', 'detach', and 'notify' methods. 'notify' should call the 'update' method on all attached observers.",
+  "expected_files": ["observer.py"],
+  "test_script": "import unittest\nfrom observer import Subject\nclass MockObserver: \n    def __init__(self): self.updated = False\n    def update(self): self.updated = True\nclass TestObserver(unittest.TestCase):\n    def test_notify(self):\n        s = Subject(); o = MockObserver()\n        s.attach(o); s.notify()\n        self.assertTrue(o.updated)\n",
+  "constraints": {"language": "python"}
+}

@@ -1,0 +1,8 @@
+{
+  "id": "task_21_async_wait",
+  "title": "Async Task Manager",
+  "description": "Implement an async function 'run_tasks(tasks)' that takes a list of coroutines and runs them concurrently using asyncio.gather. It should return a list of results. Handle exceptions within individual tasks by returning None for failed ones.",
+  "expected_files": ["async_mgr.py"],
+  "test_script": "import unittest, asyncio\nfrom async_mgr import run_tasks\nclass TestAsync(unittest.TestCase):\n    def test_gather(self):\n        async def t1(): return 1\n        async def t2(): raise ValueError()\n        loop = asyncio.get_event_loop()\n        res = loop.run_until_complete(run_tasks([t1(), t2()]))\n        self.assertEqual(res, [1, None])\n",
+  "constraints": {"language": "python", "use_async": true}
+}

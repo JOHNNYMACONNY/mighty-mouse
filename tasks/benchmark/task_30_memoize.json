@@ -1,0 +1,8 @@
+{
+  "id": "task_30_memoize",
+  "title": "Universal Memoization Decorator",
+  "description": "Implement a decorator '@memoize' that caches function results based on arguments. It must support both positional and keyword arguments. Use a dictionary for storage.",
+  "expected_files": ["cache.py"],
+  "test_script": "import unittest\nfrom cache import memoize\nclass TestCache(unittest.TestCase):\n    def test_memo(self):\n        self.calls = 0\n        @memoize\n        def add(a, b):\n            self.calls += 1\n            return a + b\n        add(1, 2); add(1, 2)\n        self.assertEqual(self.calls, 1)\n",
+  "constraints": {"language": "python"}
+}

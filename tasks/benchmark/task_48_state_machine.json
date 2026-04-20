@@ -1,0 +1,8 @@
+{
+  "id": "task_48_state_machine",
+  "title": "Simple Order State",
+  "description": "Implement an 'Order' class with states: 'PENDING', 'PAID', 'SHIPPED'. Transition methods 'pay()' and 'ship()'. Raise ValueError on invalid transitions (e.g. ship before pay).",
+  "expected_files": ["state.py"],
+  "test_script": "import unittest\nfrom state import Order\nclass TestState(unittest.TestCase):\n    def test_flow(self):\n        o = Order()\n        o.pay()\n        o.ship()\n        self.assertEqual(o.state, 'SHIPPED')\n        with self.assertRaises(ValueError): Order().ship()\n",
+  "constraints": {"language": "python"}
+}

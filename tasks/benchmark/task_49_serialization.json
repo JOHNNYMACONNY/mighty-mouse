@@ -1,0 +1,8 @@
+{
+  "id": "task_49_serialization",
+  "title": "Compact Byte Serializer",
+  "description": "Implement 'serialize_int_list(ints)' that converts a list of integers (0-255) into a bytes object. Each byte represents one integer.",
+  "expected_files": ["serial.py"],
+  "test_script": "import unittest\nfrom serial import serialize_int_list\nclass TestSerial(unittest.TestCase):\n    def test_bytes(self):\n        self.assertEqual(serialize_int_list([1, 2, 3]), b'\\x01\\x02\\x03')\n",
+  "constraints": {"language": "python"}
+}

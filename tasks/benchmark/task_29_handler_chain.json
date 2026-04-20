@@ -1,0 +1,8 @@
+{
+  "id": "task_29_handler_chain",
+  "title": "Log Handler Chain",
+  "description": "Implement a 'BaseHandler' with a 'set_next' method and a 'handle(request)' method. Create two concrete handlers: 'InfoHandler' and 'ErrorHandler'. If a handler cannot process a request, it should pass it to the next in the chain.",
+  "expected_files": ["chain.py"],
+  "test_script": "import unittest\nfrom chain import InfoHandler, ErrorHandler\nclass TestChain(unittest.TestCase):\n    def test_fallback(self):\n        h1 = InfoHandler(); h2 = ErrorHandler()\n        h1.set_next(h2)\n        self.assertEqual(h1.handle('ERROR'), 'ErrorProcessed')\n",
+  "constraints": {"language": "python"}
+}

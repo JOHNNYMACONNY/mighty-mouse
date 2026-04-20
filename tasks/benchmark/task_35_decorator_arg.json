@@ -1,0 +1,8 @@
+{
+  "id": "task_35_decorator_arg",
+  "title": "Parameterized Access Decorator",
+  "description": "Implement a decorator '@require_permission(role)' that checks a global 'CURRENT_USER_ROLE'. If it doesn't match, raise PermissionError.",
+  "expected_files": ["auth.py"],
+  "test_script": "import unittest\nimport auth\nclass TestAuth(unittest.TestCase):\n    def test_access(self):\n        auth.CURRENT_USER_ROLE = 'user'\n        @auth.require_permission('admin')\n        def secure(): return 1\n        with self.assertRaises(PermissionError): secure()\n",
+  "constraints": {"language": "python"}
+}

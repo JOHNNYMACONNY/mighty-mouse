@@ -1,0 +1,8 @@
+{
+  "id": "task_43_lru_manual",
+  "title": "Manual LRU Cache",
+  "description": "Implement an 'LRUCache' class with 'get(key)' and 'put(key, val)' methods. CAPACITY must be respected. Do NOT use @functools.lru_cache.",
+  "expected_files": ["lru.py"],
+  "test_script": "import unittest\nfrom lru import LRUCache\nclass TestLRU(unittest.TestCase):\n    def test_eviction(self):\n        c = LRUCache(2)\n        c.put(1, 1); c.put(2, 2); c.get(1); c.put(3, 3)\n        self.assertIsNone(c.get(2))\n",
+  "constraints": {"language": "python"}
+}

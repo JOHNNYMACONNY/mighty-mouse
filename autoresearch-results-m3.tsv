@@ -2,3 +2,4 @@ iteration	commit	metric	delta	status	guard	description
 0	-	538.50	0.0	baseline	pass	initial measurement (M3)
 1	-	394.00	0.0	discard	fail	removed strategic intent (guard failure)
 2	-	376.00	0.0	discard	fail	consolidated persona (guard fail)
+2	-	332.75	0.0	discard	fail	condensed discipline (guard fail)

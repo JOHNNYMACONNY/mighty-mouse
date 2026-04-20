@@ -27,7 +27,7 @@ ARCHETYPES = [
     ("Flyweight", "flyweight.py", "class FlyweightFactory:\n    _f = {}\n    @classmethod\n    def get(cls, k):\n        if k not in cls._f: cls._f[k] = k\n        return cls._f[k]"),
     ("Command Meta", "command_meta.py", "class Command: \n    def run(self): pass\nclass Invoker:\n    def __init__(self): self.h = []\n    def store(self, c): self.h.append(c)\n    def execute(self): [c.run() for c in self.h]"),
     ("State Pattern 2", "state_v2.py", "class State: \n    def handle(self): pass\nclass Context:\n    def __init__(self, s): self.s = s\n    def request(self): self.s.handle()"),
-    ("Template Method", "template.py", "class Base:\n    def run(self): self.start(); self.mid(); self.end()\n    def start(self): pass; def mid(self): pass; def end(self): pass\nclass Sub(Base):\n    def mid(self): return 'Mid'"),
+    ("Template Method", "template.py", "class Base:\n    def run(self): self.start(); self.mid(); self.end()\n    def start(self): pass\n    def mid(self): pass\n    def end(self): pass\nclass Sub(Base):\n    def mid(self): return 'Mid'"),
 
     # 71-80: Concurrency
     ("Thread Pool Simple", "pool.py", "from concurrent.futures import ThreadPoolExecutor\ndef run_parallel(fn, items):\n    with ThreadPoolExecutor() as e: return list(e.map(fn, items))"),

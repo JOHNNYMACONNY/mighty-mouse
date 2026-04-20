@@ -346,7 +346,7 @@
   },
   "task_70": {
     "fname": "template.py",
-    "code": "class Base:\n    def run(self): self.start(); self.mid(); self.end()\n    def start(self): pass; def mid(self): pass; def end(self): pass\nclass Sub(Base):\n    def mid(self): return 'Mid'",
+    "code": "class Base:\n    def run(self): self.start(); self.mid(); self.end()\n    def start(self): pass\n    def mid(self): pass\n    def end(self): pass\nclass Sub(Base):\n    def mid(self): return 'Mid'",
     "extra": ""
   },
   "task_71": {

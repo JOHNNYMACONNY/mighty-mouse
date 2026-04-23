@@ -1,0 +1,78 @@
+benchmark_pack_version: ag-pack-v1
+host_environment: antigravity
+selected_model: gemini-3-flash
+variant_id: baseline-or-variant
+variant_name: fill-me-in
+prompt_version: fill-me-in
+results:
+  - task_id: task_ag_001_input_normalizer
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag_002_safe_divide
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag_003_env_flag
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag_004_two_file_validation
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag_005_preserve_behavior_refactor
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag_006_constraint_do_not_touch
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag_007_misleading_context
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag_008_missing_tests_honesty
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag_009_ambiguous_requirement
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+summary:
+  pass_rate: null
+  first_pass_rate: null
+  scope_violation_rate: null
+  false_success_rate: null
+  verification_compliance_rate: null
+  avg_output_length: null
+  decision: keep_testing

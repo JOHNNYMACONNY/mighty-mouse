@@ -1,6 +1,21 @@
+# macOS junk
+.DS_Store
+._*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Generated outputs
 eval/results/
 logs/
+workspaces/
+scratch/
+
+# Local run artifacts
 baseline_run.log
 baseline_run_m3.log
 iter_*_guard.log
-logs/
+*.trace.log
+*.tsv

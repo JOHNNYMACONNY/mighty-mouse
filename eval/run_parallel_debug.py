@@ -4,16 +4,37 @@ import json
 import subprocess
 import shutil
 
+import argparse
+
 TASK_DIR = "tasks/benchmark"
 CONFIG = "configs/mighty_mouse_v1.yaml"
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--tier", help="Tier to pick a task from")
+    parser.add_argument("--task", help="Specific task ID")
+    args = parser.parse_args()
+
     root_dir = os.getcwd()
     env = dict(os.environ)
     env["PYTHONPATH"] = f"{root_dir}:{os.path.join(root_dir, 'src/orchestrator')}:{os.path.join(root_dir, 'eval')}"
     
-    # Find task 201 specifically
-    t_list = [os.path.join(TASK_DIR, f) for f in os.listdir(TASK_DIR) if "task_201_" in f]
+    # Selection logic
+    if args.task:
+        target = args.task
+    elif args.tier:
+        t = int(args.tier)
+        # 100-based tiers: T1:1, T2:101, T3:201, T4:301, T5:401, T6:501, T7:651, T8:801
+        start = {1:1, 2:101, 3:201, 4:301, 5:401, 6:501, 7:651, 8:801}.get(t, 1)
+        target = f"task_{start:03d}"
+    else:
+        target = "task_201"
+
+    t_list = [os.path.join(TASK_DIR, f) for f in os.listdir(TASK_DIR) if target in f]
+    if not t_list:
+        print(f"Error: Task matching {target} not found.")
+        return
+    
     t = t_list[0]
     task_id = os.path.basename(t).replace(".json", "")
     task_abs = os.path.abspath(t)
@@ -35,7 +56,7 @@ def main():
     print("--- AGENT STDERR ---")
     print(res1.stderr)
     
-    # 2. Verify
+    # 2. Verify (Passing workspace for drift check)
     res2 = subprocess.run([sys.executable, verify_abs, task_abs], capture_output=True, text=True, cwd=workspace, env=env)
     print("--- VERIFY STDOUT ---")
     print(res2.stdout)

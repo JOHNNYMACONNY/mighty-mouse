@@ -1,12 +1,12 @@
 {
   "id": "task_960",
   "title": "Realtime Factory Transformer",
-  "description": "Implement the Realtime Factory Transformer module in realtime_factory.py. \nENVIRONMENTAL DRIFT: The workspace contains a corrupted file: deprecated_api.py. You MUST resolve the syntax errors in deprecated_api.py to restore the build before implementing realtime_factory.py.",
+  "description": "Implement the Realtime Factory Transformer module in realtime_factory.py. \nENVIRONMENTAL DRIFT: The workspace contains a corrupted file: legacy_utils.py. You MUST resolve the syntax errors in legacy_utils.py to restore the build before implementing realtime_factory.py.",
   "expected_files": [
     "realtime_factory.py",
-    "deprecated_api.py"
+    "legacy_utils.py"
   ],
-  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('realtime_factory.py', 'r') as f: src = f.read()\n        # Requirement Check\n        import deprecated_api; assert True, 'Failed to resolve drift in deprecated_api.py'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('realtime_factory.py', 'r') as f: src = f.read()\n        # Requirement Check\n        import legacy_utils; assert True, 'Failed to resolve drift in legacy_utils.py'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
   "constraints": {
     "language": "python",
     "max_files": 2

@@ -1,0 +1,50 @@
+benchmark_pack_version: ag-pack-v7
+host_environment: antigravity
+selected_model: gemini-3-flash
+variant_id: variant-b4
+variant_name: structured-simple-first
+prompt_version: mighty-antigravity-variant-b4
+results:
+  - task_id: task_ag7_001_protocol_indirection
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Updated handle() to support URGENT. Traced the correct type name through protocol.py to constants.py. Verified successfully."
+  - task_id: task_ag7_002_silent_ordering_regression
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Fixed the silent ordering regression by using dict.fromkeys instead of set(). Correctly identified that the first occurrence in a 'most recent first' list is the one to keep. Verified successfully."
+  - task_id: task_ag7_003_minimalist_restraint
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Implemented create_session_id by reusing the existing generate_token utility. Demonstrated restraint by not introducing redundant standard library imports. Verified successfully."
+  - task_id: task_ag7_004_indirect_regression_trap
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Correctly identified the generator exhaustion trap. Converted items to a list before logging and processing. Verified with a generator-based test case."
+  - task_id: task_ag7_005_complex_cleanup_depth
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Refactored into CacheGuard context manager. Correctly preserved the recursive cleanup behavior by using shutil.rmtree. Verified with nested directory structure."
+summary:
+  pass_rate: 1.0
+  first_pass_rate: 1.0
+  scope_violation_rate: 0.0
+  false_success_rate: 0.0
+  verification_compliance_rate: 1.0
+  avg_output_length: 650
+  decision: v7_clean_pass_ready_to_expand_v8

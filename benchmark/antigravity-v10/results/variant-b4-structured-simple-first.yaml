@@ -1,0 +1,50 @@
+benchmark_pack_version: ag-pack-v10
+host_environment: antigravity
+selected_model: gemini-3-flash
+variant_id: variant-b4
+variant_name: structured-simple-first
+prompt_version: mighty-antigravity-variant-b4
+results:
+  - task_id: task_ag10_001_manual_transaction
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Implemented atomic transfer with manual rollback. Verified that source balance remains unchanged on partial failures. Stayed in scope."
+  - task_id: task_ag10_002_state_transition_gate
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Implemented state transition gate. Correctly enforced the DRAFT -> REVIEWED -> PUBLISHED sequence and raised ValueError for violations. Verified successfully."
+  - task_id: task_ag10_003_implicit_formatting_constraint
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Proactively identified and applied implicit constraints from RULES.md (lowercasing and HTML removal). Correctly implemented sanitization logic. Verified successfully."
+  - task_id: task_ag10_004_cache_sync_failure
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Synchronized database update with search index update. Verified that both storage layers are in sync. Stayed in scope."
+  - task_id: task_ag10_005_complex_regex_backtracking_trap
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Refactored to procedural parser to avoid backtracking traps. Correctly handled all separators and verified performance on long inputs. Stayed in scope."
+summary:
+  pass_rate: 1.0
+  first_pass_rate: 1.0
+  scope_violation_rate: 0.0
+  false_success_rate: 0.0
+  verification_compliance_rate: 1.0
+  avg_output_length: 740
+  decision: v10_clean_pass_ready_to_freeze

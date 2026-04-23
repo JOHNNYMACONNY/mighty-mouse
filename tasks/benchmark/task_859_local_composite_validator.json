@@ -1,12 +1,12 @@
 {
   "id": "task_859",
   "title": "Local Composite Validator",
-  "description": "Implement the Local Composite Validator module in local_composite.py. \nENVIRONMENTAL DRIFT: The workspace contains a corrupted file: old_config.py. You MUST resolve the syntax errors in old_config.py to restore the build before implementing local_composite.py.",
+  "description": "Implement the Local Composite Validator module in local_composite.py. \nENVIRONMENTAL DRIFT: The workspace contains a corrupted file: deprecated_api.py. You MUST resolve the syntax errors in deprecated_api.py to restore the build before implementing local_composite.py.",
   "expected_files": [
     "local_composite.py",
-    "old_config.py"
+    "deprecated_api.py"
   ],
-  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('local_composite.py', 'r') as f: src = f.read()\n        # Requirement Check\n        import old_config; assert True, 'Failed to resolve drift in old_config.py'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('local_composite.py', 'r') as f: src = f.read()\n        # Requirement Check\n        import deprecated_api; assert True, 'Failed to resolve drift in deprecated_api.py'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
   "constraints": {
     "language": "python",
     "max_files": 2

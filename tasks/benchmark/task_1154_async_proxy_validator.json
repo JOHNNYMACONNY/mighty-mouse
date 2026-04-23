@@ -1,0 +1,13 @@
+{
+  "id": "task_1154",
+  "title": "Async Proxy Validator",
+  "description": "Implement the Async Proxy Validator module in async_proxy.py. \nCASCADING DRIFT: The workspace contains an obsolete file 'obsolete_shim.py' with fatal syntax errors. You MUST PURGE (delete) this file to restore the build integrity before implementing async_proxy.py.",
+  "expected_files": [
+    "async_proxy.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('async_proxy.py', 'r') as f: src = f.read()\n        # Requirement Check\n        import os; assert not os.path.exists('obsolete_shim.py'), 'Failed to purge ghost file obsolete_shim.py'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 2
+  }
+}

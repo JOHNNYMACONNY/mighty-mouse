@@ -4,20 +4,26 @@ from verifiers.adherence import check_adherence
 from verifiers.scope import verify as check_scope
 from verifiers.tester import run_task_tests
 
+def _get_json_data(path, default_val):
+    if os.path.exists(path):
+        try:
+            with open(path, 'r') as f: return json.load(f)
+        except: pass
+    return default_val
+
+def _save_json_data(path, data):
+    if not os.path.exists("logs"): os.makedirs("logs")
+    with open(path, 'w') as f: json.dump(data, f, indent=2)
+
 def update_checkpoint(task_id):
     checkpoint_path = "logs/session_checkpoint.json"
-    if not os.path.exists("logs"): os.makedirs("logs")
-    data = {"completed_tasks": []}
-    if os.path.exists(checkpoint_path):
-        try:
-            with open(checkpoint_path, 'r') as f: data = json.load(f)
-        except: pass
+    data = _get_json_data(checkpoint_path, {"completed_tasks": []})
     if task_id not in data["completed_tasks"]: data["completed_tasks"].append(task_id)
     try:
         git_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode().strip()
         data["git_hash"] = git_hash
     except: pass
-    with open(checkpoint_path, 'w') as f: json.dump(data, f, indent=2)
+    _save_json_data(checkpoint_path, data)
 
 def verify_task(task_config):
     task_id = task_config['id']
@@ -41,14 +47,19 @@ def main():
             task_config = json.load(f)
             res = verify_task(task_config)
             history_path = "logs/benchmark_results.json"
-            if not os.path.exists("logs"): os.makedirs("logs")
-            history = []
-            if os.path.exists(history_path):
-                try:
-                    with open(history_path, 'r') as f: history = json.load(f)
-                except: pass
+            history = _get_json_data(history_path, [])
             history = [h for h in history if h['task_id'] != res['task_id']]
             history.append(res)
-            with open(history_path, 'w') as f: json.dump(history, f, indent=2)
+            _save_json_data(history_path, history)
             print(f"Task {res['task_id']} {res['status']} verified.")
+            
+            # Phase 7: Robustness & Failure Post-Mortems
+            if res['status'] == 'fail':
+                try:
+                    from src.orchestrator.analyze_failure import analyze
+                    analyze()
+                except ImportError:
+                    pass
+
 if __name__ == "__main__": main()
+

@@ -1,5 +1,6 @@
 2. **ACT**: Perform the necessary coding changes under a **Disciplined Scope**.
    - **Environmental Audit**: Perform a workspace check to identify and fix any corrupted files (e.g. SyntaxErrors) to preserve build **Hygiene**.
+   - **Decommissioning**: IDENTIFY and **PURGE** (delete) any obsolete artifacts or "Ghost Files" that corrupt build integrity using the `delete:path` tombstone syntax to **Sanitize** the workspace.
    - Work atomistically on specified files only.
    - Ensure all changes are documented in the 'Activity' section of the `CHECKLIST.md`.
 

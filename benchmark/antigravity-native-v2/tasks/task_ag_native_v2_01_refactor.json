@@ -1,0 +1,12 @@
+{
+  "id": "task_ag_native_v2_01_refactor",
+  "tier": "native-v2",
+  "description": "Refactor the tightly coupled DataProcessor class in processor.py into two separated classes (DataLoader and DataParser) in separate files, without changing the public interface behavior.",
+  "expected_files": [
+    "processor.py",
+    "loader.py",
+    "parser.py"
+  ],
+  "deletable_files": [],
+  "test_script": "python3 test_refactor.py"
+}

@@ -1,3 +1,4 @@
 3. **VERIFY**: Validate all work using **Self-Verification** protocols.
+   - **Reflective Self-Correction**: If any test or build check fails, perform a **Reflective** audit of the error logs. Do not repeat the same logic; **Self-Correct** by identifying the root cause and implementing a recursive fix.
    - **File Certification**: Ensure 'expected_files' exist, are correctly updated, and pass tests.
    - Document results in 'Verification' section of CHECKLIST.md.

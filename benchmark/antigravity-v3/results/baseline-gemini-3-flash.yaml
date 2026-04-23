@@ -1,0 +1,78 @@
+benchmark_pack_version: ag-pack-v3
+host_environment: antigravity
+selected_model: gemini-3-flash
+variant_id: baseline
+variant_name: baseline-gemini-3-flash
+prompt_version: default-flash
+results:
+  - task_id: task_ag3_001_legacy_migration_trap
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag3_002_documentation_rot_fix
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag3_003_pattern_inconsistency
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag3_004_hot_loop_simplicity
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag3_005_hidden_side_effect_audit
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag3_006_cleanup_labyrinth
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag3_007_refactor_bait_trap
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag3_008_non_deterministic_honesty
+    success: null
+    first_pass: null
+    score_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag3_009_deep_logic_drift
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+summary:
+  pass_rate: null
+  first_pass_rate: null
+  scope_violation_rate: null
+  false_success_rate: null
+  verification_compliance_rate: null
+  avg_output_length: null
+  decision: null

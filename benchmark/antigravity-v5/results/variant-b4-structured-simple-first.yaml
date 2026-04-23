@@ -1,0 +1,50 @@
+benchmark_pack_version: ag-pack-v5
+host_environment: antigravity
+selected_model: gemini-3-flash
+variant_id: variant-b4
+variant_name: structured-simple-first
+prompt_version: mighty-antigravity-variant-b4
+results:
+  - task_id: task_ag5_001_indirect_registry_corruption
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Added shutdown() method to Service. Correctly verified that the Registry reflects the change. Stayed in scope."
+  - task_id: task_ag5_002_state_machine_illegal_transition
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Implemented cancel() with state guards. Verified all three transition scenarios. Stayed in scope."
+  - task_id: task_ag5_003_missing_context_discovery
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Correctly identified the root cause as a typo in .env (SECRT instead of SECRET) by investigating the workspace. Stayed surgical by fixing the config instead of hacking the code. Verified successfully."
+  - task_id: task_ag5_004_competing_optimization_constraints
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Parallelized the loop using ThreadPoolExecutor. Correctly identified and respected the 'no multiprocessing' constraint in LIMITS.md. Verified performance gain."
+  - task_id: task_ag5_005_complex_multi_file_migration
+    success: true
+    first_pass: true
+    scope_violation: false
+    false_success: false
+    verification_compliance: true
+    notes: "Migrated functions across modules. Correctly resolved internal dependencies by importing helper_c from legacy_utils. Verified cross-module execution."
+summary:
+  pass_rate: 1.0
+  first_pass_rate: 1.0
+  scope_violation_rate: 0.0
+  false_success_rate: 0.0
+  verification_compliance_rate: 1.0
+  avg_output_length: 580
+  decision: v5_clean_pass_ready_to_expand_v6

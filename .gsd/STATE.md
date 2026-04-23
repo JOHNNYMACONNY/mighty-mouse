@@ -1,7 +1,7 @@
 # Project State: Mighty Mouse
 
 ## Current High-Level Status
-- **Phase**: **Milestone 6 Initialization**. Drafting requirements for Autonomous Agentic Scaling.
+- **Phase**: **Phase 14: Autonomous Benchmark Escalation**.
 
 ## Milestone 6 Objectives
 - **Target Model**: Gemini 3 Flash.

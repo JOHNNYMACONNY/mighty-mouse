@@ -34,9 +34,12 @@ def main():
     with open(SHIMS_PATH, "r") as f:
         shims = json.load(f)
 
-    # Scale to 1000 tasks (Introducing Tier 8 Stochastic Hardening)
-    target_total = 1000
+    # Scale to 1600 tasks (Introducing Tier 11 Context Exhaustion)
+    target_total = 1600
     archetypes = generate_procedural_archetypes(target_total)
+
+    # Context Exhaustion Noise (Tier 11)
+    NOISE_BLOCK = "OBSOLETE DOCS: " + ("IRRELEVANT_SYSTEM_SPEC_DATA_CHUNK_" * 1500) + "\n"
 
     CONFLICTS = ["Stack-Queue", "Memory-less Cache", "Immutable State", "Stateless Store"]
     DRIFT_FILES = ["legacy_utils.py", "deprecated_api.py", "old_config.py"]
@@ -49,11 +52,24 @@ def main():
         constraints = {"language": "python", "max_files": 1}
         adherence_check = ""
         drift_file = None
+        ghost_file = None
         
+        # CONTEXT EXHAUSTION (Tier 11: 1401-1600)
+        if i > 1400:
+            extra_desc = f"\n{NOISE_BLOCK}\nCRITICAL NESTED REQUIREMENT: You MUST implement a method named 'ping_singularity' in {fname} that returns the string 'singularity_verified'. This is a mandatory protocol update buried in the technical spec.\n{NOISE_BLOCK}"
+            adherence_check = f"assert 'ping_singularity' in src and 'singularity_verified' in src, 'Failed to find/implement the Singularity Needle'"
+            constraints["max_tokens"] = 100000 # Simulation of high memory
+            
+        # CASCADING RESILIENCE (Tier 9: 1001-1200)
+        elif i > 1000:
+            ghost_file = "obsolete_shim.py"
+            extra_desc = f"\nCASCADING DRIFT: The workspace contains an obsolete file '{ghost_file}' with fatal syntax errors. You MUST PURGE (delete) this file to restore the build integrity before implementing {fname}."
+            adherence_check = f"import os; assert not os.path.exists('{ghost_file}'), 'Failed to purge ghost file {ghost_file}'"
+            constraints["max_files"] = 2
+            
         # STOCHASTIC DRIFT (Tier 8: 801-1000)
-        if i > 800:
-            random.seed(i)
-            drift_file = random.choice(DRIFT_FILES)
+        elif i > 800:
+            drift_file = DRIFT_FILES[i % len(DRIFT_FILES)]
             extra_desc = f"\nENVIRONMENTAL DRIFT: The workspace contains a corrupted file: {drift_file}. You MUST resolve the syntax errors in {drift_file} to restore the build before implementing {fname}."
             adherence_check = f"import {drift_file.replace('.py', '')}; assert True, 'Failed to resolve drift in {drift_file}'"
             constraints["max_files"] = 2
@@ -116,6 +132,8 @@ if __name__ == '__main__':
         shims[task_id] = {"fname": fname, "code": code, "extra": ""}
         if drift_file:
             shims[f"{task_id}_drift"] = {"fname": drift_file, "code": "def drift(): pass (SYNTAX_ERROR", "extra": ""}
+        if ghost_file:
+            shims[f"{task_id}_ghost"] = {"fname": ghost_file, "code": "def obsolete(): pass (CRITICAL_SYNTAX_ERROR)\nimport non_existent_pkg", "extra": ""}
         
     with open(SHIMS_PATH, "w") as f:
         json.dump(shims, f, indent=2)

@@ -1,0 +1,13 @@
+{
+  "id": "task_1238",
+  "title": "Memory Auth Transformer",
+  "description": "Implement the Memory Auth Transformer module in memory_auth.py. \nCASCADING DRIFT: The workspace contains an obsolete file 'obsolete_shim.py' with fatal syntax errors. You MUST PURGE (delete) this file to restore the build integrity before implementing memory_auth.py.",
+  "expected_files": [
+    "memory_auth.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('memory_auth.py', 'r') as f: src = f.read()\n        # Requirement Check\n        import os; assert not os.path.exists('obsolete_shim.py'), 'Failed to purge ghost file obsolete_shim.py'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 2
+  }
+}

@@ -15,7 +15,7 @@ def main():
 
     if args.tier:
         # Tier logic: 100-tasks-per-tier
-        # T1: 1-100, T2: 101-200, T3: 201-300, T4: 301-400, T5: 401-500, T6: 501-650, T7: 651-800, T8: 801-1000
+        # T1: 1-100, T2: 101-200, T3: 201-300, T4: 301-400, T5: 401-500, T6: 501-650, T7: 651-800, T8: 801-1000, T9: 1001-1200, T10: 1201-1400, T11: 1401-1600
         t = int(args.tier)
         filtered = []
         for r in res:
@@ -23,7 +23,13 @@ def main():
                 # Extract numeric suffix from task_XXX
                 parts = r['task_id'].split('_')
                 idx = int(parts[1])
-                if t == 8 and idx > 800:
+                if t == 11 and idx > 1400:
+                    filtered.append(r)
+                elif t == 10 and 1200 < idx <= 1400:
+                    filtered.append(r)
+                elif t == 9 and 1000 < idx <= 1200:
+                    filtered.append(r)
+                elif t == 8 and 800 < idx <= 1000:
                     filtered.append(r)
                 elif t == 7 and 650 < idx <= 800:
                     filtered.append(r)

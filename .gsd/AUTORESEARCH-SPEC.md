@@ -3,6 +3,11 @@
 ## Optimization Target
 **Goal**: Increase successful completion of coding tasks on the first or second attempt while reducing unverified or incorrect code changes.
 
+## Current Direction
+This original spec assumes the existing Antigravity `/autoresearch` workflow.
+The active product direction is now Antigravity-first, model-selected-in-chat, and slash-command centered.
+See `AUTORESEARCH-SPEC-ANTIGRAVITY.md` for the updated field-mode research spec focused on user-selected Gemini 3 Flash in Antigravity.
+
 ## Benchmark Design: "Mighty Mouse Benchmark"
 The benchmark consists of deterministic tasks with fixed scoring rules and pass/fail thresholds.
 

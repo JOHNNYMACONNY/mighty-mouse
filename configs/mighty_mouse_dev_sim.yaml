@@ -1,0 +1,14 @@
+name: "Mighty Mouse Dev Sim"
+version: "0.3.0"
+provider: "sim"
+model: "simulated-model"
+temperature: 0.0
+allow_simulation: true
+prompt_segments:
+  - "prompt_segments/persona.txt"
+  - "prompt_segments/reasoning.txt"
+  - "prompt_segments/constraints.txt"
+  - "prompt_segments/verification.txt"
+  - "prompt_segments/discipline.txt"
+  - "prompt_segments/tools.txt"
+system_prompt_path: "system_prompt.txt"

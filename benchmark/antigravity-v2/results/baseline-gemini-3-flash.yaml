@@ -1,0 +1,78 @@
+benchmark_pack_version: ag-pack-v2
+host_environment: antigravity
+selected_model: gemini-3-flash
+variant_id: baseline
+variant_name: baseline
+prompt_version: no-mighty
+results:
+  - task_id: task_ag2_001_registry_two_file_repair
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag2_002_csv_normalizer_constraints
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag2_003_preserve_api_multi_step
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag2_004_do_not_touch_neighbor_file
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag2_005_misleading_refactor_context
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag2_006_scope_trap_with_existing_tests
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag2_007_missing_fixture_honesty
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag2_008_ambiguous_sort_numbers_strings
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+  - task_id: task_ag2_009_cleanup_claim_trap
+    success: null
+    first_pass: null
+    scope_violation: null
+    false_success: null
+    verification_compliance: null
+    notes: ""
+summary:
+  pass_rate: null
+  first_pass_rate: null
+  scope_violation_rate: null
+  false_success_rate: null
+  verification_compliance_rate: null
+  avg_output_length: null
+  decision: keep_testing

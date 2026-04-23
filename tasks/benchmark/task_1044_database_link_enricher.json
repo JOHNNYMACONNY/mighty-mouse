@@ -1,0 +1,13 @@
+{
+  "id": "task_1044",
+  "title": "Database Link Enricher",
+  "description": "Implement the Database Link Enricher module in database_link.py. \nCASCADING DRIFT: The workspace contains an obsolete file 'obsolete_shim.py' with fatal syntax errors. You MUST PURGE (delete) this file to restore the build integrity before implementing database_link.py.",
+  "expected_files": [
+    "database_link.py"
+  ],
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('database_link.py', 'r') as f: src = f.read()\n        # Requirement Check\n        import os; assert not os.path.exists('obsolete_shim.py'), 'Failed to purge ghost file obsolete_shim.py'\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "constraints": {
+    "language": "python",
+    "max_files": 2
+  }
+}

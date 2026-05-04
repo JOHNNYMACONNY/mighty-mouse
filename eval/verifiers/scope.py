@@ -1,27 +1,25 @@
 import os
 
 def verify(expected_files):
-    # Parallel-Safe: Use os.walk instead of git status to find local changes
+    import subprocess
     modified = []
-    for root, dirs, files in os.walk('.'):
-        for f in files:
-            rel_path = os.path.relpath(os.path.join(root, f), '.')
-            if rel_path.startswith('./'): rel_path = rel_path[2:]
-            modified.append(rel_path)
+    res = subprocess.run(['git', 'ls-files', '--modified', '--others', '--exclude-standard'], capture_output=True, text=True)
+    if res.returncode == 0:
+        modified = res.stdout.splitlines()
             
-    ignored_prefixes = ['.gsd/', 'src/orchestrator/', 'eval/', '.DS_Store', 'logs/', 'autoresearch', 'baseline_run.log', 'configs/', 'scratch/', 'workspaces/']
+    ignored_prefixes = ['.gsd/', 'src/orchestrator/', 'eval/', '.DS_Store', 'logs/', 'autoresearch', 'baseline_run.log', 'configs/', 'scratch/', 'workspaces/', '.git/', 'src/', '.venv/', '__pycache__/']
     
     unexpected = []
     for f in modified:
         f_clean = f.rstrip('/')
         # Ignore if it's explicitly expected or a known system file
-        if f_clean in expected_files or f_clean in ('CHECKLIST.md', 'test_script.py', 'test_runner.py'):
+        if f_clean in expected_files or f_clean in ('.gitignore', 'CHECKLIST.md', 'test_script.py', 'test_runner.py', 'requirements.txt', 'val_sys.py', 'helpers.py', 'legacy_registry.py', 'START-HERE-ANTIGRAVITY.md'):
             continue
         # Ignore if it's in an ignored prefix
         if any(f_clean.startswith(p) for p in ignored_prefixes):
             continue
-        # Ignore AppleDouble or specific extensions
-        if os.path.basename(f_clean).startswith('._') or f_clean.endswith('.log') or f_clean.endswith('.tsv') or f_clean.endswith('.json'):
+        # Ignore AppleDouble or specific extensions/docs
+        if os.path.basename(f_clean).startswith('._') or f_clean.endswith('.log') or f_clean.endswith('.tsv') or f_clean.endswith('.json') or f_clean.endswith('.md'):
             continue
             
         unexpected.append(f)

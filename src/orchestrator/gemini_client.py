@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import urllib.error
 import urllib.request
 
@@ -10,6 +11,7 @@ class GeminiClient:
     Supported providers:
       - gemini_api
       - openai_compat
+      - ollama
       - sim (dev-only, requires allow_simulation: true)
     """
 
@@ -62,6 +64,15 @@ class GeminiClient:
             self.model_name = self.model_name or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
             if not self.api_base:
                 raise ValueError("Missing api_base for openai_compat provider.")
+        elif self.provider == "ollama":
+            try:
+                from .ollama_client import OllamaClient
+            except ImportError:
+                if os.path.dirname(__file__) not in sys.path:
+                    sys.path.append(os.path.dirname(__file__))
+                from ollama_client import OllamaClient
+            self._ollama = OllamaClient(self.config)
+            self.model_name = self._ollama.model_name
         elif self.provider != "sim":
             raise ValueError(f"Unsupported provider: {self.provider}")
 
@@ -74,6 +85,11 @@ class GeminiClient:
             self.shims = {}
 
     def generate_content(self, sys_instr, user_prompt):
+        if self.provider == "ollama":
+            res = self._ollama.generate_content(sys_instr, user_prompt)
+            self.last_metadata = self._ollama.last_metadata
+            return res
+
         if self.provider == "gemini_api":
             self.last_metadata = {
                 "provider": self.provider,

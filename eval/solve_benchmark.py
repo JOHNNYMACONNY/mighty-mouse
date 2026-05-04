@@ -56,16 +56,17 @@ def solve_tasks(tier="tier_1"):
             f.write(f"STDOUT:\n{out}\n\nSTDERR:\n{err}")
             
         # 5. Continue verification
-        print("Running verification...")
-        subprocess.run(["python3", "eval/run_benchmark.py"])
+        print(f"Running verification for {task_path}...")
+        subprocess.run(["python3", "eval/run_benchmark.py", task_path])
         
         # Standardize result location
         if os.path.exists("logs/benchmark_results.json"):
             with open("logs/benchmark_results.json", "r") as f:
                 bench_results = json.load(f)
                 current_id = task_data.get('id')
-                for res in bench_results:
-                    if res.get('task_id') == current_id:
+                results_list = bench_results if isinstance(bench_results, list) else bench_results.get("results", [])
+                for res in results_list:
+                    if isinstance(res, dict) and res.get('task_id') == current_id:
                         all_results.append(res)
                         break
 

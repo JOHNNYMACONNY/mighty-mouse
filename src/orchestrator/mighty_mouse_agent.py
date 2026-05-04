@@ -91,7 +91,8 @@ def solve(p_cfg_path, task_input, feedback_str=None, workspace=None):
     schema_error = False
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        print(f"[agent] Attempt {attempt}/{MAX_ATTEMPTS}...")
+        print(f"[agent] Attempt {attempt}/{MAX_ATTEMPTS} starting...")
+        sys.stdout.flush()
         response = client.generate_content(full_sys, current_user_prompt)
         usage_history.append(dict(client.last_metadata))
 

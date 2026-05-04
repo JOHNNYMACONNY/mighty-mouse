@@ -36,7 +36,7 @@ def verify_task(task_config):
     update_checkpoint(task_id)
     return {
         "task_id": task_id, "status": status, "adherence": "PASS" if a_pass else "FAIL",
-        "scope": "PASS" if s_pass else "FAIL", "reason": s_msg if not s_pass else ("Tests failed" if not t_pass else "Workflow failed"),
+        "scope": "PASS" if s_pass else "FAIL", "reason": s_msg if not s_pass else ("Tests failed" if not t_pass else ("Adherence failed" if not a_pass else "All checks passed")),
         "adherence_logs": a_log, "test_logs": t_log, "timestamp": datetime.now().isoformat()
     }
 
@@ -76,7 +76,7 @@ def main():
             else:
                 _save_json_data(history_path, history_list)
             print(json.dumps(res, indent=2))
-            print(f"Task {res['task_id']} {res['status']} verified.")
+            print(f"Task {res['task_id']} {res['status']}: {res['reason']}")
             
             # Phase 7: Robustness & Failure Post-Mortems
             if res['status'] == 'fail':
@@ -87,4 +87,3 @@ def main():
                     pass
 
 if __name__ == "__main__": main()
-

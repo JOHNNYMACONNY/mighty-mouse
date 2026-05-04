@@ -7,6 +7,18 @@
       "task_004_network_link_validator.json",
       "task_005_network_iterator_retry.json"
     ],
+    "tier_overnight": [
+      "task_006_stream_composite_enricher.json",
+      "task_007_cloud_queue_enricher.json",
+      "task_008_database_link_enricher.json",
+      "task_009_legacy_decorator_filter.json",
+      "task_010_async_composite_enricher.json",
+      "task_011_realtime_decorator_ratelimiter.json",
+      "task_012_network_facade_retry.json",
+      "task_013_network_node_retry.json",
+      "task_014_legacy_store_retry.json",
+      "task_015_async_service_circuitbreaker.json"
+    ],
     "tier_2": "all"
   },
   "weights": {

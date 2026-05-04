@@ -9,17 +9,17 @@ from gemini_client import GeminiClient
 from response_parser import ResponseParser
 
 
-def _write_run_metadata(client, workspace, task_input, feedback_str=None, extra=None):
+def _write_run_metadata(client, workspace, task_input, feedback_str=None, usage_history=None, extra=None):
     logs_dir = os.path.join(workspace or os.getcwd(), "logs")
     os.makedirs(logs_dir, exist_ok=True)
-    metadata = dict(client.last_metadata)
-    metadata.update(
-        {
-            "task_input": task_input,
-            "workspace": workspace or os.getcwd(),
-            "feedback_supplied": bool(feedback_str),
-        }
-    )
+    metadata = {
+        "task_input": task_input,
+        "workspace": workspace or os.getcwd(),
+        "feedback_supplied": bool(feedback_str),
+        "usage": client.last_metadata.get("usage"),
+        "latency_seconds": client.last_metadata.get("latency_seconds"),
+        "usage_history": usage_history or [client.last_metadata]
+    }
     if extra:
         metadata.update(extra)
     with open(os.path.join(logs_dir, "last_agent_run.json"), "w") as f:
@@ -64,20 +64,54 @@ def solve(p_cfg_path, task_input, feedback_str=None, workspace=None):
     else:
         task_str = task_input
 
-    user_prompt = f"Implement the following task:\n{task_str}\n"
+    FORMAT_REMINDER = (
+        "\n⚠️ MANDATORY OUTPUT FORMAT ⚠️\n"
+        "You MUST output every file you create or modify using this exact fenced code block format:\n"
+        "```python:path/to/file.py\n"
+        "# your code here\n"
+        "```\n"
+        "Replace `python` with the correct language (e.g. javascript, yaml, json, bash, text).\n"
+        "The path after the colon MUST be a relative path to the file in the workspace.\n"
+        "Responses without at least one such fenced block will be REJECTED.\n\n"
+    )
+
+    user_prompt = f"{FORMAT_REMINDER}Implement the following task:\n{task_str}\n"
     if feedback_str:
         user_prompt += f"\n\nPREVIOUS ATTEMPT FAILED. FEEDBACK:\n{feedback_str}\n"
 
     client = GeminiClient(config=p_cfg)
-    response = client.generate_content(full_sys, user_prompt)
     allowed_delete_paths = []
     if isinstance(task_data, dict):
         allowed_delete_paths = task_data.get("deletable_files", [])
-    output_paths = ResponseParser.parse_and_write(
-        response,
-        workspace_root=workspace or os.getcwd(),
-        allowed_delete_paths=allowed_delete_paths,
-    )
+
+    MAX_ATTEMPTS = 2
+    usage_history = []
+    current_user_prompt = user_prompt
+    output_paths = []
+    schema_error = False
+
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        print(f"[agent] Attempt {attempt}/{MAX_ATTEMPTS}...")
+        response = client.generate_content(full_sys, current_user_prompt)
+        usage_history.append(dict(client.last_metadata))
+
+        output_paths = ResponseParser.parse_and_write(
+            response,
+            workspace_root=workspace or os.getcwd(),
+            allowed_delete_paths=allowed_delete_paths,
+        )
+
+        schema_error = False
+        if not output_paths:
+            schema_error = True
+            if attempt < MAX_ATTEMPTS:
+                print("[agent] SCHEMA ERROR: No file blocks found. Retrying with explicit schema correction...")
+                current_user_prompt += "\n\nCRITICAL ERROR: No code blocks were found in your previous response. You MUST use the correct XML/Markdown format with file paths (e.g., ```python:path/to/file.py)."
+                continue
+            else:
+                print("[agent] CRITICAL: Schema error persists after retry.")
+        break
+
     workspace_root = workspace or os.getcwd()
     deleted_files = [
         path for path in output_paths
@@ -89,11 +123,14 @@ def solve(p_cfg_path, task_input, feedback_str=None, workspace=None):
         workspace,
         task_input,
         feedback_str,
+        usage_history=usage_history,
         extra={
             "task_id": task_data.get("id") if isinstance(task_data, dict) else None,
             "output_files": output_paths,
             "written_files": written_files,
             "deleted_files": deleted_files,
+            "schema_error": schema_error,
+            "attempts": len(usage_history),
         },
     )
 

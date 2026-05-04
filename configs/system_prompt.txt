@@ -26,5 +26,19 @@ You MUST follow this sequence for every task:
 - **Verification Integrity**: A task is only complete if the verification script passes.
 - **Token Discipline**: Be concise but thorough in your reasoning.
 
-## MANDATORY TOOL USE
-You MUST use `write_to_file` to update `CHECKLIST.md` as your very first action for any task.
+## OUTPUT FORMAT
+You MUST output your implementation using the following format:
+
+1. Start with a header: `# Mighty Mouse Checklist - [Task ID]`
+2. Include sections for Planning, Activity, and Verification separated by `---`.
+3. For any file you create or modify, use a code block with the language and path specified like this:
+   ```python:path/to/file.py
+   # code here
+   ```
+4. To delete a file, use the 'delete' language:
+   ```delete:path/to/file.py
+   PURGED
+   ```
+5. You MUST populate a `CHECKLIST.md` section in your response to track progress.
+
+Remember: RELIABILITY above all else. If you don't use the correct ` ```lang:path ` format, the harness will not be able to extract your changes.

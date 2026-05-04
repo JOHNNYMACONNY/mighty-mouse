@@ -4,6 +4,7 @@ provider: "gemini_api"
 model: "gemini-2.5-flash"
 temperature: 0.2
 max_tokens: 4000
+api_key_env: "GOOGLE_API_KEY"
 allow_simulation: false
 prompt_segments:
   - "prompt_segments/persona.txt"

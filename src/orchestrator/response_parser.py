@@ -35,7 +35,7 @@ class ResponseParser:
                 f.write("\n")
             print("[parser] Wrote CHECKLIST.md")
 
-        file_blocks = re.finditer(r'```(?P<lang>\w+)?(?::(?P<path>[^\n]+))?\n(?P<content>.*?)\n```', raw_text, re.DOTALL)
+        file_blocks = re.finditer(r'```(?P<lang>\w+)?(?::(?P<path>[^\n\s]+))?.*?\n(?P<content>.*?)\n```', raw_text, re.DOTALL)
 
         extracted_files = []
         for block in file_blocks:
@@ -82,7 +82,10 @@ class ResponseParser:
             extracted_files.append(path)
 
         if not extracted_files:
-            print("[parser] WARNING: No code blocks with file paths identified.")
+            print(f"[parser] !!!!!!!!! WARNING !!!!!!!!!")
+            print(f"[parser] No code blocks with file paths identified in response.")
+            print(f"[parser] Response length: {len(raw_text)} chars.")
+            print(f"[parser] !!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
         return extracted_files
 

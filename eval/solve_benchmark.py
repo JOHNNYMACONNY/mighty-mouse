@@ -3,6 +3,7 @@ import sys
 import json
 import subprocess
 import shutil
+from datetime import datetime
 
 def run_command(cmd, cwd="."):
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd)
@@ -69,12 +70,31 @@ def solve_tasks(tier="tier_1"):
                         break
 
     # Final consolidate results
+    success_count = len([r for r in all_results if r["status"] == "success"])
+    final_payload = {
+        "summary": {
+            "success_rate": f"{success_count}/{len(all_results)}",
+            "timestamp": datetime.now().isoformat(),
+            "mode": "sequential"
+        },
+        "results": all_results
+    }
     final_output = os.path.join(results_dir, "benchmark_results.json")
     with open(final_output, "w") as f:
-        json.dump(all_results, f, indent=2)
+        json.dump(final_payload, f, indent=2)
         
     print(f"Benchmark iteration complete. Results saved to {final_output}")
 
 if __name__ == "__main__":
-    tier = sys.argv[1] if len(sys.argv) > 1 else "tier_1"
-    solve_tasks(tier)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--tier", default="tier_1")
+    parser.add_argument("--parallel", action="store_true")
+    args = parser.parse_args()
+
+    if args.parallel:
+        print(f"[*] Switching to Parallel Execution Mode (Tier: {args.tier})...")
+        import run_parallel
+        run_parallel.main(args.tier)
+    else:
+        solve_tasks(args.tier)

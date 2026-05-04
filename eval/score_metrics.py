@@ -11,7 +11,10 @@ def main():
         return
 
     with open(results_path, 'r') as f:
-        res = json.load(f)
+        data = json.load(f)
+    
+    # Schema Reconciliation: Handle both legacy list and new dict with summary
+    res = data["results"] if isinstance(data, dict) and "results" in data else data
 
     if args.tier:
         # Tier logic: 100-tasks-per-tier

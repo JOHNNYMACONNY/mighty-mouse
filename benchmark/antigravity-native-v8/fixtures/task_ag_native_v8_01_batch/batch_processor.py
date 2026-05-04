@@ -1,11 +1,4 @@
 class BatchProcessor:
-    """
-    Collects items. Flushes to storage when:
-    - count >= max_batch_size, OR
-    - tick() is called and items have been waiting > max_ticks ticks
-
-    flush() sends all pending items to storage and resets state.
-    """
     def __init__(self, storage, max_batch_size=3, max_ticks=2):
         self.storage = storage
         self.max_batch_size = max_batch_size
@@ -16,7 +9,6 @@ class BatchProcessor:
     def add(self, item):
         self._buffer.append(item)
         if len(self._buffer) == 1:
-            # Reset tick counter when first item arrives
             self._ticks_since_first_item = 0
         if len(self._buffer) >= self.max_batch_size:
             self._flush()

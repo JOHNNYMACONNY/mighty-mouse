@@ -10,9 +10,10 @@ def analyze():
         return
 
     with open(results_path, 'r') as f:
-        results = json.load(f)
+        data = json.load(f)
 
-    failures = [r for r in results if r['status'] == 'fail']
+    results_list = data.get('results', [])
+    failures = [r for r in results_list if r.get('status') == 'fail']
     if not failures:
         return
 

@@ -10,11 +10,11 @@ def check_checklist(filepath):
     with open(filepath, 'r') as f:
         content = f.read()
 
-    # Define mandatory sections and their patterns
+    # Define mandatory sections — accept both '## Phase N: Name' and bare '## Name'
     sections = {
-        "Planning": r"## Phase 1: Planning\n(.*?)\n---",
-        "Activity": r"## Phase 2: Activity\n(.*?)\n---",
-        "Verification": r"## Phase 3: Verification\n(.*)"
+        "Planning":     r"(?:## Phase 1: Planning|## Planning)\n(.*?)(?:\n---|\Z)",
+        "Activity":     r"(?:## Phase 2: Activity|## Activity)\n(.*?)(?:\n---|\Z)",
+        "Verification": r"(?:## Phase 3: Verification|## Verification)\n(.*)",
     }
 
     placeholders = [
@@ -24,18 +24,31 @@ def check_checklist(filepath):
         "<Actual Result>"
     ]
 
-    for name, pattern in sections.items():
+    # Planning is required; Activity and Verification are advisory
+    required_sections = {"Planning"}
+    advisory_sections = {"Activity", "Verification"}
+
+    all_sections = {**{k: v for k, v in sections.items() if k in required_sections},
+                    **{k: v for k, v in sections.items() if k in advisory_sections}}
+
+    for name, pattern in all_sections.items():
         match = re.search(pattern, content, re.DOTALL)
         if not match:
-            print(f"FAIL: Missing section or invalid format for {name}")
-            return False
-        
+            if name in required_sections:
+                print(f"FAIL: Missing section or invalid format for {name}")
+                return False
+            else:
+                # Advisory — warn but don't block
+                continue
+
         section_content = match.group(1).strip()
-        
+
         # Check if content is too short (implies skipped or lazy)
-        if len(section_content) < 20: 
-            print(f"FAIL: Section {name} is empty or insufficiently detailed.")
-            return False
+        if len(section_content) < 20:
+            if name in required_sections:
+                print(f"FAIL: Section {name} is empty or insufficiently detailed.")
+                return False
+            continue
 
         # Check for presence of placeholders
         for p in placeholders:

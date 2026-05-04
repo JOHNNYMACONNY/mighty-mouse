@@ -80,13 +80,51 @@ class GeminiClient:
                 "model": self.model_name,
                 "mode": "live",
             }
-            response = self.model.generate_content(
-                f"SYSTEM: {sys_instr}\n\nUSER: {user_prompt}",
-                generation_config=self._genai.types.GenerationConfig(
-                    temperature=self.temperature,
-                    max_output_tokens=self.max_tokens,
-                ),
-            )
+            import time
+            start_time = time.time()
+            
+            response = None
+            last_err = None
+            for attempt in range(3):
+                try:
+                    response = self.model.generate_content(
+                        f"SYSTEM: {sys_instr}\n\nUSER: {user_prompt}",
+                        generation_config=self._genai.types.GenerationConfig(
+                            temperature=self.temperature,
+                            max_output_tokens=self.max_tokens,
+                        ),
+                    )
+                    break
+                except Exception as e:
+                    last_err = e
+                    if "429" in str(e) or "ResourceExhausted" in str(e):
+                        wait = 30 * (attempt + 1)
+                        print(f"[client] Quota exceeded (429). Retrying in {wait}s... (Attempt {attempt+1}/3)")
+                        time.sleep(wait)
+                        continue
+                    raise
+            
+            if response is None:
+                raise last_err
+
+            duration = time.time() - start_time
+            
+            usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            try:
+                # Extract usage from response
+                if hasattr(response, "usage_metadata"):
+                    usage = {
+                        "prompt_tokens": response.usage_metadata.prompt_token_count,
+                        "completion_tokens": response.usage_metadata.candidates_token_count,
+                        "total_tokens": response.usage_metadata.total_token_count,
+                    }
+            except Exception as e:
+                print(f"[client] Warning: Failed to extract usage metadata: {e}")
+
+            self.last_metadata.update({
+                "usage": usage,
+                "latency_seconds": round(duration, 3)
+            })
             return response.text
 
         if self.provider == "openai_compat":
@@ -102,6 +140,8 @@ class GeminiClient:
             "provider": self.provider,
             "model": self.model_name or "simulated-model",
             "mode": "simulation",
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "latency_seconds": 0.0
         }
         return self._generate_simulated_content(sys_instr, user_prompt)
 
@@ -126,6 +166,8 @@ class GeminiClient:
             },
             method="POST",
         )
+        import time
+        start_time = time.time()
         try:
             with urllib.request.urlopen(req, timeout=90) as resp:
                 body = json.loads(resp.read().decode("utf-8"))
@@ -134,9 +176,20 @@ class GeminiClient:
             raise RuntimeError(f"openai_compat request failed: {e.code} {detail}") from e
         except urllib.error.URLError as e:
             raise RuntimeError(f"openai_compat request failed: {e}") from e
+        duration = time.time() - start_time
 
         try:
-            return body["choices"][0]["message"]["content"]
+            content = body["choices"][0]["message"]["content"]
+            usage = body.get("usage", {})
+            self.last_metadata.update({
+                "usage": {
+                    "prompt_tokens": usage.get("prompt_tokens") or 0,
+                    "completion_tokens": usage.get("completion_tokens") or 0,
+                    "total_tokens": usage.get("total_tokens") or 0,
+                },
+                "latency_seconds": round(duration, 3)
+            })
+            return content
         except Exception as e:
             raise RuntimeError(f"Unexpected openai_compat response: {body}") from e
 

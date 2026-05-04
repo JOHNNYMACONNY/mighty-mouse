@@ -15,7 +15,7 @@ def verify(expected_files):
     for f in modified:
         f_clean = f.rstrip('/')
         # Ignore if it's explicitly expected or a known system file
-        if f_clean in expected_files or f_clean == 'CHECKLIST.md' or f_clean == 'test_runner.py':
+        if f_clean in expected_files or f_clean in ('CHECKLIST.md', 'test_script.py', 'test_runner.py'):
             continue
         # Ignore if it's in an ignored prefix
         if any(f_clean.startswith(p) for p in ignored_prefixes):

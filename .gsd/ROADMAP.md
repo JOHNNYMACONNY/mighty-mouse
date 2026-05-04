@@ -17,3 +17,95 @@
 ### Phase 15: Extended Optimization Run [x]
 - [x] Task: Execute the expanded autoresearch loop, specifically targeting Gemini 3 Flash.
 - [x] UAT: The loop produced a FROZEN IDE-native prompt (`mighty-antigravity-native.md`) and 3 tiers of challenging benchmark packs (v1-test, v2-refactor, v3-statemachine).
+
+## Milestone 7: Flashpoint Hardening & Reliability [x]
+
+**Goal**: Stress-test the Flashpoint (XML-optimized) variant to ensure its "frozen" state is truly robust across multiple autonomous re-executions.
+
+### Phase 16: Flashpoint Reliability Stress Test [x]
+- [x] Task: Reset benchmark fixtures for Packs 13, 14, and 15 to their initial buggy states. Execute the Flashpoint harness against these packs using the `/autoresearch:flashpoint` workflow.
+- [x] UAT: All 3 packs (v13, v14, v15) achieve a 100% pass rate in a single autonomous run without further prompt mutation.
+
+### Phase 17: Full Regression Coverage & Milestone Archiving [x]
+- [x] Task: Complete the restoration of all remaining V14 and V15 benchmark fixtures. Run a final, unattended regression pass across the entire Milestone 7 suite (V13-V15).
+- [x] UAT: 100% pass rate across the full 15-task suite. Generate the final V7 Milestone Audit and archive.
+
+## Milestone 8: The Unified Harness & Skill Packaging [x]
+
+**Goal**: Consolidate the "Flashpoint" (XML) and "Native" variants into a single, high-performance Unified Harness and package it as a portable Antigravity Skill. **Strictly Native execution; no external APIs.**
+
+### Phase 18: Harness Harmonization [x]
+- [x] Task: Merge the rigid XML structural constraints of Flashpoint with the advanced reasoning strategies (reflection, state tracking) of the Native prompt to create the "Unified Mighty Mouse" harness.
+- [x] UAT: The Unified harness clears the entire 15-task regression suite (V13-V15) with 100% success using ONLY native IDE subagents.
+
+### Phase 19: Adversarial Drift Stress Test (Tier 16) [x]
+- [x] Task: Create the most difficult benchmark pack yet (Tier 16 - Multi-turn state drift) and verify the Unified harness can solve it natively. This tests the "Unified" reasoning under stochastic pressure without any external APIs.
+- [x] UAT: 100% success on the Tier 16 pack using strictly native execution.
+
+### Phase 20: Skill Packaging & Distribution [x]
+- [x] Task: Formalize Mighty Mouse as a standard `.agents/skills/mighty-mouse/` directory. Create a `SKILL.md` and associated verification artifacts.
+- [x] UAT: A clean agent can resolve a V14-level task using the Mighty Mouse skill natively.
+## Milestone 9: Post-Mighty Evolution & Scale [x]
+
+**Goal**: Extend the Unified Harness reliability beyond the Milestone 8 baseline by conquering the highest-order adversarial tiers (17-20).
+
+### Phase 21: Adversarial Security & Integrity (Tier 17) [x]
+- [x] Task: Expand the suite to Tier 17, focusing on permission escalation, state poisoning, and unsafe deserialization.
+- [x] UAT: 100% pass rate on Tier 17 using the Unified Harness.
+
+### Phase 22: Systemic Cascades (Tier 18) [x]
+- [x] Task: Expand the suite to Tier 18, focusing on cascading type changes and multi-layer configuration propagation.
+- [x] UAT: 100% pass rate on Tier 18.
+
+### Phase 23: Transactional Integrity (Tier 19) [x]
+- [x] Task: Expand the suite to Tier 19, focusing on distributed state sync and atomic rollback mechanisms.
+- [x] UAT: 100% pass rate on Tier 19.
+
+### Phase 24: The Final Frontier (Tier 20) [x]
+- [x] Task: Finalize the suite with Tier 20, focusing on resilient retry-fallback strategies and runtime monkey-patching of protected dependencies.
+- [x] UAT: 100% pass rate on Tier 20. 
+- [x] Milestone Audit: Complete a full regression pass across Tiers 18-20.
+## Milestone 10: Advanced Architectural Reliability (Tiers 21-25) [x]
+
+**Goal**: Push the Unified Harness to the absolute limit by resolving complex architectural patterns, metaprogramming collisions, and runtime security audits.
+
+### Phase 25: Advanced Patterns (Tier 21) [x]
+- [x] Task: Expand the suite to Tier 21, focusing on circular dependency resolution and global state context management.
+- [x] UAT: 100% pass rate on Tier 21 using the Unified Harness.
+
+### Phase 26: Metaprogramming & Scoping (Tier 22) [x]
+- [x] Task: Expand the suite to Tier 22, focusing on dynamic getattr fallbacks and instance-level decorator scoping.
+- [x] UAT: 100% pass rate on Tier 22.
+
+### Phase 27: Concurrency & IPC (Tier 23) [x]
+- [x] Task: Expand the suite to Tier 23, focusing on safe file locking with retries and synchronized Pipe relays.
+- [x] UAT: 100% pass rate on Tier 23.
+
+### Phase 28: Security & Introspection (Tiers 24-25) [x]
+- [x] Task: Finalize the research cycle with Tiers 24 and 25, focusing on restricted execution sandboxes, metaclass validation, and bytecode-level purity auditing.
+- [x] UAT: 100% pass rate on Tiers 24-25.
+- [x] Final Project Audit: Complete a full regression pass across Tiers 21-25 and freeze the repository.
+
+## Milestone 11: Performance & Telemetry Hardening [x]
+
+**Goal**: Promote parallel execution as the primary path, consolidate comprehensive telemetry, and implement schema drift detection.
+
+### Phase 29: Performance & Telemetry Hardening [x]
+- [x] Task: Harden `gemini_client.py` telemetry, refactor `solve_benchmark.py` delegation, and implement Schema Drift detection in `ResponseParser`.
+- [x] UAT: `python3 eval/solve_benchmark.py --parallel` produces a `benchmark_results.json` with accurate token counts, latency, and explicit schema error logging.
+
+## Milestone 12: Self-Healing & Agentic Autonomy [x]
+
+**Goal**: Implement a "Self-Correction" loop where the agent detects its own errors and automatically iterates without user intervention.
+
+### Phase 30: Self-Healing Implementation [x]
+- [x] Task: Implement "Schema-Triggered Retries" in `mighty_mouse_agent.py`. If a `schema_error` is detected, the agent should automatically re-prompt itself with a "Correction Fragment".
+- [x] UAT: The agent successfully recovers from an initial malformed response and produces valid code blocks in a secondary autonomous pass.
+
+## Milestone 13: Deterministic Sandbox Execution [x]
+
+**Goal**: Integrate a restricted execution environment (sandbox) into the verification loop to prevent side effects during autonomous benchmarking.
+
+### Phase 31: Sandbox Integration [x]
+- [x] Task: Implement a containerized or restricted-shell environment for the `run_benchmark.py` step to ensure deterministic and safe execution of benchmark test scripts.
+- [x] UAT: The benchmark suite runs successfully within a restricted sandbox, correctly isolating file system and network access while returning accurate pass/fail results.

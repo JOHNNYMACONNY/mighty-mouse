@@ -47,10 +47,35 @@ def main():
             task_config = json.load(f)
             res = verify_task(task_config)
             history_path = "logs/benchmark_results.json"
-            history = _get_json_data(history_path, [])
-            history = [h for h in history if h['task_id'] != res['task_id']]
-            history.append(res)
-            _save_json_data(history_path, history)
+            data = _get_json_data(history_path, {"results": []})
+            
+            # Extract results list
+            if isinstance(data, list):
+                history_list = data
+            else:
+                history_list = data.get("results", [])
+
+            # Update history: Preserve telemetry keys if they exist
+            existing_record = next((h for h in history_list if h['task_id'] == res['task_id']), {})
+            history_list = [h for h in history_list if h['task_id'] != res['task_id']]
+            
+            # Merge: 'res' (new verification) takes precedence, but 'existing_record' preserves telemetry
+            merged_res = {**existing_record, **res}
+            history_list.append(merged_res)
+            
+            # Save back in dict format
+            if isinstance(data, dict):
+                data["results"] = history_list
+                # Update summary if present
+                if "summary" in data:
+                    success_count = len([r for r in history_list if r["status"] == "success"])
+                    data["summary"]["success_rate"] = f"{success_count}/{len(history_list)}"
+                    data["summary"]["timestamp"] = datetime.now().isoformat()
+                    data["summary"]["updated_by"] = "run_benchmark"
+                _save_json_data(history_path, data)
+            else:
+                _save_json_data(history_path, history_list)
+            print(json.dumps(res, indent=2))
             print(f"Task {res['task_id']} {res['status']} verified.")
             
             # Phase 7: Robustness & Failure Post-Mortems

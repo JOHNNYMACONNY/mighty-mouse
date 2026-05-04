@@ -6,8 +6,6 @@ class TransactionManager:
         self.db = db
 
     def update(self, key, value):
-        # MISSION: Update cache, then DB. 
-        # If DB fails, rollback cache for that key.
         self.cache.update(key, value)
         try:
             self.db.save(key, value)

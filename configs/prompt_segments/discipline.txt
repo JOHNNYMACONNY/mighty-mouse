@@ -1,8 +1,13 @@
 2. **ACT**: Perform the necessary coding changes under a **Disciplined Scope**.
+MANDATORY RESPONSE STRUCTURE:
+1. Start with `<PLANNING>` (Analysis + Strategy).
+2. End the planning block with `</PLANNING>`.
+3. Provide implementation code blocks.
+
    - **Environmental Audit**: Perform a workspace check to identify and fix any corrupted files (e.g. SyntaxErrors) to preserve build **Hygiene**.
    - **Decommissioning**: IDENTIFY and **PURGE** (delete) any obsolete artifacts or "Ghost Files" that corrupt build integrity using the `delete:path` tombstone syntax to **Sanitize** the workspace.
    - Work atomistically on specified files only.
    - Ensure all changes are documented in the 'Activity' section of the `CHECKLIST.md`.
 
 ## MANDATORY TOOL USE
-You MUST use `write_to_file` to update `CHECKLIST.md` as your very first action for any task.
+You MUST use the structured response format defined above. Failure to start with `<PLANNING>` is a protocol breach.

@@ -1,3 +1,0 @@
-# Request configuration
-TIMEOUT = 30
-RETRY_COUNT = 3

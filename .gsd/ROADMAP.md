@@ -1,6 +1,7 @@
 # Roadmap: Project Mighty Mouse
 
 - [v1.0 Milestone Archive](milestones/v1.0-ROADMAP.md) - Established baseline, autoresearch optimization, multi-task scaling, and native IDE integration.
+- [v13 Milestone Archive](milestones/v13-ROADMAP.md) - Deterministic Sandbox Execution.
 
 ## Milestone 6: Autonomous Agentic Scaling [x]
 
@@ -102,10 +103,4 @@
 - [x] Task: Implement "Schema-Triggered Retries" in `mighty_mouse_agent.py`. If a `schema_error` is detected, the agent should automatically re-prompt itself with a "Correction Fragment".
 - [x] UAT: The agent successfully recovers from an initial malformed response and produces valid code blocks in a secondary autonomous pass.
 
-## Milestone 13: Deterministic Sandbox Execution [x]
 
-**Goal**: Integrate a restricted execution environment (sandbox) into the verification loop to prevent side effects during autonomous benchmarking.
-
-### Phase 31: Sandbox Integration [x]
-- [x] Task: Implement a containerized or restricted-shell environment for the `run_benchmark.py` step to ensure deterministic and safe execution of benchmark test scripts.
-- [x] UAT: The benchmark suite runs successfully within a restricted sandbox, correctly isolating file system and network access while returning accurate pass/fail results.

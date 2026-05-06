@@ -10,9 +10,9 @@ def check_checklist(filepath):
     with open(filepath, 'r') as f:
         content = f.read()
 
-    # Define mandatory sections — accept both '## Phase N: Name' and bare '## Name'
+    # Define mandatory sections — accept both '## Phase N: Name', bare '## Name', and XML <PLANNING>
     sections = {
-        "Planning":     r"(?:## Phase 1: Planning|## Planning)\n(.*?)(?:\n---|\Z)",
+        "Planning":     r"(?:## Phase 1: Planning|## Planning|<PLANNING>)\n?(.*?)(?:\n---|</PLANNING>|\Z)",
         "Activity":     r"(?:## Phase 2: Activity|## Activity)\n(.*?)(?:\n---|\Z)",
         "Verification": r"(?:## Phase 3: Verification|## Verification)\n(.*)",
     }

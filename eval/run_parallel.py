@@ -11,7 +11,7 @@ import yaml
 
 TASK_DIR = "tasks/benchmark"
 LOG_PATH = "logs/benchmark_results.json"
-MAX_WORKERS = 5
+MAX_WORKERS = 1
 CONFIG = "configs/mighty_mouse_v1.yaml"
 
 
@@ -65,6 +65,10 @@ def run_task(task_path):
 
             started = time.time()
             agent_res = subprocess.run(cmd, capture_output=True, text=True, cwd=workspace, env=env, timeout=300)
+            if agent_res.returncode != 0:
+                print(f"[!] Agent crashed for {task_id} (Round {r}):")
+                print(agent_res.stdout)
+                print(agent_res.stderr)
 
             run_metadata = {}
             metadata_path = os.path.join(workspace, "logs", "last_agent_run.json")

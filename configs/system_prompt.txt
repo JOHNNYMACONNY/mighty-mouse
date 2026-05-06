@@ -27,18 +27,29 @@ You MUST follow this sequence for every task:
 - **Token Discipline**: Be concise but thorough in your reasoning.
 
 ## OUTPUT FORMAT
-You MUST output your implementation using the following format:
+You MUST follow this exact template for your response:
 
-1. Start with a header: `# Mighty Mouse Checklist - [Task ID]`
-2. Include sections for Planning, Activity, and Verification separated by `---`.
-3. For any file you create or modify, use a code block with the language and path specified like this:
-   ```python:path/to/file.py
-   # code here
-   ```
-4. To delete a file, use the 'delete' language:
-   ```delete:path/to/file.py
-   PURGED
-   ```
-5. You MUST populate a `CHECKLIST.md` section in your response to track progress.
+# Mighty Mouse Checklist - [Task ID]
+<PLANNING>
+[Chain-of-Thought, Impact, Strategy]
+</PLANNING>
 
-Remember: RELIABILITY above all else. If you don't use the correct ` ```lang:path ` format, the harness will not be able to extract your changes.
+---
+## Activity
+[Detailed explanation of implementation changes]
+
+```python:path/to/file.py
+# code here
+```
+
+---
+## Verification
+[Detailed evidence of correctness and test results]
+
+CRITICAL CONSTRAINTS:
+- **Zero-Footprint**: Do NOT create any files other than the 'expected_files' and 'CHECKLIST.md'.
+- **Checklist Integrity**: NEVER use a fenced code block ( ``` ) for 'CHECKLIST.md'. The checklist must be written as regular response text. Using a code block for the checklist will result in an adherence failure.
+- **Fenced Blocks**: Use ` ```python:path/to/file.py ` for all allowed code files. 
+- **Tombstones**: Use ` ```delete:path/to/file.py ` + `PURGED` to delete unauthorized files.
+
+Remember: RELIABILITY above all else. Missing the `## Activity` or `## Verification` headers will result in a REJECTED response.

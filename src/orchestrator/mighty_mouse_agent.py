@@ -2,11 +2,35 @@ import argparse
 import json
 import os
 import sys
+import time
 
 import yaml
 
 from gemini_client import GeminiClient
 from response_parser import ResponseParser
+
+
+def _hygiene_audit(workspace_root):
+    """Purge OS junk and adversarial untracked files from the workspace root."""
+    # 1. Purge AppleDouble/DS_Store junk
+    for root, dirs, files in os.walk(workspace_root):
+        for f in files:
+            if f.startswith("._") or f == ".DS_Store":
+                try:
+                    os.remove(os.path.join(root, f))
+                except OSError:
+                    pass
+    
+    # 2. Detect untracked .py files in root (Potential Ghost Files)
+    # We only care about the root for this specific check to avoid false positives in src/
+    root_files = [f for f in os.listdir(workspace_root) if os.path.isfile(os.path.join(workspace_root, f))]
+    ghosts = [f for f in root_files if f.endswith(".py") and f not in ["legacy_registry.py", "helpers.py", "val_sys.py"]]
+    for g in ghosts:
+        try:
+            os.remove(os.path.join(workspace_root, g))
+            print(f"[hygiene] Purged ghost file: {g}")
+        except OSError:
+            pass
 
 
 def _write_run_metadata(client, workspace, task_input, feedback_str=None, usage_history=None, extra=None):
@@ -32,6 +56,8 @@ def solve(p_cfg_path, task_input, feedback_str=None, workspace=None):
         if not os.path.exists(workspace):
             os.makedirs(workspace, exist_ok=True)
         os.chdir(workspace)
+
+    _hygiene_audit(workspace or os.getcwd())
 
     with open(p_cfg_path, 'r') as f:
         p_cfg = yaml.safe_load(f)
@@ -93,8 +119,27 @@ def solve(p_cfg_path, task_input, feedback_str=None, workspace=None):
     for attempt in range(1, MAX_ATTEMPTS + 1):
         print(f"[agent] Attempt {attempt}/{MAX_ATTEMPTS} starting...")
         sys.stdout.flush()
-        response = client.generate_content(full_sys, current_user_prompt)
-        usage_history.append(dict(client.last_metadata))
+        try:
+            response = client.generate_content(full_sys, current_user_prompt)
+            usage_history.append(dict(client.last_metadata))
+
+            # DEBUG: Save raw response to a permanent global log directory
+            global_logs_dir = "/Volumes/YBF_Storage/Projects/mighty_mouse/logs/raw_responses"
+            os.makedirs(global_logs_dir, exist_ok=True)
+            task_id_str = task_data.get('id', 'unknown') if isinstance(task_data, dict) else 'unknown'
+            ts = int(time.time())
+            with open(os.path.join(global_logs_dir, f"raw_{task_id_str}_attempt_{attempt}_{ts}.txt"), "w") as f:
+                f.write(response)
+
+        except Exception as e:
+            print(f"[agent] ERROR during generation: {e}")
+            if attempt < MAX_ATTEMPTS:
+                print("[agent] Retrying...")
+                time.sleep(2)
+                continue
+            else:
+                print("[agent] CRITICAL: Maximum attempts reached. Failing task.")
+                break
 
         output_paths = ResponseParser.parse_and_write(
             response,

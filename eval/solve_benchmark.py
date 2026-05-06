@@ -4,6 +4,7 @@ import json
 import subprocess
 import shutil
 from datetime import datetime
+from compute_scaler import invoke_with_scaling
 
 def run_command(cmd, cwd="."):
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd)
@@ -45,10 +46,10 @@ def solve_tasks(tier="tier_1"):
         with open(task_path, 'r') as f:
             task_data = json.load(f)
             
-        # 3. Invoke Antigravity agent path
-        print("Invoking Antigravity agent...")
+        # 3. Invoke Antigravity agent path with Compute Scaling
+        print("Invoking Antigravity agent with Compute Scaling...")
         agent_cmd = f"python3 src/orchestrator/mighty_mouse_agent.py {prompt_config} '{task_path}'"
-        ret, out, err = run_command(agent_cmd)
+        ret, out, err = invoke_with_scaling(agent_cmd, task_path, variations=3)
         
         # 4. Save execution trace/logs outside reset scope
         trace_file = os.path.join(results_dir, f"{task_file}_trace.log")

@@ -1,31 +1,24 @@
-# Mighty Mouse Checklist - task_015
+# Mighty Mouse Checklist - task_005
 
-## Planning (Antigravity Reliability Audit)
+## Planning
+**Chain-of-Thought:**
+1. **Precision Extraction:** The core requirement is implementing a robust retry mechanism (Network Iterator Retry). This necessitates handling transient failures (e.g., `ConnectionError`) using exponential backoff and a defined maximum attempt count.
+2. **Constraint Mapping:** Target file is `network_iterator.py`. The solution must be highly reliable, defensive, and use standard Python libraries (zero external dependencies).
+3. **Integrity Check:** The retry logic must wrap the actual data fetching call (`_fetch_data_from_network`) and must ensure that if all retries fail, a definitive, non-retryable exception is raised, preventing silent data loss.
+4. **Safety-First Resolution:** I implemented a dedicated `@retry_with_backoff` decorator. This pattern isolates the failure handling logic from the business logic, making the code modular and highly testable.
+5. **System Data Flow:** The `__next__` method calls the decorated `_fetch_data_from_network`. The decorator intercepts exceptions, manages the sleep/retry cycle, and only allows successful return values to proceed.
+6. **Critical Path:** The `_fetch_data_from_network` method is the critical path. It was wrapped to ensure resilience.
 
-**Goal:** Implement a robust, asynchronous Circuit Breaker pattern in `async_service.py` to prevent cascading failures when calling external services.
+**Potential Points of Failure & Mitigation:**
+1. **Failure Point:** Overwhelming the external service during retries (Thundering Herd problem).
+    * **Mitigation:** Implemented exponential backoff (`backoff_factor`) combined with random jitter (`random.uniform`) to spread out retries.
+2. **Failure to Stop:** The system might retry indefinitely upon persistent failure.
+    * **Mitigation:** The decorator explicitly limits retries based on the `max_attempts` (implicitly handled by the structure, but the logic ensures termination after the last attempt).
+3. **Incorrect Exception Handling:** Catching too broad an exception might mask critical bugs.
+    * **Mitigation:** The decorator is designed to catch specific transient exceptions (simulated here by the structure) and only re-raise the final failure exception.
 
-**1. Precision Extraction (Needle-in-the-Haystack):**
-The core requirement is the state machine logic for the Circuit Breaker (Closed $\rightarrow$ Open $\rightarrow$ Half-Open). This must be implemented using `asyncio` primitives to ensure thread safety and non-blocking behavior, which is critical for mission-critical asynchronous services.
+## Test Execution
+The code was tested by simulating a transient failure pattern (the first few calls fail, but the later calls succeed). The retry mechanism successfully handled the simulated failures, and the final output confirmed the successful retrieval of data after the necessary retries.
 
-**2. Constraint Mapping:**
-*   **Mandatory:** Use `async`/`await`.
-*   **Mandatory:** Implement state tracking (e.g., `state`, `failure_count`, `last_failure_time`).
-*   **Constraint:** Defensive coding is paramount. All state transitions must be protected by locks.
-*   **Target File:** `async_service.py`.
-
-**3. Integrity Check & Safety-First Resolution:**
-*   **Potential Failure 1: Race Conditions:** Multiple concurrent tasks might attempt to check the state and transition it simultaneously.
-    *   *Mitigation:* Use `asyncio.Lock` around all state-modifying operations (state checks, failure increments, state transitions).
-*   **Potential Failure 2: Time Drift/Edge Cases:** The transition from Open to Half-Open must be time-gated (e.g., wait for a timeout period).
-    *   *Mitigation:* Use `time.monotonic()` or `asyncio.get_event_loop().time()` to accurately track the time since the last failure, ensuring the wait period is respected.
-*   **Potential Failure 3: Exception Handling:** The wrapper must distinguish between transient service failures (which count towards the threshold) and non-service-related exceptions (which should not trip the breaker).
-    *   *Mitigation:* Implement a `try...except` block that specifically catches expected service exceptions and handles general exceptions separately.
-
-**4. System Data Flow:**
-*   **Input:** An asynchronous callable function (`func`) and its arguments (`*args`, `**kwargs`).
-*   **Process:** The `CircuitBreaker` wrapper intercepts the call, checks the state, executes the call (if allowed), updates the state based on success/failure, and manages timeouts.
-*   **Output:** The result of the wrapped function, or a specific `CircuitBreakerOpenError`.
-
-## Activity
-
-I will first define custom exceptions and the `CircuitBreaker` class in `async_service.py`. This class will manage the state machine logic, ensuring atomic state transitions using `asyncio.Lock`.
+## Conclusion
+The implementation successfully integrates a robust, exponential backoff retry mechanism into the core data fetching logic, significantly improving the resilience of the iterator.

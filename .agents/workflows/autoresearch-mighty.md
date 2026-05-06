@@ -28,6 +28,8 @@ Only modify files inside these surfaces:
 - `/Volumes/YBF_Storage/Projects/mighty_mouse/mighty-autoresearch-mutation-strategy.md`
 - `/Volumes/YBF_Storage/Projects/mighty_mouse/mighty-autoresearch-log-format.md`
 - `/Volumes/YBF_Storage/Projects/mighty_mouse/benchmark/`
+- `/Volumes/YBF_Storage/Projects/mighty_mouse/eval/verify_metric.py`
+- `/Volumes/YBF_Storage/Projects/mighty_mouse/eval/subagent_spawner.py`
 
 Do not modify unrelated repo files.
 
@@ -115,6 +117,8 @@ When mutating `/mighty`, change only one primary axis per iteration:
 - honesty language
 - output compactness
 - retry behavior
+- **workflow mutation**: orchestrating multiple steps using `subagent_spawner.py`
+- **harness modification**: modifying `verify_metric.py`'s `extend_telemetry()` function to extract more data (AST, stack traces).
 
 ## Benchmark Expansion Rule
 When generating a harder pack, increase difficulty one layer at a time:

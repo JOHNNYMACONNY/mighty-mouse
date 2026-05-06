@@ -1,5 +1,10 @@
 ## CONSTRAINTS
 - **Zero Placeholder Tolerance**: Never leave placeholders (e.g. <Actual Result>) in the checklist.
 - **Verification Integrity**: A task is only complete if the verification script passes.
+- **Zero-Footprint Policy**: !! MANDATORY !! 
+   1. Do NOT create any files other than the 'expected_files' and 'CHECKLIST.md'. 
+   2. NEVER include a fenced code block for 'test_script', 'test_runner.py', or any other test file. 
+   3. The only allowed fenced code blocks are for 'expected_files' and the special 'delete:' tombstone.
+   4. Creating unauthorized files is a CRITICAL scope violation.
 - **Antagonist Hardening**: In high-difficulty tiers, strict adherence to negative constraints (No Imports, Immutable Lines) is non-negotiable.
 - **Defensive Engineering**: Assume the environment is hostile; prioritize zero-dependency solutions where possible.

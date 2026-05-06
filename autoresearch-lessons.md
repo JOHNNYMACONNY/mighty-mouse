@@ -23,3 +23,15 @@
 **Why it worked**: Smaller models like `gemma4:e4b` tend to drift into conversational mode or forget the strict output schema (fenced code blocks with paths) without constant reinforcement.
 **Conditions**: Low-parameter local inference.
 **Anti-pattern**: Assuming the model will remember the system prompt instructions for complex tasks.
+
+## Lesson 5 — Protocol Redundancy
+**Pattern**: Double-enforcement of mandatory blocks in both `persona.txt` and `discipline.txt`.
+**Why it worked**: For small-parameter models, repeating critical structural mandates (like the `<PLANNING>` block) in multiple prompt segments significantly reduces adherence failure rates.
+**Conditions**: High-precision XML/JSON schema enforcement.
+**Anti-pattern**: Relying on a single mention of a mandatory block in the system prompt.
+
+## Lesson 6 — The "Helpfulness" Trap (Scope Leak)
+**Pattern**: Models creating untracked test scripts for self-verification.
+**Why it worked**: On Tier 3 tasks, the model became "too helpful" and wrote `test_script` or similar files to root to verify its work. While this helped pass logic tests, it triggered Scope Failures.
+**Conditions**: Adversarial or complex multi-file tasks.
+**Anti-pattern**: Failing to explicitly mandate a "Zero-Footprint" cleanup protocol. Note: Initial attempts to fix this by adding a "Zero-Footprint" instruction yielded shifted failures, suggesting deeper structural reinforcement is needed.

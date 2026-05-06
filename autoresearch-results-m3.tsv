@@ -1,3 +1,0 @@
-iteration	commit	metric	delta	status	guard	description
-0	-	350.25	0.0	baseline		initial measurement (M3)
-1	-	338.50	0.0	discard	fail	condensed tool (guard fail: )

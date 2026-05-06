@@ -2,6 +2,7 @@
 
 - [v1.0 Milestone Archive](milestones/v1.0-ROADMAP.md) - Established baseline, autoresearch optimization, multi-task scaling, and native IDE integration.
 - [v13 Milestone Archive](milestones/v13-ROADMAP.md) - Deterministic Sandbox Execution.
+- [v14 Requirements](milestones/v14-REQUIREMENTS.md) - Perpetual Self-Play: Gemma 4 Reliability Research.
 
 ## Milestone 6: Autonomous Agentic Scaling [x]
 
@@ -104,3 +105,25 @@
 - [x] UAT: The agent successfully recovers from an initial malformed response and produces valid code blocks in a secondary autonomous pass.
 
 
+
+## Milestone 14: Perpetual Self-Play — Gemma 4 Reliability Research [ ]
+
+**Goal**: Determine how much coding reliability can be extracted from `gemma4:e4b` through autonomous protocol design, prompt mutation, adversarial verification, and test-time compute — without changing the model.
+
+**Thesis**: Can a small local model become meaningfully more reliable when wrapped in the right autonomous research harness?
+
+**Model**: `gemma4:e4b` via Ollama (local only, no API cost). Multi-model switching deferred.
+
+**See**: [v14-REQUIREMENTS.md](milestones/v14-REQUIREMENTS.md) for full spec.
+
+### Phase 32: Perpetual Autonomous Loop [ ]
+- [ ] Task: Replace `eval/perpetual_harness.sh` with a Python daemon `eval/perpetual_loop.py`. The daemon reads `logs/metric_telemetry.json` to make results-driven escalation decisions (>=90% pass rate -> escalate tier; <50% -> trigger mutation cycle). Implements adaptive patience circuit breaker (3 consecutive failing mutation cycles -> drop one tier). All loop state persists across process restarts. No dependency on the Gemini CLI.
+- [ ] UAT: `python3 eval/perpetual_loop.py` runs for 30 minutes unattended, correctly escalates one tier on >=90% pass, triggers a mutation cycle on sub-50% performance, and writes continuous structured telemetry to `logs/metric_telemetry.json` without crashing or requiring human input.
+
+### Phase 33: Multi-Dimensional Failure Taxonomy & Prompt Mutation Engine [ ]
+- [ ] Task: Expand `analyze_failure.py` to the full 7-category taxonomy: SCOPE, ADHERENCE, LOGIC, VERIFICATION, REGRESSION, EFFICIENCY, PARSER. Implement `eval/mutation_engine.py` that reads failure categories, selects the dominant failure mode, generates a targeted minimal mutation to a single `configs/prompt_segments/` file, records the full hypothesis, runs before/after comparison across all metric dimensions, enforces multi-dimensional promotion criteria (all dimensions must hold), includes replay testing against 2 prior tiers as the anti-overfitting gate, and logs each mutation decision to `logs/mutation_log.jsonl`.
+- [ ] UAT: Starting from a deliberately degraded prompt config, `mutation_engine.py` correctly identifies the dominant failure category, generates a targeted mutation, runs the full comparison, and produces a complete mutation record in `logs/mutation_log.jsonl` with a PROMOTE/REJECT/HOLD decision and rationale. The promoted candidate must pass the 2-tier replay gate.
+
+### Phase 34: Benchmark Reference Integration & Parity Report [ ]
+- [ ] Task: Embed static LiveCodeBench published scores for reference models into `eval/results/frontier_reference.json`. Implement `eval/parity_report.py` that reads the latest `benchmark_results.json`, computes pass rates by tier, and generates `eval/results/frontier_delta.md` showing: (1) local model pass rate by tier as the primary metric, (2) static LiveCodeBench reference scores clearly labeled as ceiling data only, (3) a parity score expressing local model performance as a percentage of the closest reference, and (4) a trend line across prior runs. Report generated automatically at end of each perpetual loop cycle.
+- [ ] UAT: After one full loop cycle, `frontier_delta.md` is produced with accurate per-tier pass rates, static reference scores, a computed parity score, and correct framing (Mighty Mouse benchmark = source of truth; LiveCodeBench = calibration reference). The report is readable and self-contained without requiring the loop to be running.

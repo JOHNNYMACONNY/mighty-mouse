@@ -1,29 +1,30 @@
 # Project State: Mighty Mouse
 
 ## Current High-Level Status
-- **Phase**: Milestone 13: Final Verification [x]
+- **Phase**: Milestone 14: Perpetual Self-Play — Gemma 4 Reliability Research [ ]
 - **System Integrity**: 100% verified across 31 phases (Harness Stabilized).
 
 ## Last Session Summary
-**Harness Stabilization & Final Pass.**
-- **Quota Resilience**: Implemented 429 retry loop in `gemini_client.py` (30/60/90s backoff).
-- **Hardened Runner**: Increased `run_parallel.py` timeout to 300s and enforced clean workspace starts.
-- **Parser Robustness**: Resolved greedy path extraction bug in `ResponseParser`.
-- **Telemetry Parity**: Verified 100% accurate token/latency aggregation in `benchmark_results.json`.
+**Milestone 14 Discussion & Planning.**
+- Defined milestone thesis: "Can `gemma4:e4b` become meaningfully more reliable when wrapped in the right autonomous research harness?"
+- Scoped to `gemma4:e4b` only — multi-model support deferred.
+- Established 7-category failure taxonomy: SCOPE, ADHERENCE, LOGIC, VERIFICATION, REGRESSION, EFFICIENCY, PARSER.
+- Defined multi-dimensional promotion criteria for prompt mutations (all dimensions must hold).
+- LiveCodeBench framed as static reference ceiling only — Mighty Mouse's own benchmark suite is the source of truth.
+- Requirements written to `.gsd/milestones/v14-REQUIREMENTS.md`.
+- Milestone 14 appended to `.gsd/ROADMAP.md` with Phases 32, 33, 34.
 
 ## Project Position
-- **SPEC**: `FINALIZED`
-- **ROADMAP**: Milestone 13 complete.
-- **PLAN**: Final Project Audit and Archiving.
+- **SPEC**: `FINALIZED` (v14)
+- **ROADMAP**: Milestone 14 planned. Ready to execute Phase 32.
+- **PLAN**: None active — begin with `/gsd-plan-phase 32`.
 
 ---
 
-## Milestone 13: Deterministic Sandbox Execution [x]
-- [x] Phase 31: Sandbox Integration
-
-### Phase 29: Performance & Telemetry Hardening [x]
-- [x] Task: Harden `gemini_client.py` telemetry, refactor `solve_benchmark.py` delegation, and implement Schema Drift detection in `ResponseParser`.
-- [x] UAT: `python3 eval/solve_benchmark.py --parallel` produces a `benchmark_results.json` with accurate token counts, latency, and explicit schema error logging.
+## Milestone 14: Perpetual Self-Play — Gemma 4 Reliability Research [ ]
+- [ ] Phase 32: Perpetual Autonomous Loop
+- [ ] Phase 33: Multi-Dimensional Failure Taxonomy & Prompt Mutation Engine
+- [ ] Phase 34: Benchmark Reference Integration & Parity Report
 
 ## Active Blockers
-- **None**. The project is 100% verified and the research cycle is complete.
+- **None**. Ready to plan Phase 32.

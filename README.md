@@ -15,22 +15,28 @@ Mighty Mouse is an evaluation-driven harness that improves the reliability and e
 Clone the repository and install it in editable mode:
 
 ```bash
-git clone https://github.com/yourusername/mighty-mouse.git
+git clone <repository-url>
 cd mighty_mouse
 pip install -e .
 ```
 
 ### Diagnostics
 
-Check if your system and Ollama environment are ready:
+Check base package readiness:
 
 ```bash
 mighty-mouse doctor
 ```
 
+Check Ollama availability before a live run:
+
+```bash
+mighty-mouse doctor --live
+```
+
 ### Running the Demo
 
-You can run the interactive demo in two modes:
+You can run the demo in two modes:
 
 1. **Simulated (Fast)**: Uses cached fixtures to show how the system operates immediately.
    ```bash
@@ -43,22 +49,27 @@ You can run the interactive demo in two modes:
 
 ### Benchmarks
 
-Run the standard Tier 1 benchmark suite:
+Run the five packaged benchmark tasks:
 
 ```bash
-mighty-mouse benchmark --tier tier_1
+mighty-mouse benchmark
 ```
 
+Or run task JSON files from a directory:
 
+```bash
+mighty-mouse benchmark --tasks-dir ./my-tasks
+```
 
 ## Project Architecture
 
 Mighty Mouse is designed to keep experimental scripts clearly separated from the stable harness:
 
 - `src/mighty_mouse/orchestrator/`: The core agent logic and execution loops.
-- `eval/`: Contains evaluation scripts, diagnostics, and test suites.
+- `src/mighty_mouse/services/`: Benchmark and verification services.
+- `src/mighty_mouse/commands/`: CLI command implementations.
+- `src/mighty_mouse/resources/`: Packaged configurations, prompts, and demo tasks.
 - `data/evidence/`: Frozen snapshots of past validation runs proving the efficiency gains of the protocol.
-- `configs/`: YAML definitions for agent behavior overrides.
 
 ## Evidence
 

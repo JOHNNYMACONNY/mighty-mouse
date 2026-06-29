@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 import yaml
@@ -50,12 +51,21 @@ def _assert_live_benchmark_config(cfg):
         )
 
 
-def run_task(task_path, variant="lean", config_path=None, trials=2, cleanup=True, skills=None):
+def run_task(
+    task_path,
+    variant="lean",
+    config_path=None,
+    trials=2,
+    cleanup=True,
+    skills=None,
+    output_dir=None,
+):
     cfg = _load_config(config_path)
     task_id = os.path.basename(task_path).replace(".json", "")
     task_abs = os.path.abspath(task_path)
     root_dir = os.getcwd()
-    workspace = os.path.join(root_dir, f"workspaces/{task_id}")
+    output_root = os.path.abspath(output_dir or tempfile.mkdtemp(prefix="mighty_mouse_"))
+    workspace = os.path.join(output_root, "workspaces", task_id)
 
     config_abs = os.path.abspath(config_path or DEFAULT_CONFIG)
     mighty_mouse_pkg = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -67,6 +77,8 @@ def run_task(task_path, variant="lean", config_path=None, trials=2, cleanup=True
     if os.path.exists(workspace):
         shutil.rmtree(workspace)
     os.makedirs(workspace, exist_ok=True)
+    workspace_task_path = os.path.join(workspace, os.path.basename(task_abs))
+    shutil.copy2(task_abs, workspace_task_path)
 
     success = False
     feedback = "No feedback"
@@ -150,7 +162,7 @@ def run_task(task_path, variant="lean", config_path=None, trials=2, cleanup=True
 
             if not timeout_occurred:
                 ver_res = subprocess.run(
-                    [sys.executable, sandbox_abs, verify_abs, task_abs],
+                    [sys.executable, sandbox_abs, verify_abs, workspace_task_path],
                     capture_output=True,
                     text=True,
                     cwd=workspace,
@@ -288,14 +300,25 @@ def run_task(task_path, variant="lean", config_path=None, trials=2, cleanup=True
 
 
 
-def main(tier=None, variant="lean", config_path=None, tasks_list=None, trials=2, skills=None, max_workers=None):
+def main(
+    tier=None,
+    variant="lean",
+    config_path=None,
+    tasks_list=None,
+    trials=2,
+    skills=None,
+    max_workers=None,
+    output_dir=None,
+):
     cfg = _load_config(config_path)
     _assert_live_benchmark_config(cfg)
 
-    if not os.path.exists("logs"):
-        os.makedirs("logs")
-    if not os.path.exists("workspaces"):
-        os.makedirs("workspaces")
+    output_root = os.path.abspath(output_dir or tempfile.mkdtemp(prefix="mighty_mouse_"))
+    logs_dir = os.path.join(output_root, "logs")
+    workspaces_dir = os.path.join(output_root, "workspaces")
+    os.makedirs(logs_dir, exist_ok=True)
+    os.makedirs(workspaces_dir, exist_ok=True)
+    print(f"[*] Results directory: {output_root}")
 
     tasks = []
     if tasks_list:
@@ -340,7 +363,19 @@ def main(tier=None, variant="lean", config_path=None, tasks_list=None, trials=2,
     print(f"[*] Dispatching {len(tasks)} tasks with max_workers={effective_max_workers} variant={variant} provider={cfg.get('provider')} model={cfg.get('model')} trials={trials}...")
     results = []
     with concurrent.futures.ProcessPoolExecutor(max_workers=effective_max_workers) as executor:
-        futures = {executor.submit(run_task, t, variant, config_path, trials, True, skills): t for t in tasks}
+        futures = {
+            executor.submit(
+                run_task,
+                t,
+                variant,
+                config_path,
+                trials,
+                True,
+                skills,
+                output_root,
+            ): t
+            for t in tasks
+        }
         for future in concurrent.futures.as_completed(futures):
             results.append(future.result())
             time.sleep(5)  # Safe throttle
@@ -358,13 +393,14 @@ def main(tier=None, variant="lean", config_path=None, tasks_list=None, trials=2,
             "avg_latency_sec": avg_latency,
             "timestamp": datetime.now().isoformat(),
         },
-        "results": results
+        "results": results,
+        "output_dir": output_root,
     }
 
-    os.makedirs("logs", exist_ok=True)
     log_filename = f"benchmark_results_{variant}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    log_path = os.path.join("logs", log_filename)
+    log_path = os.path.join(logs_dir, log_filename)
     with open(log_path, "w") as f:
         json.dump(final_payload, f, indent=2)
-        
+
+    final_payload["report_path"] = log_path
     return final_payload

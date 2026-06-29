@@ -1,0 +1,16 @@
+name: "Mighty Mouse v1 - Optimized"
+version: "0.3.0"
+provider: "ollama"
+model: "gemma4:e4b"
+temperature: 0.2
+max_tokens: 4000
+api_key_env: "GOOGLE_API_KEY"
+allow_simulation: false
+prompt_segments:
+  - "prompt_segments/persona.txt"
+  - "prompt_segments/reasoning.txt"
+  - "prompt_segments/constraints.txt"
+  - "prompt_segments/verification.txt"
+  - "prompt_segments/discipline.txt"
+  - "prompt_segments/tools.txt"
+system_prompt_path: "system_prompt.txt"

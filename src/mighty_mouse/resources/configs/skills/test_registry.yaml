@@ -1,0 +1,14 @@
+skills:
+  - skill_id: "S1-STATE"
+    name: "Resilient State Machines"
+    status: "ACTIVE"
+    activation_mode: "narrow"
+    trigger_tags: ["circuit-breaker", "retry", "state-machine", "fsm", "adapter-state"]
+    overlay_path: "configs/skills/s1_state.md"
+
+  - skill_id: "S2-STREAM"
+    name: "Async Stream Hygiene"
+    status: "ACTIVE"
+    activation_mode: "narrow"
+    trigger_tags: ["async", "async-iterator", "stream", "backpressure"]
+    overlay_path: "configs/skills/s2_stream.md"

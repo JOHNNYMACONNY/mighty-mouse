@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_015_async_service_circuitbreaker",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-09T20:12:19.781808"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 121.659,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 108.907,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

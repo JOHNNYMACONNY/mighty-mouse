@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_013_network_node_retry",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-09T20:05:45.507360"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 118.194,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 87.397,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

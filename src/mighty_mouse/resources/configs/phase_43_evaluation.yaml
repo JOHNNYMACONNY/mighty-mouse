@@ -1,0 +1,27 @@
+# Phase 43 Evaluation Configuration
+# Focus: Hardened Decomposition V2 Fallback Validation
+name: "Mighty Mouse Phase 43 - Hybrid Evaluation"
+version: "2.1.0"
+provider: "ollama"
+model: "gemma4:e4b"
+temperature: 0.1
+max_tokens: 4000
+allow_simulation: false
+prompt_segments:
+  - "prompt_segments/lean_protocol.txt"
+  - "prompt_segments/constraints.txt"
+  - "prompt_segments/verification.txt"
+  - "prompt_segments/tools.txt"
+system_prompt_path: "system_prompt.txt"
+
+# Evaluation parameters
+mode: "hybrid"
+trials_per_task: 2
+
+tasks:
+  tier_5:
+    - "task_040_legacy_decorator_circuitbreaker.json"
+  tier_7:
+    - "task_1405_local_adapter_circuitbreaker.json"
+  stress:
+    - "task_stress_scout_01.json"

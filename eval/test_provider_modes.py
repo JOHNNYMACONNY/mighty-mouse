@@ -8,7 +8,7 @@ from test_utils import ROOT, load_module as _load_module
 
 
 def test_sim_requires_explicit_opt_in():
-    client_mod = _load_module("gemini_client", "src/orchestrator/gemini_client.py")
+    client_mod = _load_module("gemini_client", "src/mighty_mouse/orchestrator/gemini_client.py")
     try:
         client_mod.GeminiClient({"provider": "sim"})
         raise AssertionError("Simulation should require allow_simulation=true")
@@ -17,7 +17,7 @@ def test_sim_requires_explicit_opt_in():
 
 
 def test_benchmark_guard_rejects_sim_config():
-    run_parallel = _load_module("run_parallel", "eval/run_parallel.py")
+    run_parallel = _load_module("benchmark_service", "src/mighty_mouse/services/benchmark_service.py")
     try:
         run_parallel._assert_live_benchmark_config({"provider": "sim", "allow_simulation": True})
         raise AssertionError("Benchmark guard should reject simulation config")
@@ -26,7 +26,7 @@ def test_benchmark_guard_rejects_sim_config():
 
 
 def test_agent_writes_run_metadata_for_sim_dev_mode():
-    agent = _load_module("mighty_mouse_agent", "src/orchestrator/mighty_mouse_agent.py")
+    agent = _load_module("mighty_mouse_agent", "src/mighty_mouse/orchestrator/mighty_mouse_agent.py")
     cfg_path = os.path.join(ROOT, "configs/mighty_mouse_dev_sim.yaml")
     task_path = os.path.join(ROOT, "tasks/benchmark/task_001_legacy_registry_ratelimiter.json")
 

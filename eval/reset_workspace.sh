@@ -2,7 +2,7 @@
 # Mighty Mouse: Workspace Reset Utility (Hardened for autonomous loop)
 
 # 1. Revert tracked changes (Protects established infrastructure)
-git checkout tasks/ .gsd/ configs/ requirements.txt
+git checkout .gsd/ requirements.txt
 
 # 2. Clean untracked files (Removes transient agent outputs)
 # We exclude the infrastructure directories to avoid destructive side effects during rapid iteration.

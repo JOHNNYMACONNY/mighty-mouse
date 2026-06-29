@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_002_stream_cache_validator",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-09T19:32:25.225226"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 68.338,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 94.59,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

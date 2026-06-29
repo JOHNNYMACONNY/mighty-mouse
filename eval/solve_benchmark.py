@@ -7,7 +7,10 @@ from datetime import datetime
 from compute_scaler import invoke_with_scaling
 
 def run_command(cmd, cwd="."):
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd)
+    if isinstance(cmd, str):
+        import shlex
+        cmd = shlex.split(cmd)
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
     return result.returncode, result.stdout, result.stderr
 
 def solve_tasks(tier="tier_1"):
@@ -48,7 +51,7 @@ def solve_tasks(tier="tier_1"):
             
         # 3. Invoke Antigravity agent path with Compute Scaling
         print("Invoking Antigravity agent with Compute Scaling...")
-        agent_cmd = f"python3 src/orchestrator/mighty_mouse_agent.py {prompt_config} '{task_path}'"
+        agent_cmd = f"python3 src/mighty_mouse/orchestrator/mighty_mouse_agent.py {prompt_config} '{task_path}'"
         ret, out, err = invoke_with_scaling(agent_cmd, task_path, variations=3)
         
         # 4. Save execution trace/logs outside reset scope

@@ -1,0 +1,8 @@
+{
+  "name": "Phase 56: S2-STREAM Focused Validation",
+  "tasks": [
+    "tasks/observation/phase_55/obs_task_1045_s2.json",
+    "tasks/observation/phase_55/obs_task_1402_s2.json",
+    "tasks/observation/phase_55/obs_task_001_s2.json"
+  ]
+}

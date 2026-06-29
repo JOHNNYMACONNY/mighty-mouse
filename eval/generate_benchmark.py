@@ -3,7 +3,7 @@ import os
 import random
 
 TASKS_DIR = "tasks/benchmark"
-SHIMS_PATH = "src/orchestrator/shims.json"
+SHIMS_PATH = "src/mighty_mouse/orchestrator/shims.json"
 
 # Categorical Components for Combinatorial Generation
 NOUNS = ["Auth", "Cache", "Data", "Store", "Registry", "Manager", "Service", "Link", "Node", "Buffer", "Queue", "Stack", "Factory", "Adapter", "Decorator", "Facade", "Bridge", "Proxy", "Composite", "Iterator", "Observer", "State", "Strategy", "Template", "Visitor"]

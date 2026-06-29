@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_007_cloud_queue_enricher",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-09T19:48:18.384899"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 73.794,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 72.107,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_006_stream_composite_enricher",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-09T19:45:52.455147"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 82.088,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 91.836,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

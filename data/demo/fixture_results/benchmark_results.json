@@ -1,0 +1,59 @@
+{
+  "summary": {
+    "success_rate": "5/5",
+    "timestamp": "2026-05-05T17:40:24.629205",
+    "mode": "sequential"
+  },
+  "results": [
+    {
+      "task_id": "task_001",
+      "status": "success",
+      "adherence": "PASS",
+      "scope": "PASS",
+      "reason": "All checks passed",
+      "adherence_logs": "PASS: Workflow adherence verified.\n",
+      "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
+      "timestamp": "2026-05-05T17:33:54.226318"
+    },
+    {
+      "task_id": "task_002",
+      "status": "success",
+      "adherence": "PASS",
+      "scope": "PASS",
+      "reason": "All checks passed",
+      "adherence_logs": "PASS: Workflow adherence verified.\n",
+      "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
+      "timestamp": "2026-05-05T17:35:30.244146"
+    },
+    {
+      "task_id": "task_003",
+      "status": "success",
+      "adherence": "PASS",
+      "scope": "PASS",
+      "reason": "All checks passed",
+      "adherence_logs": "PASS: Workflow adherence verified.\n",
+      "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
+      "timestamp": "2026-05-05T17:37:17.159295"
+    },
+    {
+      "task_id": "task_004",
+      "status": "success",
+      "adherence": "PASS",
+      "scope": "PASS",
+      "reason": "All checks passed",
+      "adherence_logs": "PASS: Workflow adherence verified.\n",
+      "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
+      "timestamp": "2026-05-05T17:38:35.641368"
+    },
+    {
+      "task_id": "task_005",
+      "status": "success",
+      "adherence": "PASS",
+      "scope": "PASS",
+      "reason": "All checks passed",
+      "adherence_logs": "PASS: Workflow adherence verified.\n",
+      "test_logs": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n",
+      "timestamp": "2026-05-05T17:40:24.623722"
+    }
+  ]
+}

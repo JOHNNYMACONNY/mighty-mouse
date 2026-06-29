@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_1010_legacy_state_ratelimiter",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-10T00:07:55.244123"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 65.212,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 102.175,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

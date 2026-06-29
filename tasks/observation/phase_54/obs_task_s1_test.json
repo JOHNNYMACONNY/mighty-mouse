@@ -1,0 +1,14 @@
+{
+  "id": "obs_task_s1_test",
+  "title": "S1-STATE Regression Check",
+  "tags": ["circuit-breaker"],
+  "expected_files": [
+    "state_machine.py"
+  ],
+  "constraints": {
+    "language": "python",
+    "max_files": 1
+  },
+  "test_script": "import unittest\nclass TestTask(unittest.TestCase):\n    def test_run(self):\n        pass\nif __name__ == '__main__':\n    unittest.main()",
+  "description": "Implement a state machine with a circuit breaker."
+}

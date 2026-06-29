@@ -125,5 +125,126 @@
 - [ ] UAT: Starting from a deliberately degraded prompt config, `mutation_engine.py` correctly identifies the dominant failure category, generates a targeted mutation, runs the full comparison, and produces a complete mutation record in `logs/mutation_log.jsonl` with a PROMOTE/REJECT/HOLD decision and rationale. The promoted candidate must pass the 2-tier replay gate.
 
 ### Phase 34: Benchmark Reference Integration & Parity Report [ ]
-- [ ] Task: Embed static LiveCodeBench published scores for reference models into `eval/results/frontier_reference.json`. Implement `eval/parity_report.py` that reads the latest `benchmark_results.json`, computes pass rates by tier, and generates `eval/results/frontier_delta.md` showing: (1) local model pass rate by tier as the primary metric, (2) static LiveCodeBench reference scores clearly labeled as ceiling data only, (3) a parity score expressing local model performance as a percentage of the closest reference, and (4) a trend line across prior runs. Report generated automatically at end of each perpetual loop cycle.
-- [ ] UAT: After one full loop cycle, `frontier_delta.md` is produced with accurate per-tier pass rates, static reference scores, a computed parity score, and correct framing (Mighty Mouse benchmark = source of truth; LiveCodeBench = calibration reference). The report is readable and self-contained without requiring the loop to be running.
+- [ ] Task: Embed static LiveCodeBench published scores for reference models into `eval/results/frontier_reference.json`. Implement `eval/parity_report.py` that reads the latest `benchmark_results.json`, computes pass rates by tier, and generates `eval/results/frontier_delta.md`.
+- [ ] UAT: After one full loop cycle, `frontier_delta.md` is produced with accurate per-tier pass rates and static reference scores.
+
+## Milestone 15 (v15.0): Skill Lifecycle & Multi-Skill Orchestration [ ]
+
+**Goal**: Implement modular reasoning "Skills" that can be auto-injected based on task tags, managed through a formal lifecycle (DRAFT -> CANDIDATE -> ACTIVE), and protected by a robust conflict policy.
+
+### Phases
+- [x] Phase 62: S2-STREAM ACTIVE_NARROW Promotion
+- [x] Phase 63: Multi-Skill Active Observation
+- [x] Phase 64: Harness Stability Diagnosis
+- [x] Phase 65: Concurrency Control Implementation
+- [x] Phase 66: Reliability Rerun
+- [x] Phase 67: Local Runtime Hygiene & Ollama Readiness Gate
+- [x] Phase 68: Reduced-Concurrency Multi-Skill Observation Rerun
+- [x] Phase 69: Controlled Autoresearch Optimization Loop v1
+- [x] Phase 70: Task Metadata Restoration Wave
+- [x] Phase 71: Prompt/Delete Contract Hardening
+- [x] Phase 72: Controlled Autoresearch Expansion v2
+- [x] Phase 73: Delete Protocol Format Precision Patch
+- [x] Phase 74: Controlled Autoresearch Proposal Mining v3
+- [x] Phase 75: Expected File Coverage Recovery Planning
+- [x] Phase 76: Output Coverage Recovery Implementation
+- [ ] Phase 77: Production Rollout
+
+### Phase 62: S2-STREAM ACTIVE_NARROW Promotion [x]
+- [x] Task: Promote S2-STREAM to ACTIVE status with `narrow` activation mode. Implement the "Fail-Closed" conflict policy in `mighty_mouse_agent.py` to prevent skill stacking.
+- [x] UAT: Verified registry update and manual conflict tests.
+
+### Phase 63: Multi-Skill Active Observation [x]
+- [x] Task: Observe S1-STATE and S2-STREAM under normal harness behavior using an observation suite of 12 tagged tasks. Validate routing accuracy and conflict rejection.
+- [x] UAT: ✅ QUALIFIED. Routing accuracy verified (100% on completed runs). Conflict policy enforcement verified on `obs_task_conflict_01`. **CAVEAT**: 41% timeout rate identified; runtime stability not validated.
+
+### Phase 64: Harness Stability Diagnosis (Sequential Sweep & Isolation Audit) [x]
+- [x] Task: Diagnose the root cause of the 300s timeouts observed in Phase 63. Investigate model latency (Ollama), token overhead of multi-skill prompts, and orchestrator bottlenecks.
+- [x] UAT: Timeout rate reduced to <10% for baseline observation tasks.
+
+### Phase 65: Concurrency Control Implementation (Patch run_parallel.py) [x]
+- [x] Task: Patch `run_parallel.py` to support `MAX_WORKERS` overrides via CLI/ENV. Implement dynamic worker scaling based on provider (Ollama vs Gemini).
+- [x] UAT: Multi-skill observation suite passes with `MAX_WORKERS=1` (sequential) on local Ollama without triggering 300s timeout spikes. Telemetry verified in `benchmark_results.json`.
+
+### Phase 67: Local Runtime Hygiene & Ollama Readiness Gate [x]
+- [x] Create automated readiness gate (`eval/diagnose_runtime.py`)
+- [x] Perform safe process cleanup and provider restart
+- [x] Verify system memory and swap health
+- [x] Validate model responsiveness (repeated prompts + smoke task)
+- [x] Status: **PASS**
+
+### Phase 68: Reduced-Concurrency Multi-Skill Observation Rerun [x]
+| Phase | Category | Description | Status | Report |
+| :--- | :--- | :--- | :--- | :--- |
+| 68 | Reliability | Reduced-concurrency observation rerun | ✅ PASS | [Report](file:///Volumes/YBF_Storage/Projects/mighty_mouse/eval/results/observation/phase_68/PHASE_68_OBSERVATION_REPORT.md) |
+- [x] Task: Execute the Phase 63 multi-skill observation suite with controlled, single-worker concurrency (`--max-workers 1`) to validate that the timeout issues are resolved and that the router and conflict policies maintain 100% accuracy.
+- [x] UAT: ✅ PASS. 100% routing accuracy across 12 tasks with zero 300s timeout spikes. (Caveat: One non-routing SCOPE failure noted).
+- [x] Artifact: [Phase 68 Report](file:///Volumes/YBF_Storage/Projects/mighty_mouse/eval/results/observation/phase_68/PHASE_68_OBSERVATION_REPORT.md)
+
+### Phase 69: Controlled Autoresearch Optimization Loop v1 [ ]
+| Phase | Category | Description | Status | Report |
+| :--- | :--- | :--- | :--- | :--- |
+| 69 | Autoresearch | Controlled Optimization Loop v1 | ✅ COMPLETE | [Proposals](file:///Volumes/YBF_Storage/Projects/mighty_mouse/eval/results/autoresearch/phase_69/PHASE_69_PROPOSALS.md) |
+- [x] Task: Execute a one-shot mining pass to identify recurring failure patterns (SCOPE) and metadata gaps. Focus on the "ghost-file" handling logic.
+- [x] UAT: ✅ PASS. Identified 407 tasks with missing `deletable_files` metadata. Root cause of Phase 68 SCOPE failure isolated to metadata gaps and prompt ambiguity.
+
+### Phase 70: Task Metadata Restoration Wave [x]
+| Phase | Category | Description | Status | Report |
+| :--- | :--- | :--- | :--- | :--- |
+| 70 | Remediation | Task Metadata Restoration Wave | ✅ COMPLETE | [Report](file:///Volumes/YBF_Storage/Projects/mighty_mouse/eval/results/autoresearch/phase_70/PHASE_70_REMEDIATION_REPORT.md) |
+- [x] Task: Bulk remediate 407 tasks with missing `deletable_files` metadata.
+- [x] UAT: ✅ PASS (Metadata Authorization). Note: End-to-end task_1010 smoke still failed (SCOPE) because the agent did not use the `delete:path` protocol; this will be addressed in Phase 71.
+
+### Phase 71: Prompt/Delete Contract Hardening [x]
+| Phase | Category | Description | Status | Report |
+| :--- | :--- | :--- | :--- | :--- |
+| 71 | Hardening | Prompt/Delete Contract Hardening | ✅ COMPLETE | [Report](file:///Volumes/YBF_Storage/Projects/mighty_mouse/eval/results/autoresearch/phase_71/PHASE_71_DELETE_CONTRACT_REPORT.md) |
+- [x] Task: Patch `mighty_mouse_agent.py` to support `delete:path` protocol and forbid fake deletions via comments.
+- [x] UAT: ✅ PASS. Task 1010 successfully emitted `delete:obsolete_shim.py` and cleared SCOPE. Regression suite 100% stable.
+187: 
+188: ### Phase 72: Controlled Autoresearch Expansion v2 [x]
+189: | Phase | Category | Description | Status | Report |
+190: | :--- | :--- | :--- | :--- | :--- |
+191: | 72 | Autoresearch | Controlled Autoresearch Expansion v2 | ✅ PASS | [Report](file:///Volumes/YBF_Storage/Projects/mighty_mouse/eval/results/autoresearch/phase_72/PHASE_72_EXECUTION_REPORT.md) |
+192: - [x] Task: Execute a controlled benchmark/mining pass to identify remaining failure patterns after Phase 70/71 fixes.
+193: - [x] UAT: ✅ PASS. Stage A (Stability) and Stage B (Expansion) achieved 100% success rate after Phase 73 patch.
+- [x] Decision: `PHASE_72_EXPANSION_QUALIFIED`. Ready for Phase 74 Proposal Mining.
+
+### Phase 73: Delete Protocol Format Precision Patch [x]
+| Phase | Category | Description | Status | Report |
+| :--- | :--- | :--- | :--- | :--- |
+| 73 | Hardening | Delete Protocol Format Precision Patch | ✅ COMPLETE | [Report](file:///Volumes/YBF_Storage/Projects/mighty_mouse/eval/results/autoresearch/phase_73/PHASE_73_DELETE_FORMAT_PRECISION_REPORT.md) |
+- [x] Task: Harden FORMAT_REMINDER to eliminate python:delete: hallucinations and enforce internal newlines.
+- [x] UAT: ✅ PASS. Targeted smoke tests (1045, 1010) achieved 100% adherence. Conflict policy stable.
+- [x] Decision: DELETE_FORMAT_PRECISION_PATCH_COMPLETE. System ready for expansion.
+
+### Phase 74: Controlled Autoresearch Proposal Mining v3 [x]
+| Phase | Category | Description | Status | Report |
+| :--- | :--- | :--- | :--- | :--- |
+| 74 | Autoresearch | Controlled Autoresearch Proposal Mining v3 | ✅ COMPLETE | [Report](file:///Volumes/YBF_Storage/Projects/mighty_mouse/eval/results/autoresearch/phase_74/PHASE_74_EXECUTION_REPORT.md) |
+- [x] Task: Execute Stage A (Sentinel) and Stage B (Expansion) to generate autoresearch proposals.
+- [x] UAT: ✅ PASS. Total 43 tasks executed with a 42/43 pass rate (97.7%). Single failure confirmed as transient model variance.
+- [x] Decision: `PHASE_74_COMPLETE_PROPOSALS_READY`. System ready for Phase 75.
+
+### Phase 75: Expected File Coverage Recovery Planning [x]
+| Phase | Category | Description | Status | Report |
+| :--- | :--- | :--- | :--- | :--- |
+| 75 | Planning | Expected File Coverage Recovery Planning | ✅ COMPLETE | [Plan](file:///Volumes/YBF_Storage/Projects/mighty_mouse/eval/results/autoresearch/phase_75/PHASE_75_EXPECTED_FILE_COVERAGE_PLAN.md) |
+- [x] Task: Design an output coverage fix plan to automatically detect and recover omitted expected files via targeted reprompting.
+- [x] Constraints: Scoped prototype/planning only. No core run-loop mutation.
+- [x] Decision: `READY_FOR_PHASE_76_OUTPUT_COVERAGE_PROTOTYPE`.
+
+### Phase 76: Output Coverage Recovery Implementation [x]
+| Phase | Category | Description | Status | Report |
+| :--- | :--- | :--- | :--- | :--- |
+| 76 | Prototype | Output Coverage Recovery Implementation | ✅ PASS | [Report](file:///Volumes/YBF_Storage/Projects/mighty_mouse/eval/results/autoresearch/phase_76/PHASE_76_OUTPUT_COVERAGE_PROTOTYPE_REPORT.md) |
+- [x] Task: Mutate `mighty_mouse_agent.py` to include the `CoverageDetector` and recovery loop.
+- [x] Constraints: Must be gated, telemetry-rich, one-retry-max, and validated against `task_1005` plus negative controls. No broad production rollout. No parser changes. No uncontrolled reprompt loop.
+- [x] Decision: `PHASE_76_PROTOTYPE_COMPLETE`.
+
+### Phase 77: Prototype Qualification & Integration Hardening [x]
+- [x] Task: Qualify the Phase 76 output coverage recovery prototype using staged local Gemma/Ollama benchmark evidence.
+- [x] UAT: 30/30 clean passes across Stage A and Stage B; 0 recovered; 0 failed; no timeout/schema/parser/workspace regressions.
+- [x] Decision: PHASE_77_CLOSED_READY_FOR_PHASE_78_DECISION.
+- [x] Constraint: Phase 76 recovery remains prototype-only until Phase 78 decision. No production rollout occurred.
+-

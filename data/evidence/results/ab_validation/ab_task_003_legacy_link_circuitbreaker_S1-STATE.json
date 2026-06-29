@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_003_legacy_link_circuitbreaker",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-09T19:36:22.441955"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 99.378,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 137.782,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

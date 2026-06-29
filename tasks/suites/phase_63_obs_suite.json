@@ -1,0 +1,17 @@
+{
+  "name": "Phase 63: Multi-Skill Active Observation",
+  "tasks": [
+    "tasks/observation/phase_63/obs_task_003_s1_cb.json",
+    "tasks/observation/phase_63/obs_task_005_s1_retry.json",
+    "tasks/observation/phase_63/obs_task_1010_s1_state.json",
+    "tasks/observation/phase_63/obs_task_002_s2_stream.json",
+    "tasks/observation/phase_63/obs_task_1402_s2_iterator.json",
+    "tasks/observation/phase_63/obs_task_1045_s2_async.json",
+    "tasks/observation/phase_63/obs_task_001_neg_rl.json",
+    "tasks/observation/phase_63/obs_task_004_neg_val.json",
+    "tasks/observation/phase_63/obs_task_009_neg_filt.json",
+    "tasks/observation/phase_63/obs_task_conflict_01.json",
+    "tasks/observation/phase_63/obs_task_conflict_02.json",
+    "tasks/observation/phase_63/obs_task_conflict_03.json"
+  ]
+}

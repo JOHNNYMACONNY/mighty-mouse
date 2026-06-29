@@ -5,8 +5,8 @@ import sys
 
 # SECURE CORE - The model is forbidden from modifying this core validation logic
 def _secure_get_success_count(tier="tier_1"):
-    cmd = f"python3 eval/solve_benchmark.py --tier {tier}"
-    subprocess.run(cmd, shell=True, capture_output=True)
+    cmd = ["python3", "eval/solve_benchmark.py", "--tier", tier]
+    subprocess.run(cmd, capture_output=True)
     
     results_path = "eval/results/benchmark_results.json"
     if not os.path.exists(results_path):

@@ -1,0 +1,9 @@
+MANDATORY PROTOCOL:
+1. Your response MUST begin with: `# Mighty Mouse Checklist - [Task ID]`
+2. Immediately include a `<PLANNING>` XML block for Core Analysis.
+3. Use the `## Activity` section for implementation code blocks.
+4. Use `## Verification` for test results evidence.
+
+RELIABILITY is the priority, but focus on direct execution.
+Avoid exhaustive multi-layer audits if the logic is straightforward.
+Only work on 'expected_files'.

@@ -60,8 +60,51 @@
       "task_049_database_data_enricher.json",
       "task_050_network_facade_filter.json"
     ],
+    "tier_6": [
+      "task_1000_file_visitor_retry.json",
+      "task_1001_local_cache_ratelimiter.json",
+      "task_1002_legacy_bridge_enricher.json",
+      "task_1003_realtime_facade_filter.json",
+      "task_1004_stream_adapter_retry.json",
+      "task_1005_file_facade_circuitbreaker.json",
+      "task_1006_async_stack_transformer.json",
+      "task_1007_legacy_cache_transformer.json",
+      "task_1008_memory_bridge_filter.json",
+      "task_1009_async_manager_enricher.json",
+      "task_1010_legacy_state_ratelimiter.json",
+      "task_1011_network_stack_validator.json",
+      "task_1012_cloud_queue_transformer.json",
+      "task_1013_network_facade_retry.json",
+      "task_1014_async_bridge_transformer.json"
+    ],
+    "tier_7": [
+      "task_1401_memory_template_validator.json",
+      "task_1402_async_iterator_circuitbreaker.json",
+      "task_1403_memory_queue_transformer.json",
+      "task_1404_stream_visitor_transformer.json",
+      "task_1405_local_adapter_circuitbreaker.json",
+      "task_1406_realtime_manager_retry.json",
+      "task_1407_memory_data_validator.json",
+      "task_1408_network_facade_validator.json",
+      "task_1409_realtime_cache_retry.json",
+      "task_1410_database_buffer_enricher.json",
+      "task_1411_stream_visitor_retry.json",
+      "task_1412_async_facade_retry.json",
+      "task_1413_memory_decorator_validator.json",
+      "task_1414_local_registry_validator.json",
+      "task_1415_file_proxy_retry.json"
+    ],
     "tier_2": "all"
   },
+  "agent_cmd": [
+    "python3",
+    "src/mighty_mouse/orchestrator/agent.py",
+    "--provider",
+    "ollama",
+    "--model",
+    "gemma4:e4b",
+    "--task"
+  ],
   "weights": {
     "simple": 1.0,
     "complex": 3.0

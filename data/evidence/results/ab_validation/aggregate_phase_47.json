@@ -1,0 +1,33 @@
+{
+  "summary": {
+    "total_tasks": 1,
+    "regressions": 0,
+    "avg_latency_delta": -0.2996197653943977,
+    "timestamp": "2026-05-10T00:11:25.392752"
+  },
+  "results": [
+    {
+      "metadata": {
+        "task_id": "task_040_legacy_decorator_circuitbreaker",
+        "skill_id": "S1-STATE",
+        "timestamp": "2026-05-10T00:11:25.390621"
+      },
+      "baseline": {
+        "status": "success",
+        "category": "SUCCESS",
+        "latency": 117.559,
+        "skill_ids": [],
+        "overlay_enabled": false
+      },
+      "skill_overlay": {
+        "status": "success",
+        "category": "SUCCESS",
+        "latency": 82.336,
+        "skill_ids": [
+          "S1-STATE"
+        ],
+        "overlay_enabled": true
+      }
+    }
+  ]
+}

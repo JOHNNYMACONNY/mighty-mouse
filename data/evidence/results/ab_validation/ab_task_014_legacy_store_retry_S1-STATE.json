@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_014_legacy_store_retry",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-09T20:08:29.179283"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 77.943,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 85.697,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

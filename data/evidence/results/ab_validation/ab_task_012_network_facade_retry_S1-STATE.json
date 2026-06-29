@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_012_network_facade_retry",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-09T20:02:19.871289"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 76.334,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 106.781,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

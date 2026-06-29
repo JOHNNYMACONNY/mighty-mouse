@@ -8,7 +8,7 @@ from test_utils import ROOT, load_module as _load_module
 
 
 def test_run_task_includes_round_logging():
-    mod = _load_module("run_parallel", "eval/run_parallel.py")
+    mod = _load_module("benchmark_service", "src/mighty_mouse/services/benchmark_service.py")
     original_cwd = os.getcwd()
     os.chdir(ROOT)
     original_subprocess_run = mod.subprocess.run
@@ -31,12 +31,12 @@ def test_run_task_includes_round_logging():
                     indent=2,
                 )
             return SimpleNamespace(returncode=0, stdout="agent ok", stderr="")
-        return SimpleNamespace(returncode=0, stdout="Task task_001 success verified.", stderr="")
+        return SimpleNamespace(returncode=0, stdout="Task task_001_legacy_registry_ratelimiter success verified.", stderr="")
 
     try:
         mod.subprocess.run = fake_run
         mod.shutil.rmtree = lambda *args, **kwargs: None
-        mod._load_config = lambda: {"provider": "gemini_api", "model": "gemini-2.5-flash", "allow_simulation": False}
+        mod._load_config = lambda *args, **kwargs: {"provider": "gemini_api", "model": "gemini-2.5-flash", "allow_simulation": False}
         result = mod.run_task(os.path.join(ROOT, "tasks/benchmark/task_001_legacy_registry_ratelimiter.json"))
     finally:
         mod.subprocess.run = original_subprocess_run

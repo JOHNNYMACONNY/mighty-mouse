@@ -1,0 +1,14 @@
+{
+  "name": "Phase 55: S2-STREAM Candidate Validation",
+  "tasks": [
+    "tasks/observation/phase_55/obs_task_1402_s2.json",
+    "tasks/observation/phase_55/obs_task_002_s2.json",
+    "tasks/observation/phase_55/obs_task_006_s2.json",
+    "tasks/observation/phase_55/obs_task_010_s2.json",
+    "tasks/observation/phase_55/obs_task_015_s2.json",
+    "tasks/observation/phase_55/obs_task_1045_s2.json",
+    "tasks/observation/phase_55/obs_task_001_s2.json",
+    "tasks/observation/phase_55/obs_task_004_s2.json",
+    "tasks/observation/phase_55/obs_task_009_s2.json"
+  ]
+}

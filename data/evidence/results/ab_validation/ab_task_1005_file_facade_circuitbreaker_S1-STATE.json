@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_1005_file_facade_circuitbreaker",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-09T20:29:08.146528"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 136.436,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 111.976,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "model": "gemma4:e4b",
+  "python_version": "3.14.5",
+  "os": "macOS",
+  "git_tag": "v13-pre-portfolio",
+  "timestamp_frozen": "2026-06-29T07:00:00Z",
+  "notes": "Evidence frozen before portfolio cleanup. Hardware and Ollama version to be confirmed by user."
+}

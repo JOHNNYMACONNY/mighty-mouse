@@ -3,7 +3,10 @@ import subprocess
 import json
 
 def run_command(cmd, cwd="."):
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd)
+    if isinstance(cmd, str):
+        import shlex
+        cmd = shlex.split(cmd)
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
     return result.returncode, result.stdout, result.stderr
 
 def invoke_with_scaling(agent_cmd, task_path, variations=3):

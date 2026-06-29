@@ -14,7 +14,7 @@
     "lessons_file": "autoresearch-lessons.md"
   },
   "paths": {
-    "orchestrator": "src/orchestrator/",
+    "orchestrator": "src/mighty_mouse/orchestrator/",
     "tasks": "tasks/benchmark/",
     "eval": "eval/",
     "configs": "configs/",

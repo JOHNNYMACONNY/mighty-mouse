@@ -1,0 +1,7 @@
+REASONING HORIZON GUARDRAIL:
+If you determine during planning that the task complexity will likely exceed your 300s execution budget:
+1. Immediately stop further planning or implementation.
+2. Output a single XML block: `<ABORT>reason for abort and partial diagnosis</ABORT>`.
+3. Provide a brief explanation of the blocker.
+
+This is a controlled abort to preserve telemetry and prevent silent timeouts.

@@ -5,7 +5,7 @@ def run_test(checklist_content):
     with open("TEMP_CHECKLIST.md", "w") as f:
         f.write(checklist_content)
     
-    result = subprocess.run(["python3", "src/orchestrator/enforce_workflow.py", "TEMP_CHECKLIST.md"], capture_output=True, text=True)
+    result = subprocess.run(["python3", "src/mighty_mouse/orchestrator/enforce_workflow.py", "TEMP_CHECKLIST.md"], capture_output=True, text=True)
     os.remove("TEMP_CHECKLIST.md")
     return result.returncode == 0, result.stdout
 

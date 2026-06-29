@@ -1,0 +1,16 @@
+name: "Mighty Mouse Abort - Spike Variant"
+version: "0.1.0"
+provider: "ollama"
+model: "gemma4:e4b"
+temperature: 0.1
+max_tokens: 3000
+allow_simulation: false
+prompt_segments:
+  - "prompt_segments/persona.txt"
+  - "prompt_segments/reasoning.txt"
+  - "prompt_segments/abort_protocol.txt"
+  - "prompt_segments/constraints.txt"
+  - "prompt_segments/verification.txt"
+  - "prompt_segments/discipline.txt"
+  - "prompt_segments/tools.txt"
+system_prompt_path: "system_prompt.txt"

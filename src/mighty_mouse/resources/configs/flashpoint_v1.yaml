@@ -1,0 +1,9 @@
+name: "Flashpoint v1"
+version: "1.0.0"
+provider: "gemini_api"
+model: "gemini-3-flash"
+temperature: 0.1
+max_tokens: 4000
+allow_simulation: false
+prompt_segments: []
+system_prompt_path: "../mighty-antigravity-flashpoint.md"

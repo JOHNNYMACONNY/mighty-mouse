@@ -19,3 +19,22 @@ baseline_run_m3.log
 iter_*_guard.log
 *.trace.log
 *.tsv
+
+# Build/temp
+tmp/
+.bg-shell/
+.gsd/
+.planning
+
+# Simulation data
+src/orchestrator/shims.json
+src/mighty_mouse/orchestrator/shims.json
+
+# Archive
+.archive/
+
+# Generated benchmarks (regenerate with mighty-mouse benchmark --generate)
+tasks/benchmark/
+
+# Pre-portfolio test snapshot
+.pre-portfolio-test-results.txt

@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_1402_async_iterator_circuitbreaker",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-10T00:04:58.967864"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 131.015,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 123.798,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

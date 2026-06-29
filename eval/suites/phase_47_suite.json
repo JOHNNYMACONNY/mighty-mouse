@@ -1,0 +1,28 @@
+{
+  "name": "Phase 47: S1-STATE Active Validation Suite",
+  "tasks": [
+    "tasks/benchmark/task_001_legacy_registry_ratelimiter.json",
+    "tasks/benchmark/task_002_stream_cache_validator.json",
+    "tasks/benchmark/task_003_legacy_link_circuitbreaker.json",
+    "tasks/benchmark/task_004_network_link_validator.json",
+    "tasks/benchmark/task_005_network_iterator_retry.json",
+    "tasks/benchmark/task_006_stream_composite_enricher.json",
+    "tasks/benchmark/task_007_cloud_queue_enricher.json",
+    "tasks/benchmark/task_008_database_link_enricher.json",
+    "tasks/benchmark/task_009_legacy_decorator_filter.json",
+    "tasks/benchmark/task_010_async_composite_enricher.json",
+    "tasks/benchmark/task_011_realtime_decorator_ratelimiter.json",
+    "tasks/benchmark/task_012_network_facade_retry.json",
+    "tasks/benchmark/task_013_network_node_retry.json",
+    "tasks/benchmark/task_014_legacy_store_retry.json",
+    "tasks/benchmark/task_015_async_service_circuitbreaker.json",
+    "tasks/benchmark/task_028_cloud_store_circuitbreaker.json",
+    "tasks/benchmark/task_030_network_proxy_circuitbreaker.json",
+    "tasks/benchmark/task_034_database_bridge_circuitbreaker.json",
+    "tasks/benchmark/task_1005_file_facade_circuitbreaker.json",
+    "tasks/benchmark/task_1010_legacy_state_ratelimiter.json",
+    "tasks/benchmark/task_040_legacy_decorator_circuitbreaker.json",
+    "tasks/benchmark/task_1402_async_iterator_circuitbreaker.json",
+    "tasks/benchmark/task_1405_local_adapter_circuitbreaker.json"
+  ]
+}

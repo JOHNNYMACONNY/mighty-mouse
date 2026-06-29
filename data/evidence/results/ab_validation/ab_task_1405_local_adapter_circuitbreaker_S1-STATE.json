@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_1405_local_adapter_circuitbreaker",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-09T20:43:48.785588"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 110.451,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 128.589,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "task_id": "task_011_realtime_decorator_ratelimiter",
+    "skill_id": "S1-STATE",
+    "timestamp": "2026-05-09T19:59:16.728016"
+  },
+  "baseline": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 80.91,
+    "skill_ids": [],
+    "overlay_enabled": false
+  },
+  "skill_overlay": {
+    "status": "success",
+    "category": "SUCCESS",
+    "latency": 101.101,
+    "skill_ids": [
+      "S1-STATE"
+    ],
+    "overlay_enabled": true
+  }
+}

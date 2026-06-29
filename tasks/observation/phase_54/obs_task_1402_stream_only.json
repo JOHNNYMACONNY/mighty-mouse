@@ -1,0 +1,15 @@
+{
+  "id": "obs_task_1402_stream_only",
+  "title": "Async Iterator Stream Hygiene (Smoke Test)",
+  "tags": ["async-iterator"],
+  "expected_files": [
+    "async_iterator.py"
+  ],
+  "constraints": {
+    "language": "python",
+    "max_files": 1,
+    "max_tokens": 100000
+  },
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('async_iterator.py', 'r') as f: src = f.read()\n        assert 'ping_singularity' in src, 'Missing requirement'\n    def test_run(self):\n        pass\nif __name__ == '__main__':\n    unittest.main()",
+  "description": "Implement an async iterator that pings the singularity. This is a smoke test task for S2-STREAM."
+}

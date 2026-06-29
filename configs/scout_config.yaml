@@ -1,0 +1,41 @@
+# scout_config.yaml
+# Phase 38A Scout Run Configuration (Full Parity with v2_lean)
+name: "Mighty Mouse v2 - Scout Run"
+version: "2.0.0"
+provider: "ollama"
+model: "gemma4:e4b"
+temperature: 0.1
+max_tokens: 4000
+allow_simulation: false
+prompt_segments:
+  - "prompt_segments/lean_protocol.txt"
+  - "prompt_segments/constraints.txt"
+  - "prompt_segments/verification.txt"
+  - "prompt_segments/tools.txt"
+system_prompt_path: "system_prompt.txt"
+
+# Research parameters
+mode: "hybrid"
+trials_per_task: 2
+
+tasks:
+  tier_5:
+    - "task_036_async_queue_validator.json"
+    - "task_037_legacy_state_validator.json"
+    - "task_038_file_observer_enricher.json"
+    - "task_039_network_service_enricher.json"
+    - "task_040_legacy_decorator_circuitbreaker.json"
+  tier_6:
+    - "task_1000_file_visitor_retry.json"
+    - "task_1001_local_cache_ratelimiter.json"
+    - "task_1002_legacy_bridge_enricher.json"
+    - "task_1003_realtime_facade_filter.json"
+    - "task_1004_stream_adapter_retry.json"
+  tier_7:
+    - "task_1401_memory_template_validator.json"
+    - "task_1402_async_iterator_circuitbreaker.json"
+    - "task_1403_memory_queue_transformer.json"
+    - "task_1404_stream_visitor_transformer.json"
+    - "task_1405_local_adapter_circuitbreaker.json"
+  stress:
+    - "task_stress_scout_01.json"

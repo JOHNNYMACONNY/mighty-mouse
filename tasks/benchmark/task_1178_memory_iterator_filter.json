@@ -9,5 +9,8 @@
   "constraints": {
     "language": "python",
     "max_files": 2
-  }
+  },
+  "deletable_files": [
+    "obsolete_shim.py"
+  ]
 }

@@ -1,13 +1,13 @@
 {
   "id": "task_140",
   "title": "Stream Visitor Validator",
-  "description": "Implement the Stream Visitor Validator module in stream_visitor.py. \nREQUIREMENT: Constraint-Heavy implementation.",
   "expected_files": [
     "stream_visitor.py"
   ],
-  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('stream_visitor.py', 'r') as f: src = f.read()\n        # Requirement Check\n        pass\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
   "constraints": {
     "language": "python",
     "max_files": 1
-  }
+  },
+  "test_script": "import unittest\nimport os\nclass TestTask(unittest.TestCase):\n    def test_adherence(self):\n        with open('stream_visitor.py', 'r') as f: src = f.read()\n        # Requirement Check\n        pass\n    def test_run(self):\n        pass # Functional pass\nif __name__ == '__main__':\n    unittest.main()",
+  "description": "Implement the Stream Visitor Validator module in stream_visitor.py. \nREQUIREMENT: Constraint-Heavy implementation."
 }

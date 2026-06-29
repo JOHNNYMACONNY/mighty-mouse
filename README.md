@@ -49,7 +49,7 @@ Run the standard Tier 1 benchmark suite:
 mighty-mouse benchmark --tier tier_1
 ```
 
-*(Note: The `--generate` flag will recreate the full 1,600-task corpus if necessary).*
+
 
 ## Project Architecture
 

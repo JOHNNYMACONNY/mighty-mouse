@@ -25,7 +25,15 @@ def get_category(stderr_str, stdout_str, status_str):
 TASK_DIR = "tasks/benchmark"
 LOG_PATH = "logs/benchmark_results.json"
 MAX_WORKERS_DEFAULT = 4
-DEFAULT_CONFIG = "configs/mighty_mouse_v2_lean.yaml"
+from importlib import resources
+
+def _get_default_config():
+    try:
+        return str(resources.files("mighty_mouse.resources.configs").joinpath("mighty_mouse_v2_lean.yaml"))
+    except:
+        return "configs/mighty_mouse_v2_lean.yaml"
+
+DEFAULT_CONFIG = _get_default_config()
 
 
 def _load_config(config_path=None):
@@ -291,7 +299,7 @@ def main(tier=None, variant="lean", config_path=None, tasks_list=None, trials=2,
 
     tasks = []
     if tasks_list:
-        tasks = [t if t.startswith("tasks/") else os.path.join(TASK_DIR, t) for t in tasks_list]
+        tasks = [t if os.path.isabs(t) else os.path.join(TASK_DIR, t) for t in tasks_list]
     elif tier:
         eval_cfg_path = "eval/evaluation_config.json"
         if not os.path.exists(eval_cfg_path):

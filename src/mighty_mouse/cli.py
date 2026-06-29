@@ -12,17 +12,8 @@ def main():
 
     # benchmark
     parser_benchmark = subparsers.add_parser("benchmark", help="Run benchmark evaluation tasks")
-    parser_benchmark.add_argument("--generate", action="store_true", help="Generate the full 1,600-task corpus on-demand")
     parser_benchmark.add_argument("--tier", type=str, default="tier_1", help="Benchmark tier to run")
-
-    # compare
-    parser_compare = subparsers.add_parser("compare", help="Compare two benchmark runs")
-
-    # research
-    parser_research = subparsers.add_parser("research", help="Run autoresearch iteration")
-
-    # report
-    parser_report = subparsers.add_parser("report", help="Generate an analysis report for a run")
+    parser_benchmark.add_argument("--tasks-dir", type=str, help="Explicit path to a directory of task JSONs")
 
     # demo
     parser_demo = subparsers.add_parser("demo", help="Run the Mighty Mouse demo")
@@ -40,7 +31,7 @@ def main():
 
     elif args.command == "benchmark":
         from mighty_mouse.commands.benchmark_cmd import run_benchmark
-        run_benchmark(generate=args.generate, tier=args.tier)
+        run_benchmark(tier=args.tier, tasks_dir=args.tasks_dir)
 
     elif args.command == "demo":
         from mighty_mouse.commands.demo_cmd import run_demo

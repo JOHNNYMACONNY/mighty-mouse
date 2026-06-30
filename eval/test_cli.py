@@ -8,6 +8,7 @@ import yaml
 
 from mighty_mouse import cli
 from mighty_mouse.commands import benchmark_cmd, demo_cmd, doctor_cmd
+from mighty_mouse.commands import verify_cmd
 from mighty_mouse.services import benchmark_service
 from mighty_mouse.services.verifiers import adherence
 
@@ -169,3 +170,87 @@ def test_adherence_uses_installed_package_path(monkeypatch, tmp_path):
     assert passed
     assert observed["script"].endswith("mighty_mouse/orchestrator/enforce_workflow.py")
     assert os.path.exists(observed["script"])
+
+
+def _run_verify_cli(monkeypatch, *arguments):
+    monkeypatch.setattr(sys, "argv", ["mighty-mouse", "verify", *arguments])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    return exc.value.code
+
+
+def test_verify_cli_passes_and_renders_check(monkeypatch, tmp_path, capsys):
+    command = f'{sys.executable} -c "print(\'verified\')"'
+
+    assert _run_verify_cli(monkeypatch, str(tmp_path), "--test-command", command) == 0
+    output = capsys.readouterr().out
+    assert "PASS tests" in output
+    assert "verified" in output
+
+
+def test_verify_cli_fails_and_renders_suggestion(monkeypatch, tmp_path, capsys):
+    command = f'{sys.executable} -c "raise SystemExit(3)"'
+
+    assert _run_verify_cli(monkeypatch, str(tmp_path), "--test-command", command) == 1
+    output = capsys.readouterr().out
+    assert "FAIL tests" in output
+    assert "Suggestions:" in output
+
+
+def test_verify_cli_invalid_workspace_exits_two(monkeypatch, tmp_path, capsys):
+    missing = tmp_path / "missing"
+
+    assert _run_verify_cli(monkeypatch, str(missing)) == 2
+    assert "Workspace is not a directory" in capsys.readouterr().err
+
+
+def test_verify_cli_forwards_command_overrides_and_scope(monkeypatch, tmp_path, capsys):
+    captured = {}
+
+    def fake_verify(**kwargs):
+        captured.update(kwargs)
+        return type("Result", (), {
+            "passed": True,
+            "checks": [],
+            "summary": "No checks failed.",
+            "suggestions": [],
+        })()
+
+    monkeypatch.setattr(verify_cmd, "verify", fake_verify)
+    code = _run_verify_cli(
+        monkeypatch,
+        str(tmp_path),
+        "--test-command", "test override",
+        "--lint-command", "lint override",
+        "--build-command", "build override",
+        "--allowed-path", "src/",
+        "--allowed-path", "tests/",
+    )
+
+    assert code == 0
+    assert captured["test_command"] == "test override"
+    assert captured["lint_command"] == "lint override"
+    assert captured["build_command"] == "build override"
+    assert captured["allowed_paths"] == ["src/", "tests/"]
+    assert "No checks failed." in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "not-a-number"])
+def test_verify_cli_rejects_invalid_timeout(monkeypatch, tmp_path, value):
+    assert _run_verify_cli(
+        monkeypatch, str(tmp_path), "--timeout-sec", value
+    ) == 2
+
+
+def test_verify_cli_timeout_fails_check(monkeypatch, tmp_path, capsys):
+    command = f'{sys.executable} -c "import time; time.sleep(2)"'
+
+    assert _run_verify_cli(
+        monkeypatch,
+        str(tmp_path),
+        "--test-command", command,
+        "--timeout-sec", "1",
+    ) == 1
+    output = capsys.readouterr().out.lower()
+    assert "fail tests" in output
+    assert "timed out" in output

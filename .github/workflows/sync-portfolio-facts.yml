@@ -1,0 +1,68 @@
+name: Sync portfolio repository facts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - 'pyproject.toml'
+      - 'src/**'
+      - 'eval/results/**'
+      - '.github/workflows/sync-portfolio-facts.yml'
+  release:
+    types: [published, edited, deleted]
+  workflow_dispatch:
+
+concurrency:
+  group: portfolio-facts-${{ github.repository }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Configure repository-scoped deploy key
+        env:
+          PORTFOLIO_CONTENT_DEPLOY_KEY: ${{ secrets.PORTFOLIO_CONTENT_DEPLOY_KEY }}
+        run: |
+          test -n "$PORTFOLIO_CONTENT_DEPLOY_KEY"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$PORTFOLIO_CONTENT_DEPLOY_KEY" > ~/.ssh/portfolio-content
+          chmod 600 ~/.ssh/portfolio-content
+          curl -fsSL https://api.github.com/meta | jq -r '.ssh_keys[] | "github.com " + .' > ~/.ssh/known_hosts
+          printf '%s\n' 'Host github.com' '  IdentityFile ~/.ssh/portfolio-content' '  IdentitiesOnly yes' > ~/.ssh/config
+      - name: Collect deterministic facts
+        id: facts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git clone --depth 1 git@github.com:JOHNNYMACONNY/portfolio-content.git portfolio-content
+          cd portfolio-content
+          npm ci
+          node scripts/sync-repository-facts.mjs --repository "$GITHUB_REPOSITORY"
+      - name: Validate and push a guarded automation branch
+        if: steps.facts.outputs.changed == 'true'
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          cd portfolio-content
+          npm test
+          npm run validate
+          npm run compile
+          branch="automation/repository-facts-mighty-mouse-${GITHUB_RUN_ID}"
+          git config user.name 'portfolio-facts[bot]'
+          git config user.email 'portfolio-facts[bot]@users.noreply.github.com'
+          git checkout -b "$branch"
+          git add "content/projects/${{ steps.facts.outputs.slug }}.json" dist/portfolio.json dist/portfolio.sha256
+          git commit -m "chore: sync repository facts from $GITHUB_REPOSITORY@$SOURCE_SHA"
+          git push origin "$branch"
+      - name: Record no-op decision
+        if: steps.facts.outputs.changed != 'true'
+        run: echo "No allowlisted repository facts changed; no portfolio branch created."

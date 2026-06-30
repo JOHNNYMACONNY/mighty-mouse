@@ -18,15 +18,43 @@ def _has_python_tests(workspace: str) -> bool:
     return False
 
 
-def _node_scripts(workspace: str) -> dict[str, str]:
+def _node_scripts(workspace: str) -> tuple[dict[str, str] | None, str | None]:
     package_path = os.path.join(workspace, "package.json")
     try:
         with open(package_path, encoding="utf-8") as package_file:
             package = json.load(package_file)
-    except (OSError, json.JSONDecodeError):
-        return {}
+    except OSError as exc:
+        return None, f"Unable to read package.json: {exc}"
+    except json.JSONDecodeError as exc:
+        return None, f"Invalid package.json: {exc.msg} (line {exc.lineno}, column {exc.colno})."
+    if not isinstance(package, dict):
+        return None, "Invalid package.json: the top-level value must be an object."
     scripts = package.get("scripts", {})
-    return scripts if isinstance(scripts, dict) else {}
+    if not isinstance(scripts, dict):
+        return None, "Invalid package.json: 'scripts' must be an object."
+    return scripts, None
+
+
+def detect_projects(workspace: str) -> list[str]:
+    """Return every project ecosystem identified by a root marker."""
+    projects: list[str] = []
+    if any(
+        os.path.exists(os.path.join(workspace, marker))
+        for marker in ("pyproject.toml", "setup.py", "setup.cfg")
+    ):
+        projects.append("python")
+    if os.path.exists(os.path.join(workspace, "package.json")):
+        projects.append("node")
+    if os.path.exists(os.path.join(workspace, "Cargo.toml")):
+        projects.append("rust")
+    if os.path.exists(os.path.join(workspace, "go.mod")):
+        projects.append("go")
+    return projects
+
+
+def _failure_check(message: str) -> list[str]:
+    """Build a portable, deterministic check that reports a detection failure."""
+    return [sys.executable, "-c", "import sys; print(sys.argv[1]); raise SystemExit(1)", message]
 
 
 def detect_checks(workspace: str) -> tuple[list[tuple[str, list[str]]], list[str]]:
@@ -34,38 +62,55 @@ def detect_checks(workspace: str) -> tuple[list[tuple[str, list[str]]], list[str
     checks: list[tuple[str, list[str]]] = []
     warnings: list[str] = []
 
-    has_python = any(
-        os.path.exists(os.path.join(workspace, marker))
-        for marker in ("pyproject.toml", "setup.py", "setup.cfg")
-    )
-    if has_python:
+    projects = detect_projects(workspace)
+    if "python" in projects:
         if _has_python_tests(workspace):
             checks.append(("python-tests", [sys.executable, "-m", "pytest", "-q"]))
         else:
             checks.append(("python-syntax", [sys.executable, "-m", "compileall", "-q", "."]))
             warnings.append("No Python tests detected; running syntax validation only.")
 
-    package_path = os.path.join(workspace, "package.json")
-    if os.path.exists(package_path):
-        scripts = _node_scripts(workspace)
-        test_script = str(scripts.get("test", ""))
-        if test_script and "no test specified" not in test_script.lower():
-            checks.append(("node-tests", ["npm", "test"]))
-        elif "lint" in scripts:
-            checks.append(("node-lint", ["npm", "run", "lint"]))
-            warnings.append("No Node.js test script detected; running lint only.")
-        elif "build" in scripts:
-            checks.append(("node-build", ["npm", "run", "build"]))
-            warnings.append("No Node.js test or lint script detected; running build only.")
+    if "node" in projects:
+        scripts, metadata_error = _node_scripts(workspace)
+        if metadata_error:
+            checks.append(("node-config", _failure_check(metadata_error)))
+            warnings.append(metadata_error + " Fix package.json before running Node verification.")
+            scripts = None
+        if scripts is None:
+            pass
         else:
-            warnings.append("Node.js project detected without test, lint, or build scripts.")
+            invalid_scripts = [
+                name for name in ("test", "lint", "build")
+                if name in scripts and not (
+                    isinstance(scripts[name], str) and scripts[name].strip()
+                )
+            ]
+            if invalid_scripts:
+                names = ", ".join(invalid_scripts)
+                message = f"Invalid package.json scripts: {names} must be non-empty strings."
+                checks.append(("node-config", _failure_check(message)))
+                warnings.append(message + " Fix these scripts before running Node verification.")
+                scripts = None
+        if scripts is not None:
+            test_script = scripts.get("test", "")
+            if test_script and "no test specified" not in test_script.lower():
+                checks.append(("node-tests", ["npm", "test"]))
+            elif "lint" in scripts:
+                checks.append(("node-lint", ["npm", "run", "lint"]))
+                warnings.append("No Node.js test script detected; running lint only.")
+            elif "build" in scripts:
+                checks.append(("node-build", ["npm", "run", "build"]))
+                warnings.append("No Node.js test or lint script detected; running build only.")
+            else:
+                message = "Node.js project detected without a usable test, lint, or build script."
+                checks.append(("node-config", _failure_check(message)))
+                warnings.append(message + " Add one of these scripts to package.json.")
 
-    if os.path.exists(os.path.join(workspace, "Cargo.toml")):
+    if "rust" in projects:
         checks.append(("rust-tests", ["cargo", "test"]))
-    if os.path.exists(os.path.join(workspace, "go.mod")):
+    if "go" in projects:
         checks.append(("go-tests", ["go", "test", "./..."]))
 
-    available_checks = []
     for name, command in checks:
         executable = command[0]
         if os.path.isabs(executable):
@@ -73,8 +118,9 @@ def detect_checks(workspace: str) -> tuple[list[tuple[str, list[str]]], list[str
         else:
             available = shutil.which(executable) is not None
         if not available:
-            warnings.append(f"Skipped {name}: executable not found: {executable}")
-        else:
-            available_checks.append((name, command))
+            warnings.append(
+                f"Cannot run {name}: executable not found: {executable}. "
+                f"Install {executable} or provide an explicit command override."
+            )
 
-    return available_checks, warnings
+    return checks, warnings

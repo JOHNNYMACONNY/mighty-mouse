@@ -43,6 +43,8 @@ def test_verify_tool_returns_structured_result(tmp_path):
     assert result["passed"] is True
     assert result["checks"][0]["name"] == "tests"
     assert result["suggestions"] == []
+    assert result["detected_projects"] == []
+    assert result["warnings"] == []
 
 
 def test_unknown_protocol_complexity_is_rejected():

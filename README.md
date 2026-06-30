@@ -31,7 +31,12 @@ python -m venv .venv
 .venv/bin/pip install -e '.[dev]'
 ```
 
-The core library requires Python 3.10 or newer.
+The core library and MCP transport support CPython 3.10, 3.11, 3.12, and 3.13.
+Every pull request and push to `main` runs the complete test suite on all four
+versions with both distributions installed, ensuring MCP tests are exercised.
+CI also builds both wheels, installs only those artifacts into a clean Python
+3.13 environment, and runs CLI, protocol, verifier, version-import, and MCP
+import smoke checks from outside the source checkout.
 
 ## Verify any project
 

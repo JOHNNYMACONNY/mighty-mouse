@@ -4,8 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mighty-mouse"
-version = "0.1.0"
-description = "High-reliability coding protocol for small models"
+version = "0.2.0"
+description = "Provider-agnostic coding protocols and project verification for AI agents"
+readme = "README.md"
+license = { file = "LICENSE" }
 authors = [
     { name = "Mighty Mouse Team" }
 ]
@@ -14,14 +16,20 @@ dependencies = [
     "pyyaml",
 ]
 
+[project.urls]
+Homepage = "https://github.com/JOHNNYMACONNY/mighty-mouse"
+Repository = "https://github.com/JOHNNYMACONNY/mighty-mouse"
+Issues = "https://github.com/JOHNNYMACONNY/mighty-mouse/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest",
     "build",
+    "mcp>=1.0,<2",
 ]
 
 [tool.setuptools.package-data]
-mighty_mouse = ["resources/**/*"]
+mighty_mouse = ["resources/**/*", "protocols/**/*.md"]
 
 [project.scripts]
 mighty-mouse = "mighty_mouse.cli:main"

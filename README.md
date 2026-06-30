@@ -1,80 +1,140 @@
 # Mighty Mouse
 
-Mighty Mouse is an evaluation-driven harness that improves the reliability and efficiency of smaller language models. It enforces strict structural output (e.g. XML formatting) and multi-step verification workflows.
+Mighty Mouse is a provider-agnostic coding protocol and verification harness for AI agents. It can be imported as a Python library, exposed to any MCP-compatible client, or used through platform rules for Antigravity, Claude Code, Cursor, Codex, Hermes, and Windsurf.
 
-## Features
+The harness does not replace an agent's model provider. It supplies:
 
-- **Evaluation-Driven Harness**: Provides a suite of reproducible benchmark tasks to rigorously measure a model's coding reliability.
-- **Improved Efficiency**: Through iterative testing and refinement (the Lean Protocol), Mighty Mouse achieves significant speedups (e.g., a 29.5% reduction in latency across 15 paired tasks) without losing reliability.
-- **Robust CLI**: A minimal CLI provides the tools to run diagnostics, execute benchmarks, and perform live or simulated demos.
+- versioned low, medium, and high-complexity coding protocols;
+- project-native verification for tests, lint, builds, and Git scope;
+- structured pass/fail results with retry suggestions;
+- a local MCP server with `protocol` and `verify` tools;
+- the original Ollama benchmark CLI and frozen evaluation evidence.
 
-## Quick Start
+## Evidence and limitations
 
-### Installation
+The historical paired validation contains 15 original-protocol runs and 15 Lean protocol runs. Both recorded 15/15 passes; Lean reduced average latency by 29.5% in that recorded environment.
 
-Clone the repository and install it in editable mode:
+A new bare control sent the same 15 frozen tasks to `gemma4:e4b` with one raw request per task, no Mighty Mouse prompt, and no verification retry loop. It also passed 15/15. Therefore:
+
+- the frozen synthetic corpus supports the recorded Lean latency result;
+- it does **not** demonstrate a success-rate advantage over a raw model call;
+- its permissive tests have a ceiling effect and should not be generalized to real projects.
+
+See [`data/evidence/results/baseline_comparison.md`](data/evidence/results/baseline_comparison.md) and the raw [`bare_baseline_results.json`](data/evidence/results/bare_baseline_results.json). Real-project paired validation is explicitly marked as collecting until at least 10 tasks are complete.
+
+## Install
 
 ```bash
-git clone <repository-url>
-cd mighty_mouse
-pip install -e .
+git clone https://github.com/JOHNNYMACONNY/mighty-mouse.git
+cd mighty-mouse
+python -m venv .venv
+.venv/bin/pip install -e '.[dev]'
 ```
 
-### Diagnostics
+The core library requires Python 3.10 or newer.
 
-Check base package readiness:
+## Verify any project
+
+```python
+from mighty_mouse.verifier import verify
+
+result = verify(
+    workspace="/path/to/project",
+    allowed_paths=["src/feature.py", "tests/"],
+)
+
+print(result.passed)
+print(result.summary)
+for check in result.checks:
+    print(check.name, check.passed, check.duration_sec)
+```
+
+Without explicit commands, Mighty Mouse conservatively detects Python, Node.js, Rust, and Go checks. You can override detection:
+
+```python
+result = verify(
+    workspace="/path/to/project",
+    test_command="pytest -q",
+    lint_command="ruff check .",
+    build_command="python -m build",
+    timeout_sec=120,
+)
+```
+
+Commands are executed without a shell, but they still run with the verifier process's local permissions. Use explicit commands only in trusted workspaces.
+
+## MCP server
+
+Install the separate transport package into the same environment:
+
+```bash
+.venv/bin/pip install -e ./mcp
+.venv/bin/python -m mighty_mouse_mcp.server
+```
+
+The `mighty-mouse` server exposes:
+
+- `protocol(task_description, complexity)`: returns the pinned v9.1 low, medium, or high protocol.
+- `verify(workspace, ...)`: returns structured tests, lint, build, and scope results.
+
+Generic stdio configuration:
+
+```json
+{
+  "mcpServers": {
+    "mighty-mouse": {
+      "command": "/absolute/path/to/.venv/bin/python",
+      "args": ["-m", "mighty_mouse_mcp.server"]
+    }
+  }
+}
+```
+
+Platform-specific rule files and current configuration shapes are documented in [`skills/README.md`](skills/README.md).
+
+## Original benchmark CLI
 
 ```bash
 mighty-mouse doctor
-```
-
-Check Ollama availability before a live run:
-
-```bash
 mighty-mouse doctor --live
-```
-
-### Running the Demo
-
-You can run the demo in two modes:
-
-1. **Simulated (Fast)**: Uses cached fixtures to show how the system operates immediately.
-   ```bash
-   mighty-mouse demo
-   ```
-2. **Live**: Runs a real evaluation against a local Ollama model.
-   ```bash
-   mighty-mouse demo --live --model gemma:2b
-   ```
-
-### Benchmarks
-
-Run the five packaged benchmark tasks:
-
-```bash
+mighty-mouse demo
+mighty-mouse demo --live --model gemma4:e4b
 mighty-mouse benchmark
-```
-
-Or run task JSON files from a directory:
-
-```bash
 mighty-mouse benchmark --tasks-dir ./my-tasks
 ```
 
-## Project Architecture
+The simulated demo replays recorded fixtures and does not execute a model. Live commands isolate logs and temporary workspaces under a reported output directory.
 
-Mighty Mouse is designed to keep experimental scripts clearly separated from the stable harness:
+## Reproduce the bare control
 
-- `src/mighty_mouse/orchestrator/`: The core agent logic and execution loops.
-- `src/mighty_mouse/services/`: Benchmark and verification services.
-- `src/mighty_mouse/commands/`: CLI command implementations.
-- `src/mighty_mouse/resources/`: Packaged configurations, prompts, and demo tasks.
-- `data/evidence/`: Frozen snapshots of past validation runs proving the efficiency gains of the protocol.
+With Ollama running and `gemma4:e4b` installed:
 
-## Evidence
+```bash
+PYTHONPATH=src python eval/run_bare_baseline.py --force
+```
 
-The `data/evidence` directory contains the raw JSONs and reports proving the efficacy of this harness across 15 paired tasks producing 30 condition runs. Evidence-grade metrics confirm a 100% pass rate on Tier 1 tasks while achieving a 29.5% average latency reduction when using the Lean protocol profile.
+The runner requires exactly 15 frozen tasks, makes one generation request per task, retains every raw response, records model provenance and hashes, and never applies a Mighty Mouse protocol or retry loop.
+
+## Architecture
+
+- `src/mighty_mouse/verifier/`: generic project verification public API.
+- `src/mighty_mouse/protocols/`: versioned complexity-scaled protocols.
+- `mcp/`: separately installable MCP transport.
+- `skills/`: platform rules and MCP configuration examples.
+- `src/mighty_mouse/orchestrator/`: original local-model agent loop.
+- `src/mighty_mouse/services/`: synthetic benchmark and legacy verification services.
+- `data/evidence/`: frozen historical, bare-control, and real-project study artifacts.
+- `eval/`: evidence runners and automated tests.
+
+## Development
+
+```bash
+PYTHONPATH=src .venv/bin/python -m pytest -q
+python -m build
+```
+
+The MCP package is built separately from `mcp/`. Release verification installs both wheels into a clean environment and exercises an actual stdio MCP session.
 
 ## License
 
-MIT License
+MIT. See [`LICENSE`](LICENSE).

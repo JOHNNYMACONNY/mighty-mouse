@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "status": "collecting",
+  "method": "paired control and Mighty Mouse runs from the same pre-change project state",
+  "minimum_paired_tasks": 10,
+  "tasks": []
+}

@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mighty-mouse-mcp"
+version = "0.2.0"
+description = "MCP transport for Mighty Mouse project verification and coding protocols"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0,<2",
+    "mighty-mouse>=0.2.0",
+]
+
+[project.scripts]
+mighty-mouse-mcp = "mighty_mouse_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

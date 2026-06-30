@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mighty-mouse": {
+      "command": "/path/to/venv/bin/python",
+      "args": ["-m", "mighty_mouse_mcp.server"]
+    }
+  }
+}

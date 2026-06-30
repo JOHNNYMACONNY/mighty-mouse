@@ -1,5 +1,15 @@
 import argparse
 
+
+def _positive_int(value):
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a positive integer") from exc
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
 def main():
     parser = argparse.ArgumentParser(description="Mighty Mouse CLI - High-reliability coding protocol for small models")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -19,6 +29,25 @@ def main():
     parser_demo.add_argument("--model", type=str, help="Ollama model name (required if --live is used)")
     parser_demo.add_argument("--output-dir", type=str, help="Directory for live-demo logs and temporary workspaces")
 
+    # verify
+    parser_verify = subparsers.add_parser("verify", help="Verify a software project")
+    parser_verify.add_argument("workspace", help="Project workspace to verify")
+    parser_verify.add_argument("--test-command", help="Override the detected test command")
+    parser_verify.add_argument("--lint-command", help="Run an explicit lint command")
+    parser_verify.add_argument("--build-command", help="Run an explicit build command")
+    parser_verify.add_argument(
+        "--allowed-path",
+        action="append",
+        dest="allowed_paths",
+        help="Allow changes under this path or glob (repeatable)",
+    )
+    parser_verify.add_argument(
+        "--timeout-sec",
+        type=_positive_int,
+        default=120,
+        help="Timeout for each check in seconds (default: 120)",
+    )
+
     args = parser.parse_args()
 
     if args.command == "doctor":
@@ -32,6 +61,17 @@ def main():
     elif args.command == "demo":
         from mighty_mouse.commands.demo_cmd import run_demo
         run_demo(live=args.live, model=args.model, output_dir=args.output_dir)
+
+    elif args.command == "verify":
+        from mighty_mouse.commands.verify_cmd import run_verify
+        run_verify(
+            workspace=args.workspace,
+            test_command=args.test_command,
+            lint_command=args.lint_command,
+            build_command=args.build_command,
+            allowed_paths=args.allowed_paths,
+            timeout_sec=args.timeout_sec,
+        )
 
 
 if __name__ == "__main__":

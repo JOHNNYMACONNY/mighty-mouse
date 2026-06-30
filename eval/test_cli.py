@@ -12,6 +12,109 @@ from mighty_mouse.services import benchmark_service
 from mighty_mouse.services.verifiers import adherence
 
 
+def _run_cli(monkeypatch, *args):
+    monkeypatch.setattr(sys, "argv", ["mighty-mouse", *args])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    return exc.value.code
+
+
+def test_verify_passing_command_exits_zero(monkeypatch, tmp_path, capsys):
+    code = _run_cli(
+        monkeypatch,
+        "verify",
+        str(tmp_path),
+        "--test-command",
+        f'{sys.executable} -c "print(\'tests ran\')"',
+    )
+
+    assert code == 0
+    output = capsys.readouterr().out
+    assert "[PASS] tests" in output
+    assert "tests ran" in output
+    assert "Passed 1/1 verification checks." in output
+
+
+def test_verify_failing_command_exits_one_with_suggestion(monkeypatch, tmp_path, capsys):
+    code = _run_cli(
+        monkeypatch,
+        "verify",
+        str(tmp_path),
+        "--test-command",
+        f'{sys.executable} -c "raise SystemExit(3)"',
+    )
+
+    assert code == 1
+    output = capsys.readouterr().out
+    assert "[FAIL] tests" in output
+    assert "Suggestion: Fix the failing tests check" in output
+
+
+def test_verify_invalid_workspace_exits_two(monkeypatch, tmp_path, capsys):
+    code = _run_cli(monkeypatch, "verify", str(tmp_path / "missing"))
+
+    assert code == 2
+    assert "Workspace is not a directory" in capsys.readouterr().err
+
+
+def test_verify_accepts_all_command_overrides(monkeypatch, tmp_path, capsys):
+    command = f'{sys.executable} -c "pass"'
+    code = _run_cli(
+        monkeypatch,
+        "verify",
+        str(tmp_path),
+        "--test-command", command,
+        "--lint-command", command,
+        "--build-command", command,
+    )
+
+    assert code == 0
+    output = capsys.readouterr().out
+    assert "[PASS] tests" in output
+    assert "[PASS] lint" in output
+    assert "[PASS] build" in output
+
+
+def test_verify_repeatable_allowed_paths_check_scope(monkeypatch, tmp_path, capsys):
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "tracked.txt").write_text("original\n")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "tracked.txt"], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "initial"],
+        check=True,
+    )
+    (tmp_path / "tracked.txt").write_text("changed\n")
+    code = _run_cli(
+        monkeypatch,
+        "verify",
+        str(tmp_path),
+        "--test-command", f'{sys.executable} -c "pass"',
+        "--allowed-path", "src/",
+        "--allowed-path", "tracked.txt",
+    )
+
+    assert code == 0
+    assert "[PASS] scope" in capsys.readouterr().out
+
+
+def test_verify_timeout_fails_and_nonpositive_timeout_is_invalid(monkeypatch, tmp_path, capsys):
+    code = _run_cli(
+        monkeypatch,
+        "verify",
+        str(tmp_path),
+        "--test-command", f'{sys.executable} -c "import time; time.sleep(2)"',
+        "--timeout-sec", "1",
+    )
+    assert code == 1
+    assert "Timed out after 1s" in capsys.readouterr().out
+
+    code = _run_cli(monkeypatch, "verify", str(tmp_path), "--timeout-sec", "0")
+    assert code == 2
+    assert "must be a positive integer" in capsys.readouterr().err
+
+
 def test_doctor_exits_zero(capsys):
     with pytest.raises(SystemExit) as exc:
         doctor_cmd.run_doctor(live=False)

@@ -35,6 +35,20 @@ The core library requires Python 3.10 or newer.
 
 ## Verify any project
 
+From the command line, verification exits `0` when every applicable check
+passes, `1` when verification runs and a check fails, and `2` for invalid input
+or an unusable workspace:
+
+```bash
+mighty-mouse verify /path/to/project
+mighty-mouse verify . --test-command "pytest -q" --lint-command "ruff check ."
+mighty-mouse verify . --build-command "python -m build" --timeout-sec 180
+mighty-mouse verify . --allowed-path src/ --allowed-path "tests/*.py"
+```
+
+Each explicit command is parsed as an argument vector and executed directly,
+without a shell. `--allowed-path` is repeatable and checks current Git changes.
+
 ```python
 from mighty_mouse.verifier import verify
 

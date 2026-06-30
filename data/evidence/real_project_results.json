@@ -52,7 +52,56 @@
         "notes": "74 tests passed. Clean-wheel 0/1/2 exit smoke passed. MCP protocol tool was unavailable, so the checked-in Codex skill supplied the medium protocol. External-volume AppleDouble metadata required neutral clean staging.",
         "recorded_at": "2026-06-30T22:20:32.147835+00:00"
       }
+    },
+    {
+      "task_id": "MM-002",
+      "project": "mighty-mouse",
+      "task_description": "Add versioned JSON output to verify, add a public protocol CLI with human and JSON modes, preserve exit semantics, test all required schemas, and document both interfaces.",
+      "base_commit": "d1f78583b77b875e682aeb07ea9093e7ee050308",
+      "shared_config": {
+        "agent": "Codex CLI 0.120.0 multi-agent",
+        "model": "gpt-5.5",
+        "model_settings": "reasoning_effort=medium;sandbox=workspace-write;approval=never",
+        "environment_fingerprint": "sha256:bb27d410176c42305e0853bf24a32c358423a1d8acbf2c466e1e7b5cdf511306",
+        "timeout_sec": 900,
+        "acceptance_commands": [
+          ".trial-venv/bin/python -m pytest -q",
+          "metadata-clean wheel build and install",
+          "installed human/JSON protocol and verify smoke with exits 0/1/2"
+        ],
+        "allowed_paths": [
+          "README.md",
+          "eval/test_cli.py",
+          "src/mighty_mouse/cli.py",
+          "src/mighty_mouse/commands/protocol_cmd.py",
+          "src/mighty_mouse/commands/verify_cmd.py"
+        ]
+      },
+      "control": {
+        "first_try_pass": true,
+        "retry_rounds": 0,
+        "scope_violations": [],
+        "duration_sec": 225.503,
+        "quality_score_1_to_5": 4,
+        "final_commit": "d7909b0cd6a91b88b58aa0341d5028bb339746d8",
+        "artifact_dir": "data/evidence/real_project_trials/MM-002/control",
+        "review_rationale": "Functionally complete and simpler, but mutated task_description whitespace and had weaker exact schema regression coverage.",
+        "notes": "81 tests and installed-wheel human/JSON smoke passed on first evaluator acceptance.",
+        "recorded_at": "2026-06-30T22:34:09.608117+00:00"
+      },
+      "harness": {
+        "first_try_pass": true,
+        "retry_rounds": 0,
+        "scope_violations": [],
+        "duration_sec": 191.571,
+        "quality_score_1_to_5": 5,
+        "final_commit": "5dac9dad2ba45ea1bb9a4a6cbd5224d0c7101da9",
+        "artifact_dir": "data/evidence/real_project_trials/MM-002/harness",
+        "review_rationale": "Selected in blind review for exact contract preservation, reusable schema builders, and stronger regression coverage.",
+        "notes": "81 tests and installed-wheel human/JSON smoke passed on first evaluator acceptance. Medium protocol was followed from the checked-in skill.",
+        "recorded_at": "2026-06-30T22:34:09.649219+00:00"
+      }
     }
   ],
-  "paired_tasks": 1
+  "paired_tasks": 2
 }

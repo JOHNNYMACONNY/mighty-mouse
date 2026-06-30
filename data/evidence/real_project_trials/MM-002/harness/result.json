@@ -1,0 +1,14 @@
+{
+  "condition": "harness",
+  "base_commit": "d1f78583b77b875e682aeb07ea9093e7ee050308",
+  "final_commit": "5dac9dad2ba45ea1bb9a4a6cbd5224d0c7101da9",
+  "duration_sec": 191.571,
+  "first_try_pass": true,
+  "retry_rounds": 0,
+  "scope_violations": [],
+  "quality_score_1_to_5": 5,
+  "full_suite": "81 passed",
+  "installed_wheel_smoke": "human and JSON protocol/verify passed; verify exits 0/1/2",
+  "implementation_patch_sha256": "c216654137f03425f6f2bff79ef4c822a33ca5cdbb610a54303426f7da4887a1",
+  "local_raw_session_sha256": "dc9ccc09e421f794cddd63552acf92acf80c8f511bf866d31ec7496fa512e39b"
+}

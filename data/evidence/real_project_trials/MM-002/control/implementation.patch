@@ -1,0 +1,283 @@
+From d7909b0cd6a91b88b58aa0341d5028bb339746d8 Mon Sep 17 00:00:00 2001
+From: Mighty Mouse Study <study@localhost>
+Date: Tue, 30 Jun 2026 15:32:02 -0700
+Subject: [PATCH] feat(cli): add versioned JSON and protocol output
+
+---
+ README.md                                 | 45 ++++++++++++++++
+ eval/test_cli.py                          | 64 +++++++++++++++++++++++
+ src/mighty_mouse/cli.py                   | 21 ++++++++
+ src/mighty_mouse/commands/protocol_cmd.py | 38 ++++++++++++++
+ src/mighty_mouse/commands/verify_cmd.py   | 24 ++++++++-
+ 5 files changed, 190 insertions(+), 2 deletions(-)
+ create mode 100644 src/mighty_mouse/commands/protocol_cmd.py
+
+diff --git a/README.md b/README.md
+index 2741d77..e9b400c 100644
+--- a/README.md
++++ b/README.md
+@@ -56,6 +56,51 @@ mighty-mouse verify . \
+ The command exits `0` when all applicable checks pass, `1` when verification
+ runs and a check fails, and `2` for invalid input or an unusable workspace.
+ 
++For automation, add `--json`. Exactly one JSON document is written to stdout
++for all three exit outcomes:
++
++```bash
++mighty-mouse verify /path/to/project --json
++```
++
++The version 1 verify shape is:
++
++```json
++{
++  "schema_version": 1,
++  "interface": "verify",
++  "passed": true,
++  "checks": [
++    {"name": "tests", "passed": true, "output": "...", "duration_sec": 0.42}
++  ],
++  "summary": "Passed 1/1 verification checks.",
++  "suggestions": []
++}
++```
++
++## Get a coding protocol
++
++Display the medium-complexity protocol (the default), or select low or high:
++
++```bash
++mighty-mouse protocol "Add caching to the search endpoint"
++mighty-mouse protocol "Rename a local variable" --complexity low
++mighty-mouse protocol "Migrate the persistence layer" --complexity high
++```
++
++Add `--json` for machine-readable output. Its version 1 shape is:
++
++```json
++{
++  "schema_version": 1,
++  "interface": "protocol",
++  "task_description": "Rename a local variable",
++  "complexity": "low",
++  "protocol_prompt": "# Mighty Mouse v9.1 ...",
++  "verification_reminder": "After editing, call mighty-mouse/verify. Fix failures and retry up to three rounds."
++}
++```
++
+ ```python
+ from mighty_mouse.verifier import verify
+ 
+diff --git a/eval/test_cli.py b/eval/test_cli.py
+index 7bdb99c..302db00 100644
+--- a/eval/test_cli.py
++++ b/eval/test_cli.py
+@@ -179,6 +179,11 @@ def _run_verify_cli(monkeypatch, *arguments):
+     return exc.value.code
+ 
+ 
++def _run_protocol_cli(monkeypatch, *arguments):
++    monkeypatch.setattr(sys, "argv", ["mighty-mouse", "protocol", *arguments])
++    cli.main()
++
++
+ def test_verify_cli_passes_and_renders_check(monkeypatch, tmp_path, capsys):
+     command = f'{sys.executable} -c "print(\'verified\')"'
+ 
+@@ -254,3 +259,62 @@ def test_verify_cli_timeout_fails_check(monkeypatch, tmp_path, capsys):
+     output = capsys.readouterr().out.lower()
+     assert "fail tests" in output
+     assert "timed out" in output
++
++
++@pytest.mark.parametrize(
++    ("command", "expected_code", "expected_passed"),
++    [
++        (f'{sys.executable} -c "print(\'verified\')"', 0, True),
++        (f'{sys.executable} -c "raise SystemExit(3)"', 1, False),
++    ],
++)
++def test_verify_cli_json_for_check_results(
++    monkeypatch, tmp_path, capsys, command, expected_code, expected_passed
++):
++    assert _run_verify_cli(
++        monkeypatch, str(tmp_path), "--test-command", command, "--json"
++    ) == expected_code
++    captured = capsys.readouterr()
++    payload = json.loads(captured.out)
++    assert captured.err == ""
++    assert payload["schema_version"] == 1
++    assert payload["interface"] == "verify"
++    assert payload["passed"] is expected_passed
++    assert set(payload) >= {"checks", "summary", "suggestions"}
++    assert set(payload["checks"][0]) == {"name", "passed", "output", "duration_sec"}
++
++
++def test_verify_cli_json_for_invalid_workspace(monkeypatch, tmp_path, capsys):
++    assert _run_verify_cli(monkeypatch, str(tmp_path / "missing"), "--json") == 2
++    captured = capsys.readouterr()
++    payload = json.loads(captured.out)
++    assert captured.err == ""
++    assert payload["schema_version"] == 1
++    assert payload["interface"] == "verify"
++    assert payload["passed"] is False
++    assert payload["checks"] == []
++    assert "Workspace is not a directory" in payload["summary"]
++
++
++@pytest.mark.parametrize("complexity", ["low", "medium", "high"])
++def test_protocol_cli_json(monkeypatch, capsys, complexity):
++    _run_protocol_cli(
++        monkeypatch, "Add stable command output", "--complexity", complexity, "--json"
++    )
++    payload = json.loads(capsys.readouterr().out)
++    assert payload["schema_version"] == 1
++    assert payload["interface"] == "protocol"
++    assert payload["task_description"] == "Add stable command output"
++    assert payload["complexity"] == complexity
++    assert payload["protocol_prompt"]
++    assert payload["verification_reminder"]
++
++
++def test_protocol_cli_human_output(monkeypatch, capsys):
++    _run_protocol_cli(monkeypatch, "Refactor the parser")
++    output = capsys.readouterr().out
++    assert "Task: Refactor the parser" in output
++    assert "Complexity: medium" in output
++    assert "Medium Complexity" in output
++    assert "Verification reminder:" in output
++    assert '"schema_version"' not in output
+diff --git a/src/mighty_mouse/cli.py b/src/mighty_mouse/cli.py
+index cb384bc..012e2c9 100644
+--- a/src/mighty_mouse/cli.py
++++ b/src/mighty_mouse/cli.py
+@@ -47,6 +47,18 @@ def main():
+         default=120,
+         help="Timeout for each command in seconds (default: 120)",
+     )
++    parser_verify.add_argument("--json", action="store_true", help="Emit versioned JSON output")
++
++    # protocol
++    parser_protocol = subparsers.add_parser("protocol", help="Show the coding protocol for a task")
++    parser_protocol.add_argument("task_description", help="Description of the task to perform")
++    parser_protocol.add_argument(
++        "--complexity",
++        choices=("low", "medium", "high"),
++        default="medium",
++        help="Protocol complexity (default: medium)",
++    )
++    parser_protocol.add_argument("--json", action="store_true", help="Emit versioned JSON output")
+ 
+     args = parser.parse_args()
+ 
+@@ -71,6 +83,15 @@ def main():
+             build_command=args.build_command,
+             allowed_paths=args.allowed_path,
+             timeout_sec=args.timeout_sec,
++            json_output=args.json,
++        )
++
++    elif args.command == "protocol":
++        from mighty_mouse.commands.protocol_cmd import run_protocol
++        run_protocol(
++            task_description=args.task_description,
++            complexity=args.complexity,
++            json_output=args.json,
+         )
+ 
+ 
+diff --git a/src/mighty_mouse/commands/protocol_cmd.py b/src/mighty_mouse/commands/protocol_cmd.py
+new file mode 100644
+index 0000000..825152a
+--- /dev/null
++++ b/src/mighty_mouse/commands/protocol_cmd.py
+@@ -0,0 +1,38 @@
++"""Public protocol command output."""
++
++from __future__ import annotations
++
++import json
++
++from mighty_mouse.protocols import get_protocol
++
++VERIFICATION_REMINDER = (
++    "After editing, call mighty-mouse/verify. Fix failures and retry up to three rounds."
++)
++
++
++def protocol_payload(task_description: str, complexity: str) -> dict:
++    return {
++        "schema_version": 1,
++        "interface": "protocol",
++        "task_description": task_description.strip(),
++        "complexity": complexity,
++        "protocol_prompt": get_protocol(complexity=complexity),
++        "verification_reminder": VERIFICATION_REMINDER,
++    }
++
++
++def run_protocol(
++    task_description: str,
++    complexity: str = "medium",
++    json_output: bool = False,
++) -> None:
++    payload = protocol_payload(task_description, complexity)
++    if json_output:
++        print(json.dumps(payload))
++        return
++
++    print(f"Task: {payload['task_description']}")
++    print(f"Complexity: {payload['complexity']}")
++    print(payload["protocol_prompt"].rstrip())
++    print(f"\nVerification reminder: {payload['verification_reminder']}")
+diff --git a/src/mighty_mouse/commands/verify_cmd.py b/src/mighty_mouse/commands/verify_cmd.py
+index 25b254d..c7989b8 100644
+--- a/src/mighty_mouse/commands/verify_cmd.py
++++ b/src/mighty_mouse/commands/verify_cmd.py
+@@ -1,5 +1,6 @@
+ from __future__ import annotations
+ 
++import json
+ import sys
+ 
+ from mighty_mouse.verifier import VerificationResult, verify
+@@ -31,6 +32,7 @@ def run_verify(
+     build_command: str | None = None,
+     allowed_paths: list[str] | None = None,
+     timeout_sec: int = 120,
++    json_output: bool = False,
+ ) -> None:
+     try:
+         result = verify(
+@@ -42,8 +44,26 @@ def run_verify(
+             timeout_sec=timeout_sec,
+         )
+     except (OSError, ValueError) as exc:
+-        print(f"mighty-mouse verify: {exc}", file=sys.stderr)
++        if json_output:
++            print(json.dumps({
++                "schema_version": 1,
++                "interface": "verify",
++                "passed": False,
++                "checks": [],
++                "summary": str(exc),
++                "suggestions": [],
++            }))
++        else:
++            print(f"mighty-mouse verify: {exc}", file=sys.stderr)
+         raise SystemExit(2) from exc
+ 
+-    print(render_result(result))
++    if json_output:
++        payload = {
++            "schema_version": 1,
++            "interface": "verify",
++            **result.to_dict(),
++        }
++        print(json.dumps(payload))
++    else:
++        print(render_result(result))
+     raise SystemExit(0 if result.passed else 1)
+-- 
+2.50.1 (Apple Git-155)
+

@@ -1,0 +1,14 @@
+{
+  "condition": "control",
+  "base_commit": "d1f78583b77b875e682aeb07ea9093e7ee050308",
+  "final_commit": "d7909b0cd6a91b88b58aa0341d5028bb339746d8",
+  "duration_sec": 225.503,
+  "first_try_pass": true,
+  "retry_rounds": 0,
+  "scope_violations": [],
+  "quality_score_1_to_5": 4,
+  "full_suite": "81 passed",
+  "installed_wheel_smoke": "human and JSON protocol/verify passed; verify exits 0/1/2",
+  "implementation_patch_sha256": "622da3d9c7143391cf76815041eaf405c5fd22338ae217e9a8e7aa21c0bb6d7b",
+  "local_raw_session_sha256": "b61998a55bb4116acfb3dbe4d779705ca377e840e5ea2bde072802bd3f46a9c9"
+}

@@ -8,7 +8,7 @@ import yaml
 
 from mighty_mouse import cli
 from mighty_mouse.commands import benchmark_cmd, demo_cmd, doctor_cmd
-from mighty_mouse.commands import verify_cmd
+from mighty_mouse.commands import protocol_cmd, verify_cmd
 from mighty_mouse.services import benchmark_service
 from mighty_mouse.services.verifiers import adherence
 
@@ -172,11 +172,21 @@ def test_adherence_uses_installed_package_path(monkeypatch, tmp_path):
     assert os.path.exists(observed["script"])
 
 
-def _run_verify_cli(monkeypatch, *arguments):
-    monkeypatch.setattr(sys, "argv", ["mighty-mouse", "verify", *arguments])
+def _run_cli(monkeypatch, command, *arguments):
+    monkeypatch.setattr(sys, "argv", ["mighty-mouse", command, *arguments])
     with pytest.raises(SystemExit) as exc:
         cli.main()
     return exc.value.code
+
+
+def _run_verify_cli(monkeypatch, *arguments):
+    return _run_cli(monkeypatch, "verify", *arguments)
+
+
+def _run_protocol_cli(monkeypatch, *arguments):
+    monkeypatch.setattr(sys, "argv", ["mighty-mouse", "protocol", *arguments])
+    cli.main()
+    return 0
 
 
 def test_verify_cli_passes_and_renders_check(monkeypatch, tmp_path, capsys):
@@ -254,3 +264,61 @@ def test_verify_cli_timeout_fails_check(monkeypatch, tmp_path, capsys):
     output = capsys.readouterr().out.lower()
     assert "fail tests" in output
     assert "timed out" in output
+
+
+@pytest.mark.parametrize(
+    ("command", "expected_code", "expected_passed"),
+    [
+        (f'{sys.executable} -c "print(123)"', 0, True),
+        (f'{sys.executable} -c "raise SystemExit(3)"', 1, False),
+    ],
+)
+def test_verify_json_pass_and_failure(monkeypatch, tmp_path, capsys, command, expected_code, expected_passed):
+    assert _run_verify_cli(monkeypatch, str(tmp_path), "--test-command", command, "--json") == expected_code
+    captured = capsys.readouterr()
+    document = json.loads(captured.out)
+    assert captured.err == ""
+    assert document["schema_version"] == 1
+    assert document["interface"] == "verify"
+    assert document["passed"] is expected_passed
+    assert set(document) >= {"checks", "summary", "suggestions"}
+    assert set(document["checks"][0]) >= {"name", "passed", "output", "duration_sec"}
+
+
+def test_verify_json_invalid_workspace_exits_two(monkeypatch, tmp_path, capsys):
+    assert _run_verify_cli(monkeypatch, str(tmp_path / "missing"), "--json") == 2
+    captured = capsys.readouterr()
+    document = json.loads(captured.out)
+    assert captured.err == ""
+    assert document == {
+        "schema_version": 1,
+        "interface": "verify",
+        "passed": False,
+        "checks": [],
+        "summary": f"Workspace is not a directory: {tmp_path / 'missing'}",
+        "suggestions": ["Provide a readable project workspace and run verification again."],
+    }
+
+
+@pytest.mark.parametrize("complexity", ["low", "medium", "high"])
+def test_protocol_json_for_each_complexity(monkeypatch, capsys, complexity):
+    task = f"Handle a {complexity} task"
+    assert _run_protocol_cli(monkeypatch, task, "--complexity", complexity, "--json") == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["schema_version"] == 1
+    assert document["interface"] == "protocol"
+    assert document["task_description"] == task
+    assert document["complexity"] == complexity
+    assert document["protocol_prompt"].startswith("# Mighty Mouse v9.1")
+    assert document["verification_reminder"] == protocol_cmd.VERIFICATION_REMINDER
+
+
+def test_protocol_human_output_is_not_json(monkeypatch, capsys):
+    assert _run_protocol_cli(monkeypatch, "Refactor the parser") == 0
+    output = capsys.readouterr().out
+    assert "Complexity: medium" in output
+    assert "Selected protocol:" in output
+    assert "# Mighty Mouse v9.1" in output
+    assert "Verification reminder:" in output
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(output)

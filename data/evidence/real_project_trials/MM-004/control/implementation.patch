@@ -1,0 +1,432 @@
+From 6aae6268adf2782540aec4c2ab3b9c1fcfdd6735 Mon Sep 17 00:00:00 2001
+From: Mighty Mouse Study <study@localhost>
+Date: Tue, 30 Jun 2026 15:56:13 -0700
+Subject: [PATCH] feat(verifier): report mixed-project detection truthfully
+
+---
+ README.md                               | 22 +++++-
+ eval/test_cli.py                        | 21 ++++++
+ eval/test_mcp_server.py                 |  2 +
+ eval/test_verifier.py                   | 70 +++++++++++++++++++
+ src/mighty_mouse/commands/verify_cmd.py |  4 ++
+ src/mighty_mouse/verifier/core.py       | 20 +++++-
+ src/mighty_mouse/verifier/detect.py     | 91 ++++++++++++++++++-------
+ 7 files changed, 199 insertions(+), 31 deletions(-)
+
+diff --git a/README.md b/README.md
+index 3214d69..659d057 100644
+--- a/README.md
++++ b/README.md
+@@ -57,7 +57,9 @@ The version 1 verify shape is:
+   "passed": true,
+   "checks": [{"name": "tests", "passed": true, "output": "", "duration_sec": 0.25}],
+   "summary": "Passed 1/1 verification checks.",
+-  "suggestions": []
++  "suggestions": [],
++  "detected_projects": [{"ecosystem": "python", "checks": ["python-tests"], "status": "configured"}],
++  "warnings": []
+ }
+ ```
+ 
+@@ -90,7 +92,20 @@ for check in result.checks:
+     print(check.name, check.passed, check.duration_sec)
+ ```
+ 
+-Without explicit commands, Mighty Mouse conservatively detects Python, Node.js, Rust, and Go checks. You can override detection:
++Without explicit commands, verification detects every applicable Python, Node.js,
++Rust, and Go project in the workspace. Python-only projects run tests when they
++exist and otherwise run a syntax fallback with a structured partial-coverage
++warning. Node-only projects select a usable test, lint, or build script. Mixed
++Python/Node projects run both selected check families, and either failure fails
++the combined result.
++
++Detected ecosystems and decisions are returned in `detected_projects`; warnings
++are returned separately in `warnings` and are also shown in human output. A
++malformed `package.json`, invalid or missing `scripts`, no usable Node script, or
++a missing required executable creates an explicit non-passing check with an
++actionable warning. Such conditions never produce a successful result.
++
++You can override detection:
+ 
+ ```python
+ result = verify(
+@@ -102,6 +117,9 @@ result = verify(
+ )
+ ```
+ 
++When any explicit test, lint, or build command is supplied, only the explicit
++commands run; `detected_projects` and detection `warnings` remain empty.
++
+ Commands are executed without a shell, but they still run with the verifier process's local permissions. Use explicit commands only in trusted workspaces.
+ 
+ ## Select a protocol
+diff --git a/eval/test_cli.py b/eval/test_cli.py
+index df79bb7..9d4bd30 100644
+--- a/eval/test_cli.py
++++ b/eval/test_cli.py
+@@ -282,9 +282,30 @@ def test_verify_json_pass_and_failure(monkeypatch, tmp_path, capsys, command, ex
+     assert document["interface"] == "verify"
+     assert document["passed"] is expected_passed
+     assert set(document) >= {"checks", "summary", "suggestions"}
++    assert document["detected_projects"] == []
++    assert document["warnings"] == []
+     assert set(document["checks"][0]) >= {"name", "passed", "output", "duration_sec"}
+ 
+ 
++def test_verify_json_exposes_detection_warning(monkeypatch, tmp_path, capsys):
++    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0'\n")
++    (tmp_path / "module.py").write_text("value = 1\n")
++
++    assert _run_verify_cli(monkeypatch, str(tmp_path), "--json") == 0
++    document = json.loads(capsys.readouterr().out)
++    assert document["detected_projects"][0]["ecosystem"] == "python"
++    assert "syntax validation only" in document["warnings"][0]
++
++
++def test_verify_human_exposes_detection_warning(monkeypatch, tmp_path, capsys):
++    (tmp_path / "package.json").write_text(json.dumps({"scripts": {}}))
++
++    assert _run_verify_cli(monkeypatch, str(tmp_path)) == 1
++    output = capsys.readouterr().out
++    assert "Detection warnings:" in output
++    assert "Add one to package.json" in output
++
++
+ def test_verify_json_invalid_workspace_exits_two(monkeypatch, tmp_path, capsys):
+     assert _run_verify_cli(monkeypatch, str(tmp_path / "missing"), "--json") == 2
+     captured = capsys.readouterr()
+diff --git a/eval/test_mcp_server.py b/eval/test_mcp_server.py
+index f0c561a..b2982e8 100644
+--- a/eval/test_mcp_server.py
++++ b/eval/test_mcp_server.py
+@@ -43,6 +43,8 @@ def test_verify_tool_returns_structured_result(tmp_path):
+     assert result["passed"] is True
+     assert result["checks"][0]["name"] == "tests"
+     assert result["suggestions"] == []
++    assert result["detected_projects"] == []
++    assert result["warnings"] == []
+ 
+ 
+ def test_unknown_protocol_complexity_is_rejected():
+diff --git a/eval/test_verifier.py b/eval/test_verifier.py
+index 242a64d..78d955a 100644
+--- a/eval/test_verifier.py
++++ b/eval/test_verifier.py
+@@ -2,6 +2,9 @@ import json
+ import os
+ import subprocess
+ import sys
++from unittest.mock import patch
++
++import pytest
+ 
+ from mighty_mouse.verifier import verify
+ 
+@@ -44,6 +47,73 @@ def test_mixed_python_and_node_project_runs_both_suites(tmp_path):
+ 
+     assert result.passed
+     assert [check.name for check in result.checks] == ["python-tests", "node-tests"]
++    assert [project["ecosystem"] for project in result.detected_projects] == ["python", "node"]
++
++
++def test_mixed_project_fails_when_node_fails(tmp_path):
++    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0'\n")
++    (tmp_path / "test_sample.py").write_text("def test_ok():\n    assert True\n")
++    (tmp_path / "package.json").write_text(json.dumps({
++        "scripts": {"test": f'"{sys.executable}" -c "raise SystemExit(7)"'}
++    }))
++
++    result = verify(str(tmp_path))
++
++    assert not result.passed
++    assert [check.passed for check in result.checks] == [True, False]
++
++
++def test_python_syntax_fallback_is_structured(tmp_path):
++    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0'\n")
++    (tmp_path / "module.py").write_text("value = 1\n")
++
++    result = verify(str(tmp_path))
++
++    assert result.passed
++    assert result.checks[0].name == "python-syntax"
++    assert result.detected_projects == [{"ecosystem": "python", "checks": ["python-syntax"], "status": "fallback"}]
++    assert "syntax validation only" in result.warnings[0]
++
++
++@pytest.mark.parametrize(
++    ("contents", "check_name"),
++    [
++        ("{broken", "node-metadata"),
++        ("[]", "node-metadata"),
++        (json.dumps({"scripts": []}), "node-metadata"),
++        (json.dumps({"scripts": {}}), "node-configuration"),
++    ],
++)
++def test_invalid_or_unconfigured_node_metadata_is_non_passing(tmp_path, contents, check_name):
++    (tmp_path / "package.json").write_text(contents)
++
++    result = verify(str(tmp_path))
++
++    assert not result.passed
++    assert result.checks[0].name == check_name
++    assert result.warnings
++
++
++def test_missing_node_executable_is_explicit_failure(tmp_path):
++    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"test": "node test.js"}}))
++
++    with patch("mighty_mouse.verifier.detect.shutil.which", return_value=None):
++        result = verify(str(tmp_path))
++
++    assert not result.passed
++    assert result.checks[0].name == "node-tests"
++    assert "executable not found" in result.checks[0].output
++    assert "Install it" in result.warnings[0]
++
++
++def test_explicit_override_does_not_report_auto_detection(tmp_path):
++    (tmp_path / "package.json").write_text("{broken")
++
++    result = verify(str(tmp_path), test_command=[sys.executable, "-c", "pass"])
++
++    assert result.passed
++    assert result.detected_projects == []
++    assert result.warnings == []
+ 
+ 
+ def test_scope_flags_unapproved_change(tmp_path):
+diff --git a/src/mighty_mouse/commands/verify_cmd.py b/src/mighty_mouse/commands/verify_cmd.py
+index f4d7ac8..28e7218 100644
+--- a/src/mighty_mouse/commands/verify_cmd.py
++++ b/src/mighty_mouse/commands/verify_cmd.py
+@@ -19,6 +19,10 @@ def render_result(result: VerificationResult) -> str:
+             lines.append(_indent(check.output))
+ 
+     lines.append(result.summary)
++    warnings = getattr(result, "warnings", [])
++    if warnings:
++        lines.append("Detection warnings:")
++        lines.extend(f"  - {warning}" for warning in warnings)
+     if result.suggestions:
+         lines.append("Suggestions:")
+         lines.extend(f"  - {suggestion}" for suggestion in result.suggestions)
+diff --git a/src/mighty_mouse/verifier/core.py b/src/mighty_mouse/verifier/core.py
+index d678b54..a8356da 100644
+--- a/src/mighty_mouse/verifier/core.py
++++ b/src/mighty_mouse/verifier/core.py
+@@ -9,7 +9,7 @@ import subprocess
+ import time
+ from typing import Sequence
+ 
+-from .detect import detect_checks
++from .detect import DetectedCheck, detect_checks
+ from .scope import check_scope
+ 
+ MAX_OUTPUT_CHARS = 12_000
+@@ -32,6 +32,8 @@ class VerificationResult:
+     checks: list[CheckResult]
+     summary: str
+     suggestions: list[str] = field(default_factory=list)
++    detected_projects: list[dict] = field(default_factory=list)
++    warnings: list[str] = field(default_factory=list)
+ 
+     def to_dict(self) -> dict:
+         return {
+@@ -39,6 +41,8 @@ class VerificationResult:
+             "checks": [check.to_dict() for check in self.checks],
+             "summary": self.summary,
+             "suggestions": list(self.suggestions),
++            "detected_projects": list(self.detected_projects),
++            "warnings": list(self.warnings),
+         }
+ 
+ 
+@@ -97,6 +101,8 @@ def verify(
+ 
+     commands: list[tuple[str, str | Sequence[str]]] = []
+     warnings: list[str] = []
++    detected_projects: list[dict] = []
++    detected_checks: list[DetectedCheck] = []
+     if test_command is not None:
+         commands.append(("tests", test_command))
+     if lint_command is not None:
+@@ -104,13 +110,17 @@ def verify(
+     if build_command is not None:
+         commands.append(("build", build_command))
+     if not commands:
+-        detected, warnings = detect_checks(workspace)
+-        commands.extend(detected)
++        detected_checks, warnings, detected_projects = detect_checks(workspace)
+ 
+     checks = [
+         _run_check(name, command, workspace, timeout_sec)
+         for name, command in commands
+     ]
++    checks.extend(
++        _run_check(check.name, check.command, workspace, timeout_sec)
++        if check.command is not None else CheckResult(check.name, False, check.error, 0.0)
++        for check in detected_checks
++    )
+ 
+     if allowed_paths is not None:
+         started = time.monotonic()
+@@ -132,6 +142,8 @@ def verify(
+             checks=[],
+             summary="No executable verification checks were detected.",
+             suggestions=warnings + ["Add tests or pass an explicit test, lint, or build command."],
++            detected_projects=detected_projects,
++            warnings=warnings,
+         )
+ 
+     failed = [check.name for check in checks if not check.passed]
+@@ -148,4 +160,6 @@ def verify(
+         checks=checks,
+         summary=summary,
+         suggestions=suggestions,
++        detected_projects=detected_projects,
++        warnings=warnings,
+     )
+diff --git a/src/mighty_mouse/verifier/detect.py b/src/mighty_mouse/verifier/detect.py
+index 2210e90..4ac5dc2 100644
+--- a/src/mighty_mouse/verifier/detect.py
++++ b/src/mighty_mouse/verifier/detect.py
+@@ -6,6 +6,15 @@ import json
+ import os
+ import shutil
+ import sys
++from dataclasses import dataclass
++from typing import Sequence
++
++
++@dataclass(frozen=True)
++class DetectedCheck:
++    name: str
++    command: Sequence[str] | None
++    error: str = ""
+ 
+ 
+ def _has_python_tests(workspace: str) -> bool:
+@@ -18,21 +27,28 @@ def _has_python_tests(workspace: str) -> bool:
+     return False
+ 
+ 
+-def _node_scripts(workspace: str) -> dict[str, str]:
++def _node_scripts(workspace: str) -> tuple[dict[str, str] | None, str]:
+     package_path = os.path.join(workspace, "package.json")
+     try:
+         with open(package_path, encoding="utf-8") as package_file:
+             package = json.load(package_file)
+-    except (OSError, json.JSONDecodeError):
+-        return {}
++    except OSError as exc:
++        return None, f"Unable to read package.json: {exc}"
++    except json.JSONDecodeError as exc:
++        return None, f"Invalid package.json: {exc.msg} (line {exc.lineno}, column {exc.colno})."
++    if not isinstance(package, dict):
++        return None, "Invalid package.json: top-level value must be an object."
+     scripts = package.get("scripts", {})
+-    return scripts if isinstance(scripts, dict) else {}
++    if not isinstance(scripts, dict):
++        return None, "Invalid package.json: 'scripts' must be an object."
++    return scripts, ""
+ 
+ 
+-def detect_checks(workspace: str) -> tuple[list[tuple[str, list[str]]], list[str]]:
++def detect_checks(workspace: str) -> tuple[list[DetectedCheck], list[str], list[dict]]:
+     """Return safe argument-vector checks and detection warnings."""
+-    checks: list[tuple[str, list[str]]] = []
++    checks: list[DetectedCheck] = []
+     warnings: list[str] = []
++    projects: list[dict] = []
+ 
+     has_python = any(
+         os.path.exists(os.path.join(workspace, marker))
+@@ -40,41 +56,64 @@ def detect_checks(workspace: str) -> tuple[list[tuple[str, list[str]]], list[str
+     )
+     if has_python:
+         if _has_python_tests(workspace):
+-            checks.append(("python-tests", [sys.executable, "-m", "pytest", "-q"]))
++            check = DetectedCheck("python-tests", [sys.executable, "-m", "pytest", "-q"])
+         else:
+-            checks.append(("python-syntax", [sys.executable, "-m", "compileall", "-q", "."]))
++            check = DetectedCheck("python-syntax", [sys.executable, "-m", "compileall", "-q", "."])
+             warnings.append("No Python tests detected; running syntax validation only.")
++        checks.append(check)
++        projects.append({"ecosystem": "python", "checks": [check.name], "status": "fallback" if check.name == "python-syntax" else "configured"})
+ 
+     package_path = os.path.join(workspace, "package.json")
+     if os.path.exists(package_path):
+-        scripts = _node_scripts(workspace)
+-        test_script = str(scripts.get("test", ""))
+-        if test_script and "no test specified" not in test_script.lower():
+-            checks.append(("node-tests", ["npm", "test"]))
+-        elif "lint" in scripts:
+-            checks.append(("node-lint", ["npm", "run", "lint"]))
+-            warnings.append("No Node.js test script detected; running lint only.")
+-        elif "build" in scripts:
+-            checks.append(("node-build", ["npm", "run", "build"]))
+-            warnings.append("No Node.js test or lint script detected; running build only.")
++        scripts, metadata_error = _node_scripts(workspace)
++        if metadata_error:
++            warning = metadata_error + " Fix package.json before running Node.js verification."
++            warnings.append(warning)
++            check = DetectedCheck("node-metadata", None, metadata_error)
+         else:
+-            warnings.append("Node.js project detected without test, lint, or build scripts.")
++            assert scripts is not None
++            test_script = str(scripts.get("test", ""))
++            if test_script and "no test specified" not in test_script.lower():
++                check = DetectedCheck("node-tests", ["npm", "test"])
++            elif isinstance(scripts.get("lint"), str) and scripts["lint"].strip():
++                check = DetectedCheck("node-lint", ["npm", "run", "lint"])
++                warnings.append("No Node.js test script detected; running lint only.")
++            elif isinstance(scripts.get("build"), str) and scripts["build"].strip():
++                check = DetectedCheck("node-build", ["npm", "run", "build"])
++                warnings.append("No Node.js test or lint script detected; running build only.")
++            else:
++                warning = "Node.js project detected without a usable test, lint, or build script. Add one to package.json."
++                warnings.append(warning)
++                check = DetectedCheck("node-configuration", None, warning)
++        checks.append(check)
++        projects.append({"ecosystem": "node", "checks": [check.name], "status": "configured" if check.command else "invalid"})
+ 
+     if os.path.exists(os.path.join(workspace, "Cargo.toml")):
+-        checks.append(("rust-tests", ["cargo", "test"]))
++        checks.append(DetectedCheck("rust-tests", ["cargo", "test"]))
++        projects.append({"ecosystem": "rust", "checks": ["rust-tests"], "status": "configured"})
+     if os.path.exists(os.path.join(workspace, "go.mod")):
+-        checks.append(("go-tests", ["go", "test", "./..."]))
++        checks.append(DetectedCheck("go-tests", ["go", "test", "./..."]))
++        projects.append({"ecosystem": "go", "checks": ["go-tests"], "status": "configured"})
+ 
+-    available_checks = []
+-    for name, command in checks:
++    final_checks = []
++    for check in checks:
++        if check.command is None:
++            final_checks.append(check)
++            continue
++        name, command = check.name, check.command
+         executable = command[0]
+         if os.path.isabs(executable):
+             available = os.path.exists(executable)
+         else:
+             available = shutil.which(executable) is not None
+         if not available:
+-            warnings.append(f"Skipped {name}: executable not found: {executable}")
++            warning = f"Cannot run {name}: executable not found: {executable}. Install it or provide an explicit command."
++            warnings.append(warning)
++            final_checks.append(DetectedCheck(name, None, warning))
++            for project in projects:
++                if name in project["checks"]:
++                    project["status"] = "missing-tool"
+         else:
+-            available_checks.append((name, command))
++            final_checks.append(check)
+ 
+-    return available_checks, warnings
++    return final_checks, warnings, projects
+-- 
+2.50.1 (Apple Git-155)
+

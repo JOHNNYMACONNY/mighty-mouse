@@ -148,7 +148,59 @@
         "notes": "86 tests and local packaging equivalents passed. GitHub-hosted matrix not checked before selection.",
         "recorded_at": "2026-06-30T22:44:15.642556+00:00"
       }
+    },
+    {
+      "task_id": "MM-004",
+      "project": "mighty-mouse",
+      "task_description": "Make mixed Python and Node auto-detection truthful with structured detected_projects and warnings, combined failure semantics, explicit missing-tool and invalid-metadata failures, fallback warnings, compatibility tests, and documentation.",
+      "base_commit": "8b54f8e963758b3e2c1fdb30abdbba566ed5cb71",
+      "shared_config": {
+        "agent": "Codex CLI 0.120.0 multi-agent",
+        "model": "gpt-5.5",
+        "model_settings": "reasoning_effort=medium;sandbox=workspace-write;approval=never",
+        "environment_fingerprint": "sha256:bb27d410176c42305e0853bf24a32c358423a1d8acbf2c466e1e7b5cdf511306",
+        "timeout_sec": 900,
+        "acceptance_commands": [
+          ".trial-venv/bin/python -m pytest -q",
+          "focused verifier CLI and MCP tests",
+          "real mixed pass/fail, missing npm, malformed/no-scripts, and Python fallback fixtures"
+        ],
+        "allowed_paths": [
+          "README.md",
+          "eval/test_cli.py",
+          "eval/test_mcp_server.py",
+          "eval/test_verifier.py",
+          "src/mighty_mouse/commands/verify_cmd.py",
+          "src/mighty_mouse/verifier/__init__.py",
+          "src/mighty_mouse/verifier/core.py",
+          "src/mighty_mouse/verifier/detect.py"
+        ]
+      },
+      "control": {
+        "first_try_pass": true,
+        "retry_rounds": 0,
+        "scope_violations": [],
+        "duration_sec": 160.265,
+        "quality_score_1_to_5": 4,
+        "final_commit": "6aae6268adf2782540aec4c2ab3b9c1fcfdd6735",
+        "artifact_dir": "data/evidence/real_project_trials/MM-004/control",
+        "review_rationale": "Faster with richer per-ecosystem status objects, but invalid script values could be coerced into runnable commands and public detection API shape changed.",
+        "notes": "96 tests and all evaluator mixed-project fixtures passed on first external acceptance.",
+        "recorded_at": "2026-06-30T22:57:58.160491+00:00"
+      },
+      "harness": {
+        "first_try_pass": true,
+        "retry_rounds": 0,
+        "scope_violations": [],
+        "duration_sec": 242.429,
+        "quality_score_1_to_5": 4,
+        "final_commit": "5d6a9180ef158299091a366554cd24c04eb645e0",
+        "artifact_dir": "data/evidence/real_project_trials/MM-004/harness",
+        "review_rationale": "Selected in blind review for correct invalid-script handling and stronger API compatibility; detected project records were less rich.",
+        "notes": "95 tests and all evaluator mixed-project fixtures passed on first external acceptance. Medium protocol was followed from the checked-in skill.",
+        "recorded_at": "2026-06-30T22:57:58.197549+00:00"
+      }
     }
   ],
-  "paired_tasks": 3
+  "paired_tasks": 4
 }

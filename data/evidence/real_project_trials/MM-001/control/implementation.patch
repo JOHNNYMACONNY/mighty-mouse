@@ -1,0 +1,268 @@
+From 9ce0458533695cf76bd728b94c422cafbf67c77f Mon Sep 17 00:00:00 2001
+From: Mighty Mouse Study <study@localhost>
+Date: Tue, 30 Jun 2026 15:18:12 -0700
+Subject: [PATCH] feat(cli): add public verify command
+
+---
+ README.md                               |  14 ++++
+ eval/test_cli.py                        | 103 ++++++++++++++++++++++++
+ src/mighty_mouse/cli.py                 |  40 +++++++++
+ src/mighty_mouse/commands/verify_cmd.py |  43 ++++++++++
+ 4 files changed, 200 insertions(+)
+ create mode 100644 src/mighty_mouse/commands/verify_cmd.py
+
+diff --git a/README.md b/README.md
+index d8bfaa5..77759bb 100644
+--- a/README.md
++++ b/README.md
+@@ -35,6 +35,20 @@ The core library requires Python 3.10 or newer.
+ 
+ ## Verify any project
+ 
++From the command line, verification exits `0` when every applicable check
++passes, `1` when verification runs and a check fails, and `2` for invalid input
++or an unusable workspace:
++
++```bash
++mighty-mouse verify /path/to/project
++mighty-mouse verify . --test-command "pytest -q" --lint-command "ruff check ."
++mighty-mouse verify . --build-command "python -m build" --timeout-sec 180
++mighty-mouse verify . --allowed-path src/ --allowed-path "tests/*.py"
++```
++
++Each explicit command is parsed as an argument vector and executed directly,
++without a shell. `--allowed-path` is repeatable and checks current Git changes.
++
+ ```python
+ from mighty_mouse.verifier import verify
+ 
+diff --git a/eval/test_cli.py b/eval/test_cli.py
+index 13885a4..d4faca6 100644
+--- a/eval/test_cli.py
++++ b/eval/test_cli.py
+@@ -12,6 +12,109 @@ from mighty_mouse.services import benchmark_service
+ from mighty_mouse.services.verifiers import adherence
+ 
+ 
++def _run_cli(monkeypatch, *args):
++    monkeypatch.setattr(sys, "argv", ["mighty-mouse", *args])
++    with pytest.raises(SystemExit) as exc:
++        cli.main()
++    return exc.value.code
++
++
++def test_verify_passing_command_exits_zero(monkeypatch, tmp_path, capsys):
++    code = _run_cli(
++        monkeypatch,
++        "verify",
++        str(tmp_path),
++        "--test-command",
++        f'{sys.executable} -c "print(\'tests ran\')"',
++    )
++
++    assert code == 0
++    output = capsys.readouterr().out
++    assert "[PASS] tests" in output
++    assert "tests ran" in output
++    assert "Passed 1/1 verification checks." in output
++
++
++def test_verify_failing_command_exits_one_with_suggestion(monkeypatch, tmp_path, capsys):
++    code = _run_cli(
++        monkeypatch,
++        "verify",
++        str(tmp_path),
++        "--test-command",
++        f'{sys.executable} -c "raise SystemExit(3)"',
++    )
++
++    assert code == 1
++    output = capsys.readouterr().out
++    assert "[FAIL] tests" in output
++    assert "Suggestion: Fix the failing tests check" in output
++
++
++def test_verify_invalid_workspace_exits_two(monkeypatch, tmp_path, capsys):
++    code = _run_cli(monkeypatch, "verify", str(tmp_path / "missing"))
++
++    assert code == 2
++    assert "Workspace is not a directory" in capsys.readouterr().err
++
++
++def test_verify_accepts_all_command_overrides(monkeypatch, tmp_path, capsys):
++    command = f'{sys.executable} -c "pass"'
++    code = _run_cli(
++        monkeypatch,
++        "verify",
++        str(tmp_path),
++        "--test-command", command,
++        "--lint-command", command,
++        "--build-command", command,
++    )
++
++    assert code == 0
++    output = capsys.readouterr().out
++    assert "[PASS] tests" in output
++    assert "[PASS] lint" in output
++    assert "[PASS] build" in output
++
++
++def test_verify_repeatable_allowed_paths_check_scope(monkeypatch, tmp_path, capsys):
++    import subprocess
++
++    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
++    (tmp_path / "tracked.txt").write_text("original\n")
++    subprocess.run(["git", "-C", str(tmp_path), "add", "tracked.txt"], check=True)
++    subprocess.run(
++        ["git", "-C", str(tmp_path), "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "initial"],
++        check=True,
++    )
++    (tmp_path / "tracked.txt").write_text("changed\n")
++    code = _run_cli(
++        monkeypatch,
++        "verify",
++        str(tmp_path),
++        "--test-command", f'{sys.executable} -c "pass"',
++        "--allowed-path", "src/",
++        "--allowed-path", "tracked.txt",
++    )
++
++    assert code == 0
++    assert "[PASS] scope" in capsys.readouterr().out
++
++
++def test_verify_timeout_fails_and_nonpositive_timeout_is_invalid(monkeypatch, tmp_path, capsys):
++    code = _run_cli(
++        monkeypatch,
++        "verify",
++        str(tmp_path),
++        "--test-command", f'{sys.executable} -c "import time; time.sleep(2)"',
++        "--timeout-sec", "1",
++    )
++    assert code == 1
++    assert "Timed out after 1s" in capsys.readouterr().out
++
++    code = _run_cli(monkeypatch, "verify", str(tmp_path), "--timeout-sec", "0")
++    assert code == 2
++    assert "must be a positive integer" in capsys.readouterr().err
++
++
+ def test_doctor_exits_zero(capsys):
+     with pytest.raises(SystemExit) as exc:
+         doctor_cmd.run_doctor(live=False)
+diff --git a/src/mighty_mouse/cli.py b/src/mighty_mouse/cli.py
+index 804bfb0..ea0dda0 100644
+--- a/src/mighty_mouse/cli.py
++++ b/src/mighty_mouse/cli.py
+@@ -1,5 +1,15 @@
+ import argparse
+ 
++
++def _positive_int(value):
++    try:
++        parsed = int(value)
++    except ValueError as exc:
++        raise argparse.ArgumentTypeError("must be a positive integer") from exc
++    if parsed < 1:
++        raise argparse.ArgumentTypeError("must be a positive integer")
++    return parsed
++
+ def main():
+     parser = argparse.ArgumentParser(description="Mighty Mouse CLI - High-reliability coding protocol for small models")
+     subparsers = parser.add_subparsers(dest="command", required=True)
+@@ -19,6 +29,25 @@ def main():
+     parser_demo.add_argument("--model", type=str, help="Ollama model name (required if --live is used)")
+     parser_demo.add_argument("--output-dir", type=str, help="Directory for live-demo logs and temporary workspaces")
+ 
++    # verify
++    parser_verify = subparsers.add_parser("verify", help="Verify a software project")
++    parser_verify.add_argument("workspace", help="Project workspace to verify")
++    parser_verify.add_argument("--test-command", help="Override the detected test command")
++    parser_verify.add_argument("--lint-command", help="Run an explicit lint command")
++    parser_verify.add_argument("--build-command", help="Run an explicit build command")
++    parser_verify.add_argument(
++        "--allowed-path",
++        action="append",
++        dest="allowed_paths",
++        help="Allow changes under this path or glob (repeatable)",
++    )
++    parser_verify.add_argument(
++        "--timeout-sec",
++        type=_positive_int,
++        default=120,
++        help="Timeout for each check in seconds (default: 120)",
++    )
++
+     args = parser.parse_args()
+ 
+     if args.command == "doctor":
+@@ -33,6 +62,17 @@ def main():
+         from mighty_mouse.commands.demo_cmd import run_demo
+         run_demo(live=args.live, model=args.model, output_dir=args.output_dir)
+ 
++    elif args.command == "verify":
++        from mighty_mouse.commands.verify_cmd import run_verify
++        run_verify(
++            workspace=args.workspace,
++            test_command=args.test_command,
++            lint_command=args.lint_command,
++            build_command=args.build_command,
++            allowed_paths=args.allowed_paths,
++            timeout_sec=args.timeout_sec,
++        )
++
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/src/mighty_mouse/commands/verify_cmd.py b/src/mighty_mouse/commands/verify_cmd.py
+new file mode 100644
+index 0000000..62a3960
+--- /dev/null
++++ b/src/mighty_mouse/commands/verify_cmd.py
+@@ -0,0 +1,43 @@
++"""Human-readable command-line interface for project verification."""
++
++from __future__ import annotations
++
++import sys
++
++from mighty_mouse.verifier import verify
++
++
++def run_verify(
++    workspace: str,
++    test_command: str | None = None,
++    lint_command: str | None = None,
++    build_command: str | None = None,
++    allowed_paths: list[str] | None = None,
++    timeout_sec: int = 120,
++) -> None:
++    """Run the generic verifier, print its result, and exit with a CLI status."""
++    try:
++        result = verify(
++            workspace=workspace,
++            test_command=test_command,
++            lint_command=lint_command,
++            build_command=build_command,
++            allowed_paths=allowed_paths,
++            timeout_sec=timeout_sec,
++        )
++    except (TypeError, ValueError) as exc:
++        print(f"Error: {exc}", file=sys.stderr)
++        raise SystemExit(2) from exc
++
++    for check in result.checks:
++        status = "PASS" if check.passed else "FAIL"
++        print(f"[{status}] {check.name} ({check.duration_sec:.3f}s)")
++        if check.output:
++            for line in check.output.splitlines():
++                print(f"  {line}")
++
++    print(result.summary)
++    for suggestion in result.suggestions:
++        print(f"Suggestion: {suggestion}")
++
++    raise SystemExit(0 if result.passed else 1)
+-- 
+2.50.1 (Apple Git-155)
+

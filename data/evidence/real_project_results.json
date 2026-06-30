@@ -4,5 +4,55 @@
   "method": "paired control and Mighty Mouse runs from the same pre-change project state",
   "study_protocol": "data/evidence/real_project_study_plan.md",
   "minimum_paired_tasks": 10,
-  "tasks": []
+  "tasks": [
+    {
+      "task_id": "MM-001",
+      "project": "mighty-mouse",
+      "task_description": "Add public mighty-mouse verify <workspace> CLI with overrides, scope, timeout, human output, truthful 0/1/2 exits, tests, wheel smoke, and README documentation.",
+      "base_commit": "fb26ccd0d72e98b0e0892c960c615fdbdb4d3fc2",
+      "shared_config": {
+        "agent": "Codex CLI 0.120.0 multi-agent",
+        "model": "gpt-5.5",
+        "model_settings": "reasoning_effort=medium;sandbox=workspace-write;approval=never",
+        "environment_fingerprint": "sha256:bb27d410176c42305e0853bf24a32c358423a1d8acbf2c466e1e7b5cdf511306",
+        "timeout_sec": 900,
+        "acceptance_commands": [
+          ".trial-venv/bin/python -m pytest -q",
+          "python -m build from metadata-clean staging copy",
+          "clean wheel install and CLI 0/1/2 exit smoke"
+        ],
+        "allowed_paths": [
+          "README.md",
+          "eval/test_cli.py",
+          "src/mighty_mouse/cli.py",
+          "src/mighty_mouse/commands/verify_cmd.py"
+        ]
+      },
+      "control": {
+        "first_try_pass": true,
+        "retry_rounds": 0,
+        "scope_violations": [],
+        "duration_sec": 138.985,
+        "quality_score_1_to_5": 4,
+        "final_commit": "9ce0458533695cf76bd728b94c422cafbf67c77f",
+        "artifact_dir": "data/evidence/real_project_trials/MM-001/control",
+        "review_rationale": "Correct and focused with stronger end-to-end tests; missed OSError handling at the CLI boundary.",
+        "notes": "72 tests passed. Clean-wheel 0/1/2 exit smoke passed. External-volume AppleDouble metadata required neutral clean staging.",
+        "recorded_at": "2026-06-30T22:20:32.104000+00:00"
+      },
+      "harness": {
+        "first_try_pass": true,
+        "retry_rounds": 0,
+        "scope_violations": [],
+        "duration_sec": 200.073,
+        "quality_score_1_to_5": 5,
+        "final_commit": "87ff4903ddf1a0ed802c69ff458c40d3e7de8c0a",
+        "artifact_dir": "data/evidence/real_project_trials/MM-001/harness",
+        "review_rationale": "Selected narrowly in blind review for OSError handling and separated rendering; scope forwarding test was more mocked.",
+        "notes": "74 tests passed. Clean-wheel 0/1/2 exit smoke passed. MCP protocol tool was unavailable, so the checked-in Codex skill supplied the medium protocol. External-volume AppleDouble metadata required neutral clean staging.",
+        "recorded_at": "2026-06-30T22:20:32.147835+00:00"
+      }
+    }
+  ],
+  "paired_tasks": 1
 }

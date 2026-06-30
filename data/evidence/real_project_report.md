@@ -1,12 +1,23 @@
 # Real-Project Validation
 
-Status: **collecting evidence**
+Status: **collecting**
 
-No comparative result is claimed yet. The study requires at least 10 real tasks, each run from the same pre-change state in two conditions:
+Every row is a paired control and harness run from the same recorded project commit, agent, model, and environment. Unfavorable results are retained.
 
-1. Control: the coding agent works normally.
-2. Harness: the same task is performed with Mighty Mouse active.
+Current paired tasks: **1/10 minimum**.
 
-The recorder retains first-try pass status, retry count, scope violations, wall-clock duration, a 1–5 review score, and the shared agent, model, environment, timeout, acceptance commands, and scope constraints. Raw artifacts and final condition commits are recorded for audit. Tasks where Mighty Mouse does not help remain in the dataset.
+| Metric | Control | Mighty Mouse |
+|---|---:|---:|
+| First-try passes | 1/1 | 1/1 |
+| Total retries | 0 | 0 |
+| Scope violations | 0 | 0 |
+| Mean duration (seconds) | 139.0 | 200.1 |
+| Mean quality (1–5) | 4.00 | 5.00 |
 
-Current paired tasks: **0/10 minimum**.
+## Per-task results
+
+| Task | Control first pass | Harness first pass | Retries C/H | Scope C/H | Seconds C/H | Quality C/H |
+|---|---:|---:|---:|---:|---:|---:|
+| MM-001 | yes | yes | 0/0 | 0/0 | 139.0/200.1 | 4/5 |
+
+The minimum sample has not been reached; no generalized improvement claim is made.

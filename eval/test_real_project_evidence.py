@@ -1,5 +1,6 @@
 from argparse import Namespace
 import json
+from pathlib import Path
 
 import pytest
 
@@ -87,8 +88,21 @@ def test_condition_provenance_is_retained():
     assert task["control"]["artifact_dir"] == "artifacts/real-001/control"
 
 
-def test_existing_evidence_file_is_valid_and_empty():
+def test_existing_evidence_file_is_internally_consistent():
     payload = json.load(open("data/evidence/real_project_results.json"))
     assert payload["schema_version"] == 2
-    assert payload["status"] == "collecting"
-    assert payload["tasks"] == []
+    paired = [task for task in payload["tasks"] if task["control"] and task["harness"]]
+    assert payload["paired_tasks"] == len(paired)
+    assert len({task["task_id"] for task in payload["tasks"]}) == len(payload["tasks"])
+    expected_status = (
+        "complete" if len(paired) >= payload["minimum_paired_tasks"] else "collecting"
+    )
+    assert payload["status"] == expected_status
+    for task in paired:
+        assert task["control"]["artifact_dir"] != task["harness"]["artifact_dir"]
+        assert Path(task["control"]["artifact_dir"]).is_dir()
+        assert Path(task["harness"]["artifact_dir"]).is_dir()
+
+    report = Path("data/evidence/real_project_report.md").read_text()
+    if expected_status == "collecting":
+        assert "no generalized improvement claim is made" in report

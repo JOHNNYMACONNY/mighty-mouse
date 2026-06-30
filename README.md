@@ -41,6 +41,26 @@ From the command line, verify a workspace with auto-detected project checks:
 mighty-mouse verify /path/to/project
 ```
 
+For automation, add `--json`. Standard output contains exactly one JSON document
+for pass (`0`), check failure (`1`), and unusable workspace (`2`) outcomes:
+
+```bash
+mighty-mouse verify /path/to/project --json
+```
+
+The version 1 verify shape is:
+
+```json
+{
+  "schema_version": 1,
+  "interface": "verify",
+  "passed": true,
+  "checks": [{"name": "tests", "passed": true, "output": "", "duration_sec": 0.25}],
+  "summary": "Passed 1/1 verification checks.",
+  "suggestions": []
+}
+```
+
 Commands, changed-file scope, and the per-command timeout can be specified explicitly:
 
 ```bash
@@ -83,6 +103,30 @@ result = verify(
 ```
 
 Commands are executed without a shell, but they still run with the verifier process's local permissions. Use explicit commands only in trusted workspaces.
+
+## Select a protocol
+
+Show the medium-complexity protocol for a task (the default):
+
+```bash
+mighty-mouse protocol "Add JSON output to the CLI"
+mighty-mouse protocol "Fix a typo" --complexity low
+mighty-mouse protocol "Change authentication" --complexity high --json
+```
+
+Human output includes the selected protocol and its verification reminder. With
+`--json`, the version 1 protocol shape is:
+
+```json
+{
+  "schema_version": 1,
+  "interface": "protocol",
+  "task_description": "Fix a typo",
+  "complexity": "low",
+  "protocol_prompt": "# Mighty Mouse v9.1 — Low Complexity\n...",
+  "verification_reminder": "After editing, run Mighty Mouse verification, fix failures, and retry for no more than three rounds."
+}
+```
 
 ## MCP server
 

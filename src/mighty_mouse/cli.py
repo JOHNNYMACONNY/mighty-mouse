@@ -47,6 +47,18 @@ def main():
         default=120,
         help="Timeout for each command in seconds (default: 120)",
     )
+    parser_verify.add_argument("--json", action="store_true", help="Emit versioned JSON output")
+
+    # protocol
+    parser_protocol = subparsers.add_parser("protocol", help="Show a complexity-scaled coding protocol")
+    parser_protocol.add_argument("task_description", help="Task the protocol will guide")
+    parser_protocol.add_argument(
+        "--complexity",
+        choices=("low", "medium", "high"),
+        default="medium",
+        help="Protocol complexity (default: medium)",
+    )
+    parser_protocol.add_argument("--json", action="store_true", help="Emit versioned JSON output")
 
     args = parser.parse_args()
 
@@ -71,6 +83,15 @@ def main():
             build_command=args.build_command,
             allowed_paths=args.allowed_path,
             timeout_sec=args.timeout_sec,
+            json_output=args.json,
+        )
+
+    elif args.command == "protocol":
+        from mighty_mouse.commands.protocol_cmd import run_protocol
+        run_protocol(
+            task_description=args.task_description,
+            complexity=args.complexity,
+            json_output=args.json,
         )
 
 

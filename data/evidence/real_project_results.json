@@ -101,7 +101,54 @@
         "notes": "81 tests and installed-wheel human/JSON smoke passed on first evaluator acceptance. Medium protocol was followed from the checked-in skill.",
         "recorded_at": "2026-06-30T22:34:09.649219+00:00"
       }
+    },
+    {
+      "task_id": "MM-003",
+      "project": "mighty-mouse",
+      "task_description": "Add release-grade GitHub Actions for Python 3.10-3.13 full tests, both wheel builds, wheel-only clean installation, outside-checkout CLI/MCP smoke tests, semantic workflow tests, and README documentation.",
+      "base_commit": "50ba189009c58ee95354d67dd37c9a59c03c325d",
+      "shared_config": {
+        "agent": "Codex CLI 0.120.0 multi-agent",
+        "model": "gpt-5.5",
+        "model_settings": "reasoning_effort=medium;sandbox=workspace-write;approval=never",
+        "environment_fingerprint": "sha256:bb27d410176c42305e0853bf24a32c358423a1d8acbf2c466e1e7b5cdf511306",
+        "timeout_sec": 900,
+        "acceptance_commands": [
+          ".trial-venv/bin/python -m pytest -q",
+          "semantic workflow contract tests and YAML parse",
+          "local exact wheel build, wheel-only install, and outside-checkout smokes"
+        ],
+        "allowed_paths": [
+          ".github/workflows/ci.yml",
+          "README.md",
+          "eval/test_ci_workflow.py"
+        ]
+      },
+      "control": {
+        "first_try_pass": true,
+        "retry_rounds": 0,
+        "scope_violations": [],
+        "duration_sec": 154.515,
+        "quality_score_1_to_5": 5,
+        "final_commit": "f0dfd6841cf0fc3a837d7cbe53c0c040d43e8990",
+        "artifact_dir": "data/evidence/real_project_trials/MM-003/control",
+        "review_rationale": "Selected in blind review because the workflow parses and asserts protocol and verify JSON semantics.",
+        "notes": "86 tests and local packaging equivalents passed. GitHub-hosted matrix not checked before selection.",
+        "recorded_at": "2026-06-30T22:44:15.599930+00:00"
+      },
+      "harness": {
+        "first_try_pass": true,
+        "retry_rounds": 0,
+        "scope_violations": [],
+        "duration_sec": 167.717,
+        "quality_score_1_to_5": 4,
+        "final_commit": "302ce95d277f61c5f8dcff5cca029daf28e37ad8",
+        "artifact_dir": "data/evidence/real_project_trials/MM-003/harness",
+        "review_rationale": "Cleaner temporary paths, but workflow only invoked JSON commands without parsing or asserting their semantics.",
+        "notes": "86 tests and local packaging equivalents passed. GitHub-hosted matrix not checked before selection.",
+        "recorded_at": "2026-06-30T22:44:15.642556+00:00"
+      }
     }
   ],
-  "paired_tasks": 2
+  "paired_tasks": 3
 }

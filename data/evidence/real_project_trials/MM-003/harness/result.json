@@ -1,0 +1,15 @@
+{
+  "condition": "harness",
+  "base_commit": "50ba189009c58ee95354d67dd37c9a59c03c325d",
+  "final_commit": "302ce95d277f61c5f8dcff5cca029daf28e37ad8",
+  "duration_sec": 167.717,
+  "first_try_pass": true,
+  "retry_rounds": 0,
+  "scope_violations": [],
+  "quality_score_1_to_5": 4,
+  "full_suite": "86 passed",
+  "local_workflow_equivalent": "both wheels built and installed; outside-checkout smokes passed",
+  "github_hosted_matrix": "not checked before selection",
+  "implementation_patch_sha256": "53c9aaef840baffca0426bf313ec889e950eabb144029c78f9a5c615813ff89a",
+  "local_raw_session_sha256": "b8c82cf4941ab6abae3cc64fa4a05e6e7ec8d6b68e269d59c2501d2f8be13289"
+}

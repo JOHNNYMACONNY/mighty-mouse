@@ -282,7 +282,28 @@ def test_verify_json_pass_and_failure(monkeypatch, tmp_path, capsys, command, ex
     assert document["interface"] == "verify"
     assert document["passed"] is expected_passed
     assert set(document) >= {"checks", "summary", "suggestions"}
+    assert document["detected_projects"] == []
+    assert document["warnings"] == []
     assert set(document["checks"][0]) >= {"name", "passed", "output", "duration_sec"}
+
+
+def test_verify_json_exposes_detection_warning(monkeypatch, tmp_path, capsys):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0'\n")
+    (tmp_path / "module.py").write_text("value = 1\n")
+
+    assert _run_verify_cli(monkeypatch, str(tmp_path), "--json") == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["detected_projects"][0]["ecosystem"] == "python"
+    assert "syntax validation only" in document["warnings"][0]
+
+
+def test_verify_human_exposes_detection_warning(monkeypatch, tmp_path, capsys):
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {}}))
+
+    assert _run_verify_cli(monkeypatch, str(tmp_path)) == 1
+    output = capsys.readouterr().out
+    assert "Detection warnings:" in output
+    assert "Add one to package.json" in output
 
 
 def test_verify_json_invalid_workspace_exits_two(monkeypatch, tmp_path, capsys):

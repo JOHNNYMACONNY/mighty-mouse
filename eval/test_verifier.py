@@ -2,6 +2,9 @@ import json
 import os
 import subprocess
 import sys
+from unittest.mock import patch
+
+import pytest
 
 from mighty_mouse.verifier import verify
 
@@ -44,6 +47,73 @@ def test_mixed_python_and_node_project_runs_both_suites(tmp_path):
 
     assert result.passed
     assert [check.name for check in result.checks] == ["python-tests", "node-tests"]
+    assert [project["ecosystem"] for project in result.detected_projects] == ["python", "node"]
+
+
+def test_mixed_project_fails_when_node_fails(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0'\n")
+    (tmp_path / "test_sample.py").write_text("def test_ok():\n    assert True\n")
+    (tmp_path / "package.json").write_text(json.dumps({
+        "scripts": {"test": f'"{sys.executable}" -c "raise SystemExit(7)"'}
+    }))
+
+    result = verify(str(tmp_path))
+
+    assert not result.passed
+    assert [check.passed for check in result.checks] == [True, False]
+
+
+def test_python_syntax_fallback_is_structured(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0'\n")
+    (tmp_path / "module.py").write_text("value = 1\n")
+
+    result = verify(str(tmp_path))
+
+    assert result.passed
+    assert result.checks[0].name == "python-syntax"
+    assert result.detected_projects == [{"ecosystem": "python", "checks": ["python-syntax"], "status": "fallback"}]
+    assert "syntax validation only" in result.warnings[0]
+
+
+@pytest.mark.parametrize(
+    ("contents", "check_name"),
+    [
+        ("{broken", "node-metadata"),
+        ("[]", "node-metadata"),
+        (json.dumps({"scripts": []}), "node-metadata"),
+        (json.dumps({"scripts": {}}), "node-configuration"),
+    ],
+)
+def test_invalid_or_unconfigured_node_metadata_is_non_passing(tmp_path, contents, check_name):
+    (tmp_path / "package.json").write_text(contents)
+
+    result = verify(str(tmp_path))
+
+    assert not result.passed
+    assert result.checks[0].name == check_name
+    assert result.warnings
+
+
+def test_missing_node_executable_is_explicit_failure(tmp_path):
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"test": "node test.js"}}))
+
+    with patch("mighty_mouse.verifier.detect.shutil.which", return_value=None):
+        result = verify(str(tmp_path))
+
+    assert not result.passed
+    assert result.checks[0].name == "node-tests"
+    assert "executable not found" in result.checks[0].output
+    assert "Install it" in result.warnings[0]
+
+
+def test_explicit_override_does_not_report_auto_detection(tmp_path):
+    (tmp_path / "package.json").write_text("{broken")
+
+    result = verify(str(tmp_path), test_command=[sys.executable, "-c", "pass"])
+
+    assert result.passed
+    assert result.detected_projects == []
+    assert result.warnings == []
 
 
 def test_scope_flags_unapproved_change(tmp_path):

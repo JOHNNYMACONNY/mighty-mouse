@@ -9,7 +9,7 @@ import subprocess
 import time
 from typing import Sequence
 
-from .detect import detect_checks
+from .detect import DetectedCheck, detect_checks
 from .scope import check_scope
 
 MAX_OUTPUT_CHARS = 12_000
@@ -32,6 +32,8 @@ class VerificationResult:
     checks: list[CheckResult]
     summary: str
     suggestions: list[str] = field(default_factory=list)
+    detected_projects: list[dict] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -39,6 +41,8 @@ class VerificationResult:
             "checks": [check.to_dict() for check in self.checks],
             "summary": self.summary,
             "suggestions": list(self.suggestions),
+            "detected_projects": list(self.detected_projects),
+            "warnings": list(self.warnings),
         }
 
 
@@ -97,6 +101,8 @@ def verify(
 
     commands: list[tuple[str, str | Sequence[str]]] = []
     warnings: list[str] = []
+    detected_projects: list[dict] = []
+    detected_checks: list[DetectedCheck] = []
     if test_command is not None:
         commands.append(("tests", test_command))
     if lint_command is not None:
@@ -104,13 +110,17 @@ def verify(
     if build_command is not None:
         commands.append(("build", build_command))
     if not commands:
-        detected, warnings = detect_checks(workspace)
-        commands.extend(detected)
+        detected_checks, warnings, detected_projects = detect_checks(workspace)
 
     checks = [
         _run_check(name, command, workspace, timeout_sec)
         for name, command in commands
     ]
+    checks.extend(
+        _run_check(check.name, check.command, workspace, timeout_sec)
+        if check.command is not None else CheckResult(check.name, False, check.error, 0.0)
+        for check in detected_checks
+    )
 
     if allowed_paths is not None:
         started = time.monotonic()
@@ -132,6 +142,8 @@ def verify(
             checks=[],
             summary="No executable verification checks were detected.",
             suggestions=warnings + ["Add tests or pass an explicit test, lint, or build command."],
+            detected_projects=detected_projects,
+            warnings=warnings,
         )
 
     failed = [check.name for check in checks if not check.passed]
@@ -148,4 +160,6 @@ def verify(
         checks=checks,
         summary=summary,
         suggestions=suggestions,
+        detected_projects=detected_projects,
+        warnings=warnings,
     )

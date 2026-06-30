@@ -57,7 +57,9 @@ The version 1 verify shape is:
   "passed": true,
   "checks": [{"name": "tests", "passed": true, "output": "", "duration_sec": 0.25}],
   "summary": "Passed 1/1 verification checks.",
-  "suggestions": []
+  "suggestions": [],
+  "detected_projects": [{"ecosystem": "python", "checks": ["python-tests"], "status": "configured"}],
+  "warnings": []
 }
 ```
 
@@ -90,7 +92,20 @@ for check in result.checks:
     print(check.name, check.passed, check.duration_sec)
 ```
 
-Without explicit commands, Mighty Mouse conservatively detects Python, Node.js, Rust, and Go checks. You can override detection:
+Without explicit commands, verification detects every applicable Python, Node.js,
+Rust, and Go project in the workspace. Python-only projects run tests when they
+exist and otherwise run a syntax fallback with a structured partial-coverage
+warning. Node-only projects select a usable test, lint, or build script. Mixed
+Python/Node projects run both selected check families, and either failure fails
+the combined result.
+
+Detected ecosystems and decisions are returned in `detected_projects`; warnings
+are returned separately in `warnings` and are also shown in human output. A
+malformed `package.json`, invalid or missing `scripts`, no usable Node script, or
+a missing required executable creates an explicit non-passing check with an
+actionable warning. Such conditions never produce a successful result.
+
+You can override detection:
 
 ```python
 result = verify(
@@ -101,6 +116,9 @@ result = verify(
     timeout_sec=120,
 )
 ```
+
+When any explicit test, lint, or build command is supplied, only the explicit
+commands run; `detected_projects` and detection `warnings` remain empty.
 
 Commands are executed without a shell, but they still run with the verifier process's local permissions. Use explicit commands only in trusted workspaces.
 

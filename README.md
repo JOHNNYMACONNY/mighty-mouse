@@ -35,6 +35,27 @@ The core library requires Python 3.10 or newer.
 
 ## Verify any project
 
+From the command line, verify a workspace with auto-detected project checks:
+
+```bash
+mighty-mouse verify /path/to/project
+```
+
+Commands, changed-file scope, and the per-command timeout can be specified explicitly:
+
+```bash
+mighty-mouse verify . \
+  --test-command "pytest -q" \
+  --lint-command "ruff check ." \
+  --build-command "python -m build" \
+  --allowed-path src/ \
+  --allowed-path tests/ \
+  --timeout-sec 120
+```
+
+The command exits `0` when all applicable checks pass, `1` when verification
+runs and a check fails, and `2` for invalid input or an unusable workspace.
+
 ```python
 from mighty_mouse.verifier import verify
 

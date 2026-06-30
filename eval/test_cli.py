@@ -282,7 +282,23 @@ def test_verify_json_pass_and_failure(monkeypatch, tmp_path, capsys, command, ex
     assert document["interface"] == "verify"
     assert document["passed"] is expected_passed
     assert set(document) >= {"checks", "summary", "suggestions"}
+    assert document["detected_projects"] == []
+    assert document["warnings"] == []
     assert set(document["checks"][0]) >= {"name", "passed", "output", "duration_sec"}
+
+
+def test_verify_human_and_json_expose_detection_warnings(monkeypatch, tmp_path, capsys):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0'\n")
+
+    assert _run_verify_cli(monkeypatch, str(tmp_path)) == 0
+    assert "Detection warnings:" in capsys.readouterr().out
+
+    assert _run_verify_cli(monkeypatch, str(tmp_path), "--json") == 0
+    captured = capsys.readouterr()
+    document = json.loads(captured.out)
+    assert captured.err == ""
+    assert document["detected_projects"] == ["python"]
+    assert document["warnings"] == ["No Python tests detected; running syntax validation only."]
 
 
 def test_verify_json_invalid_workspace_exits_two(monkeypatch, tmp_path, capsys):

@@ -19,6 +19,10 @@ def render_result(result: VerificationResult) -> str:
             lines.append(_indent(check.output))
 
     lines.append(result.summary)
+    warnings = getattr(result, "warnings", [])
+    if warnings:
+        lines.append("Detection warnings:")
+        lines.extend(f"  - {warning}" for warning in warnings)
     if result.suggestions:
         lines.append("Suggestions:")
         lines.extend(f"  - {suggestion}" for suggestion in result.suggestions)

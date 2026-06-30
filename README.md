@@ -57,7 +57,9 @@ The version 1 verify shape is:
   "passed": true,
   "checks": [{"name": "tests", "passed": true, "output": "", "duration_sec": 0.25}],
   "summary": "Passed 1/1 verification checks.",
-  "suggestions": []
+  "suggestions": [],
+  "detected_projects": ["python", "node"],
+  "warnings": []
 }
 ```
 
@@ -90,7 +92,11 @@ for check in result.checks:
     print(check.name, check.passed, check.duration_sec)
 ```
 
-Without explicit commands, Mighty Mouse conservatively detects Python, Node.js, Rust, and Go checks. You can override detection:
+Without explicit commands, Mighty Mouse detects every applicable root ecosystem rather than choosing one. Python-only projects run pytest when tests are present and otherwise run a syntax check with a structured partial-coverage warning. Node-only projects select a usable test, lint, or build script. Mixed Python/Node projects run one applicable check family for each ecosystem, and a failure in either family fails the combined result.
+
+Malformed Node metadata, missing Node scripts, and missing executables produce explicit non-passing checks plus actionable entries in `warnings`; they never result in a successful empty verification. `detected_projects` records the ecosystems considered by auto-detection. Explicit command overrides bypass auto-detection, so their results leave `detected_projects` empty rather than claiming detection ran. Human output labels detection warnings, while `--json` emits them only as JSON fields.
+
+Rust and Go root markers continue to select their native test commands. You can override detection:
 
 ```python
 result = verify(

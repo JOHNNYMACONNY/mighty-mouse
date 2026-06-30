@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 
 from mighty_mouse.verifier import VerificationResult, verify
@@ -31,6 +32,7 @@ def run_verify(
     build_command: str | None = None,
     allowed_paths: list[str] | None = None,
     timeout_sec: int = 120,
+    json_output: bool = False,
 ) -> None:
     try:
         result = verify(
@@ -42,8 +44,26 @@ def run_verify(
             timeout_sec=timeout_sec,
         )
     except (OSError, ValueError) as exc:
-        print(f"mighty-mouse verify: {exc}", file=sys.stderr)
+        if json_output:
+            print(json.dumps({
+                "schema_version": 1,
+                "interface": "verify",
+                "passed": False,
+                "checks": [],
+                "summary": str(exc),
+                "suggestions": [],
+            }))
+        else:
+            print(f"mighty-mouse verify: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
 
-    print(render_result(result))
+    if json_output:
+        payload = {
+            "schema_version": 1,
+            "interface": "verify",
+            **result.to_dict(),
+        }
+        print(json.dumps(payload))
+    else:
+        print(render_result(result))
     raise SystemExit(0 if result.passed else 1)

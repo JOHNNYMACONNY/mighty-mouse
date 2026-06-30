@@ -179,6 +179,11 @@ def _run_verify_cli(monkeypatch, *arguments):
     return exc.value.code
 
 
+def _run_protocol_cli(monkeypatch, *arguments):
+    monkeypatch.setattr(sys, "argv", ["mighty-mouse", "protocol", *arguments])
+    cli.main()
+
+
 def test_verify_cli_passes_and_renders_check(monkeypatch, tmp_path, capsys):
     command = f'{sys.executable} -c "print(\'verified\')"'
 
@@ -254,3 +259,62 @@ def test_verify_cli_timeout_fails_check(monkeypatch, tmp_path, capsys):
     output = capsys.readouterr().out.lower()
     assert "fail tests" in output
     assert "timed out" in output
+
+
+@pytest.mark.parametrize(
+    ("command", "expected_code", "expected_passed"),
+    [
+        (f'{sys.executable} -c "print(\'verified\')"', 0, True),
+        (f'{sys.executable} -c "raise SystemExit(3)"', 1, False),
+    ],
+)
+def test_verify_cli_json_for_check_results(
+    monkeypatch, tmp_path, capsys, command, expected_code, expected_passed
+):
+    assert _run_verify_cli(
+        monkeypatch, str(tmp_path), "--test-command", command, "--json"
+    ) == expected_code
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload["schema_version"] == 1
+    assert payload["interface"] == "verify"
+    assert payload["passed"] is expected_passed
+    assert set(payload) >= {"checks", "summary", "suggestions"}
+    assert set(payload["checks"][0]) == {"name", "passed", "output", "duration_sec"}
+
+
+def test_verify_cli_json_for_invalid_workspace(monkeypatch, tmp_path, capsys):
+    assert _run_verify_cli(monkeypatch, str(tmp_path / "missing"), "--json") == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload["schema_version"] == 1
+    assert payload["interface"] == "verify"
+    assert payload["passed"] is False
+    assert payload["checks"] == []
+    assert "Workspace is not a directory" in payload["summary"]
+
+
+@pytest.mark.parametrize("complexity", ["low", "medium", "high"])
+def test_protocol_cli_json(monkeypatch, capsys, complexity):
+    _run_protocol_cli(
+        monkeypatch, "Add stable command output", "--complexity", complexity, "--json"
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == 1
+    assert payload["interface"] == "protocol"
+    assert payload["task_description"] == "Add stable command output"
+    assert payload["complexity"] == complexity
+    assert payload["protocol_prompt"]
+    assert payload["verification_reminder"]
+
+
+def test_protocol_cli_human_output(monkeypatch, capsys):
+    _run_protocol_cli(monkeypatch, "Refactor the parser")
+    output = capsys.readouterr().out
+    assert "Task: Refactor the parser" in output
+    assert "Complexity: medium" in output
+    assert "Medium Complexity" in output
+    assert "Verification reminder:" in output
+    assert '"schema_version"' not in output

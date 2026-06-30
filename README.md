@@ -56,6 +56,51 @@ mighty-mouse verify . \
 The command exits `0` when all applicable checks pass, `1` when verification
 runs and a check fails, and `2` for invalid input or an unusable workspace.
 
+For automation, add `--json`. Exactly one JSON document is written to stdout
+for all three exit outcomes:
+
+```bash
+mighty-mouse verify /path/to/project --json
+```
+
+The version 1 verify shape is:
+
+```json
+{
+  "schema_version": 1,
+  "interface": "verify",
+  "passed": true,
+  "checks": [
+    {"name": "tests", "passed": true, "output": "...", "duration_sec": 0.42}
+  ],
+  "summary": "Passed 1/1 verification checks.",
+  "suggestions": []
+}
+```
+
+## Get a coding protocol
+
+Display the medium-complexity protocol (the default), or select low or high:
+
+```bash
+mighty-mouse protocol "Add caching to the search endpoint"
+mighty-mouse protocol "Rename a local variable" --complexity low
+mighty-mouse protocol "Migrate the persistence layer" --complexity high
+```
+
+Add `--json` for machine-readable output. Its version 1 shape is:
+
+```json
+{
+  "schema_version": 1,
+  "interface": "protocol",
+  "task_description": "Rename a local variable",
+  "complexity": "low",
+  "protocol_prompt": "# Mighty Mouse v9.1 ...",
+  "verification_reminder": "After editing, call mighty-mouse/verify. Fix failures and retry up to three rounds."
+}
+```
+
 ```python
 from mighty_mouse.verifier import verify
 

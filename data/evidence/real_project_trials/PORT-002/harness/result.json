@@ -1,0 +1,15 @@
+{
+  "condition": "harness",
+  "project": "AudioServiceApp",
+  "base_commit": "2763c8aaeda5fb22c4a7c9cea143605eb09a3ebc",
+  "final_commit": "2ed59ad419df6deea562797a0a6cfe9b7b9f474d",
+  "duration_sec": 268.538,
+  "first_try_pass": true,
+  "retry_rounds": 0,
+  "scope_violations": [],
+  "quality_score_1_to_5": 5,
+  "tests": "20 suites, 64 tests passed",
+  "typescript": "passed",
+  "neutral_build": "passed with metadata sidecars removed and inert build-time Supabase values",
+  "local_raw_session_sha256": "489e701575e047a9e21c3eafc58571056a18c0d3f7d9039833ddad5bf518d7cf"
+}

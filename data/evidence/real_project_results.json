@@ -200,7 +200,59 @@
         "notes": "95 tests and all evaluator mixed-project fixtures passed on first external acceptance. Medium protocol was followed from the checked-in skill.",
         "recorded_at": "2026-06-30T22:57:58.197549+00:00"
       }
+    },
+    {
+      "task_id": "PORT-001",
+      "project": "AudioServiceApp",
+      "task_description": "Remove exactly 242 tracked reproducible Next, coverage, test-result, and TypeScript metadata artifacts; preserve 20 output evidence files; strengthen ignore rules; add a safe hygiene verifier, npm command, and inventory documentation.",
+      "base_commit": "ccea5b2b925a0e1b5efdbfec70b92ce88866c842",
+      "shared_config": {
+        "agent": "Codex CLI 0.120.0 multi-agent",
+        "model": "gpt-5.5",
+        "model_settings": "reasoning_effort=medium;sandbox=workspace-write;approval=never",
+        "environment_fingerprint": "sha256:3c73fe8915baadba089e72f21048583345c0126c8ce96d80ebe1ac92cf10fb66",
+        "timeout_sec": 900,
+        "acceptance_commands": [
+          "npm run verify:hygiene",
+          "npm test -- --runInBand",
+          "neutral npm run build and pre/post Git status equality"
+        ],
+        "allowed_paths": [
+          ".gitignore",
+          ".next",
+          "coverage",
+          "docs/repository-hygiene.md",
+          "package.json",
+          "scripts/verify-repository-hygiene.js",
+          "test-results",
+          "tsconfig.tsbuildinfo"
+        ]
+      },
+      "control": {
+        "first_try_pass": true,
+        "retry_rounds": 0,
+        "scope_violations": [],
+        "duration_sec": 130.939,
+        "quality_score_1_to_5": 4,
+        "final_commit": "b479d395e5974bc93b7593921dea618c5d803291",
+        "artifact_dir": "data/evidence/real_project_trials/PORT-001/control",
+        "review_rationale": "Correct and simpler, but verified output evidence only in the index and could miss unstaged evidence deletion.",
+        "notes": "242 deletions, 20 output files preserved, 57 tests and neutral build passed on first external acceptance.",
+        "recorded_at": "2026-07-01T19:00:04.712605+00:00"
+      },
+      "harness": {
+        "first_try_pass": true,
+        "retry_rounds": 0,
+        "scope_violations": [],
+        "duration_sec": 256.544,
+        "quality_score_1_to_5": 5,
+        "final_commit": "c2310aa96b7fe9cf682b1d4ef2b4cb7861adc26a",
+        "artifact_dir": "data/evidence/real_project_trials/PORT-001/harness",
+        "review_rationale": "Selected in blind review for verifying tracked output evidence also remains present in the worktree.",
+        "notes": "242 deletions, 20 output files preserved, 57 tests and neutral build passed on first external acceptance. Plain worktree build required neutral handling of sidecars and env.",
+        "recorded_at": "2026-07-01T19:00:04.781589+00:00"
+      }
     }
   ],
-  "paired_tasks": 4
+  "paired_tasks": 5
 }

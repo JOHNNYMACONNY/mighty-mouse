@@ -1,0 +1,16 @@
+{
+  "condition": "control",
+  "project": "AudioServiceApp",
+  "base_commit": "ccea5b2b925a0e1b5efdbfec70b92ce88866c842",
+  "final_commit": "b479d395e5974bc93b7593921dea618c5d803291",
+  "duration_sec": 130.939,
+  "first_try_pass": true,
+  "retry_rounds": 0,
+  "scope_violations": [],
+  "quality_score_1_to_5": 4,
+  "deleted_generated_files": 242,
+  "preserved_output_evidence_files": 20,
+  "tests": "19 suites, 57 tests passed",
+  "neutral_build": "passed with metadata sidecars removed and inert build-time Supabase values",
+  "local_raw_session_sha256": "ed00dc5f19be42c4e2c06e6d409cd5c0bef2f474b211e7e6a144b7ba7a2cc062"
+}

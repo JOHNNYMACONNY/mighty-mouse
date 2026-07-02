@@ -404,7 +404,52 @@
         "notes": "Repair round corrected WorkSignal unit and exploratory sample-unit invariant; 21 suites/75 tests, TypeScript, and released verifier passed.",
         "recorded_at": "2026-07-01T19:31:22.427268+00:00"
       }
+    },
+    {
+      "task_id": "SOCIAL-001",
+      "project": "clawd Instagram automation",
+      "task_description": "Add a deterministic non-mutating carousel selection preview before Meta Business Suite draft creation.",
+      "base_commit": "5f0fe3b6a7a7b63a927b76712bbf90b3e7dd6b85",
+      "shared_config": {
+        "agent": "Codex CLI 0.120.0 multi-agent",
+        "model": "gpt-5.5",
+        "model_settings": "reasoning_effort=medium;sandbox=workspace-write;approval=never",
+        "environment_fingerprint": "sha256:0435e67988d86f03ef78b001659aee621ccd02b7b884769a8e85188dc94b4ce8",
+        "timeout_sec": 900,
+        "acceptance_commands": [
+          "node --test tests/selection-preview.test.js",
+          "node --test tests/selection-policy.test.js tests/selection-ledger.test.js tests/build-selection-bundle.test.js"
+        ],
+        "allowed_paths": [
+          "scripts/instagram/selection-preview.js",
+          "tests/selection-preview.test.js"
+        ]
+      },
+      "control": {
+        "first_try_pass": false,
+        "retry_rounds": 1,
+        "scope_violations": [],
+        "duration_sec": 475.486,
+        "quality_score_1_to_5": 5,
+        "final_commit": "9c9d13f55329c25db4a33f4b35bff2edb85945cd",
+        "artifact_dir": "data/evidence/real_project_trials/SOCIAL-001/control",
+        "review_rationale": "Blind re-review selected control at 5/5 because both JSON and human output expose genuine canonical/checksum prior-post exclusions.",
+        "notes": "4 focused and 19 regression tests passed; no draft or remote mutation.",
+        "recorded_at": "2026-07-02T05:27:05.187105+00:00"
+      },
+      "harness": {
+        "first_try_pass": false,
+        "retry_rounds": 1,
+        "scope_violations": [],
+        "duration_sec": 453.966,
+        "quality_score_1_to_5": 4,
+        "final_commit": "4cda7a745fc714f7cadecfbebfc2885cdb1f7bcf",
+        "artifact_dir": "data/evidence/real_project_trials/SOCIAL-001/harness",
+        "review_rationale": "Blind re-review scored harness 4/5; stronger exact role/order tests but human output omits true prior-post inventory.",
+        "notes": "6 focused and 19 regression tests plus released verifier passed; no draft or remote mutation.",
+        "recorded_at": "2026-07-02T05:27:05.369614+00:00"
+      }
     }
   ],
-  "paired_tasks": 8
+  "paired_tasks": 9
 }

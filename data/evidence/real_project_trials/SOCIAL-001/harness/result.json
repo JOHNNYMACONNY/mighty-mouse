@@ -1,0 +1,16 @@
+{
+  "condition": "harness",
+  "project": "clawd Instagram automation",
+  "base_commit": "5f0fe3b6a7a7b63a927b76712bbf90b3e7dd6b85",
+  "final_commit": "4cda7a745fc714f7cadecfbebfc2885cdb1f7bcf",
+  "duration_sec": 453.966,
+  "first_try_pass": false,
+  "retry_rounds": 1,
+  "scope_violations": [],
+  "quality_score_1_to_5": 4,
+  "tests": "6 focused and 19 regression tests passed",
+  "released_verifier": "passed 3/3 after repair",
+  "remote_mutation": "none",
+  "repair": "Hardened eligibility/empty-argument validation and exact ordered-role assertions.",
+  "local_raw_session_sha256": "2bbac777477baafd4faf424e089cf0f9fb03e8466ca892fa14791b0a8632cb01"
+}

@@ -1,0 +1,15 @@
+{
+  "condition": "control",
+  "project": "clawd Instagram automation",
+  "base_commit": "5f0fe3b6a7a7b63a927b76712bbf90b3e7dd6b85",
+  "final_commit": "9c9d13f55329c25db4a33f4b35bff2edb85945cd",
+  "duration_sec": 475.486,
+  "first_try_pass": false,
+  "retry_rounds": 1,
+  "scope_violations": [],
+  "quality_score_1_to_5": 5,
+  "tests": "4 focused and 19 regression tests passed",
+  "remote_mutation": "none",
+  "repair": "Added genuine prior-post inventory/human visibility and hardened probe/CLI validation.",
+  "local_raw_session_sha256": "5bfee86f8c42311a78fc4959dd063f381ca73a30e256da1b815fafad1cd46238"
+}

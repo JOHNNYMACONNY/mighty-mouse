@@ -20,7 +20,9 @@ A new bare control sent the same 15 frozen tasks to `gemma4:e4b` with one raw re
 - it does **not** demonstrate a success-rate advantage over a raw model call;
 - its permissive tests have a ceiling effect and should not be generalized to real projects.
 
-See [`data/evidence/results/baseline_comparison.md`](data/evidence/results/baseline_comparison.md) and the raw [`bare_baseline_results.json`](data/evidence/results/bare_baseline_results.json). Real-project paired validation is explicitly marked as collecting until at least 10 tasks are complete.
+See [`data/evidence/results/baseline_comparison.md`](data/evidence/results/baseline_comparison.md) and the raw [`bare_baseline_results.json`](data/evidence/results/bare_baseline_results.json).
+
+The prospective real-project study is complete at 10 paired tasks. Both conditions passed 6/10 tasks on the first attempt, with no scope violations. Mighty Mouse used 4 retry rounds versus 6 for the control and received a higher mean blind-review quality score (4.60 versus 4.30), but it was slower by both mean and median duration. **No generalized improvement was demonstrated.** The result is mixed: fewer retries and higher review quality, without better first-pass reliability or speed. See the [`real-project study report`](data/evidence/real_project_report.md) and its paired raw evidence.
 
 ## Install
 

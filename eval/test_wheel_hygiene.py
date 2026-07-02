@@ -29,3 +29,10 @@ def test_wheel_hygiene_check_rejects_contaminated_archive(tmp_path):
         archive.writestr("package/._module.py", "AppleDouble")
     with pytest.raises(AssertionError):
         _assert_clean_wheel(wheel)
+
+
+def test_source_distributions_include_their_build_backends():
+    assert "include build_backend.py" in Path("MANIFEST.in").read_text().splitlines()
+    assert "include build_backend.py" in Path("mcp/MANIFEST.in").read_text().splitlines()
+    assert '"build_backend.py"' in Path("build_backend.py").read_text()
+    assert '"build_backend.py"' in Path("mcp/build_backend.py").read_text()

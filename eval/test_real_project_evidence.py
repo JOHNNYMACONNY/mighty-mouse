@@ -141,3 +141,8 @@ def test_existing_evidence_file_is_internally_consistent():
         assert "no generalized improvement claim is made" in report
     else:
         assert "No generalized improvement was demonstrated" in report
+
+    readme = Path("README.md").read_text()
+    assert "The prospective real-project study is complete at 10 paired tasks" in readme
+    assert "No generalized improvement was demonstrated" in readme
+    assert "collecting until at least 10 tasks" not in readme

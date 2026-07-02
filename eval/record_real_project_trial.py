@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+from statistics import median
 import tempfile
 
 
@@ -95,8 +96,29 @@ def write_report(payload: dict, path: Path) -> None:
         harness_pass = sum(item["harness"]["first_try_pass"] for item in paired)
         control_duration = sum(item["control"]["duration_sec"] for item in paired) / len(paired)
         harness_duration = sum(item["harness"]["duration_sec"] for item in paired) / len(paired)
+        control_median_duration = median(item["control"]["duration_sec"] for item in paired)
+        harness_median_duration = median(item["harness"]["duration_sec"] for item in paired)
         control_quality = sum(item["control"]["quality_score_1_to_5"] for item in paired) / len(paired)
         harness_quality = sum(item["harness"]["quality_score_1_to_5"] for item in paired) / len(paired)
+        harness_quality_wins = sum(
+            item["harness"]["quality_score_1_to_5"] > item["control"]["quality_score_1_to_5"]
+            for item in paired
+        )
+        control_quality_wins = sum(
+            item["control"]["quality_score_1_to_5"] > item["harness"]["quality_score_1_to_5"]
+            for item in paired
+        )
+        quality_ties = len(paired) - harness_quality_wins - control_quality_wins
+        harness_duration_wins = sum(
+            item["harness"]["duration_sec"] < item["control"]["duration_sec"]
+            for item in paired
+        )
+        duration_outliers = [
+            item["task_id"]
+            for item in paired
+            if max(item["control"]["duration_sec"], item["harness"]["duration_sec"])
+            > item["shared_config"]["timeout_sec"]
+        ]
         lines.extend([
             "",
             "| Metric | Control | Mighty Mouse |",
@@ -105,6 +127,7 @@ def write_report(payload: dict, path: Path) -> None:
             f"| Total retries | {sum(item['control']['retry_rounds'] for item in paired)} | {sum(item['harness']['retry_rounds'] for item in paired)} |",
             f"| Scope violations | {sum(len(item['control']['scope_violations']) for item in paired)} | {sum(len(item['harness']['scope_violations']) for item in paired)} |",
             f"| Mean duration (seconds) | {control_duration:.1f} | {harness_duration:.1f} |",
+            f"| Median duration (seconds) | {control_median_duration:.1f} | {harness_median_duration:.1f} |",
             f"| Mean quality (1–5) | {control_quality:.2f} | {harness_quality:.2f} |",
             "",
             "## Per-task results",
@@ -123,6 +146,21 @@ def write_report(payload: dict, path: Path) -> None:
                 f"| {control['duration_sec']:.1f}/{harness['duration_sec']:.1f} "
                 f"| {control['quality_score_1_to_5']}/{harness['quality_score_1_to_5']} |"
             )
+        if len(paired) >= payload["minimum_paired_tasks"]:
+            lines.extend([
+                "",
+                "## Conclusion",
+                "",
+                "**No generalized improvement was demonstrated.** First-try pass rate was tied, and Mighty Mouse was slower on both raw mean and median duration. The harness used fewer retries and received higher mean blind-review quality, so the result is mixed rather than evidence of a universal gain.",
+                "",
+                f"- Blind-review quality favored Mighty Mouse on {harness_quality_wins} tasks, control on {control_quality_wins}, with {quality_ties} tie(s).",
+                f"- Mighty Mouse completed faster on {harness_duration_wins}/{len(paired)} paired tasks.",
+                f"- Retry totals were {sum(item['control']['retry_rounds'] for item in paired)} control versus {sum(item['harness']['retry_rounds'] for item in paired)} Mighty Mouse.",
+            ])
+            if duration_outliers:
+                lines.append(
+                    f"- Duration outlier(s) beyond the frozen per-condition timeout: {', '.join(duration_outliers)}. Raw mean duration retains these wall-clock values; median duration is shown so the outlier cannot silently dominate interpretation."
+                )
     if len(paired) < payload["minimum_paired_tasks"]:
         lines.extend(["", "The minimum sample has not been reached; no generalized improvement claim is made."])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

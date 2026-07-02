@@ -88,6 +88,39 @@ def test_condition_provenance_is_retained():
     assert task["control"]["artifact_dir"] == "artifacts/real-001/control"
 
 
+def test_complete_study_reports_mixed_result_without_claiming_general_improvement(tmp_path):
+    payload = _payload()
+    for index in range(10):
+        task_id = f"real-{index:03d}"
+        payload = update_results(payload, _args(
+            "control",
+            task_id=task_id,
+            duration_sec=10 + index,
+            quality_score=4,
+            final_commit=f"control-{index}",
+            artifact_dir=f"artifacts/{task_id}/control",
+        ))
+        payload = update_results(payload, _args(
+            "harness",
+            task_id=task_id,
+            duration_sec=20 + index,
+            quality_score=5,
+            retry_rounds=1,
+            final_commit=f"harness-{index}",
+            artifact_dir=f"artifacts/{task_id}/harness",
+        ))
+
+    report = tmp_path / "report.md"
+    write_report(payload, report)
+    content = report.read_text()
+    assert payload["status"] == "complete"
+    assert "No generalized improvement was demonstrated" in content
+    assert "First-try pass rate was tied" in content
+    assert "Median duration (seconds)" in content
+    assert "quality favored Mighty Mouse on 10 tasks" in content
+    assert "completed faster on 0/10" in content
+
+
 def test_existing_evidence_file_is_internally_consistent():
     payload = json.load(open("data/evidence/real_project_results.json"))
     assert payload["schema_version"] == 2
@@ -106,3 +139,5 @@ def test_existing_evidence_file_is_internally_consistent():
     report = Path("data/evidence/real_project_report.md").read_text()
     if expected_status == "collecting":
         assert "no generalized improvement claim is made" in report
+    else:
+        assert "No generalized improvement was demonstrated" in report

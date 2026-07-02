@@ -12,6 +12,7 @@ Current paired tasks: **10/10 minimum**.
 | Total retries | 6 | 4 |
 | Scope violations | 0 | 0 |
 | Mean duration (seconds) | 5596.4 | 5628.6 |
+| Median duration (seconds) | 229.5 | 262.5 |
 | Mean quality (1–5) | 4.30 | 4.60 |
 
 ## Per-task results
@@ -28,3 +29,12 @@ Current paired tasks: **10/10 minimum**.
 | PORT-003 | no | no | 1/1 | 0/0 | 310.1/345.3 | 4/5 |
 | SOCIAL-001 | no | no | 1/1 | 0/0 | 475.5/454.0 | 5/4 |
 | VIDEO-001 | no | no | 3/1 | 0/0 | 53706.5/53700.5 | 5/4 |
+
+## Conclusion
+
+**No generalized improvement was demonstrated.** First-try pass rate was tied, and Mighty Mouse was slower on both raw mean and median duration. The harness used fewer retries and received higher mean blind-review quality, so the result is mixed rather than evidence of a universal gain.
+
+- Blind-review quality favored Mighty Mouse on 6 tasks, control on 3, with 1 tie(s).
+- Mighty Mouse completed faster on 3/10 paired tasks.
+- Retry totals were 6 control versus 4 Mighty Mouse.
+- Duration outlier(s) beyond the frozen per-condition timeout: VIDEO-001. Raw mean duration retains these wall-clock values; median duration is shown so the outlier cannot silently dominate interpretation.

@@ -1,0 +1,16 @@
+{
+  "condition": "harness",
+  "project": "AudioServiceApp",
+  "base_commit": "5b967ef52efeba44b7ce246017203b673fa2c8d7",
+  "final_commit": "617c6513b9f30113cc76c266b32ad3e1f74819df",
+  "duration_sec": 345.349,
+  "first_try_pass": false,
+  "retry_rounds": 1,
+  "scope_violations": [],
+  "quality_score_1_to_5": 5,
+  "tests": "21 suites, 75 tests passed",
+  "typescript": "passed",
+  "released_verifier": "passed 3/3 after repair",
+  "repair": "Corrected WorkSignal unit and enforced exploratory sampleUnit=task.",
+  "local_raw_session_sha256": "05332056e92c076234b36c6eb94d22256933f694f663787c85bb7c1de200ba62"
+}

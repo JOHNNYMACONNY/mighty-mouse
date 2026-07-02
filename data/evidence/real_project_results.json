@@ -306,7 +306,58 @@
         "notes": "20 Jest suites/64 tests, TypeScript, and neutral production build passed.",
         "recorded_at": "2026-07-01T19:13:42.164758+00:00"
       }
+    },
+    {
+      "task_id": "PORT-003",
+      "project": "AudioServiceApp",
+      "task_description": "Publish machine-checkable, evidence-correct Mighty Mouse case-study claims with exact promotion and mini-spike scope.",
+      "base_commit": "5b967ef52efeba44b7ce246017203b673fa2c8d7",
+      "shared_config": {
+        "agent": "Codex CLI 0.120.0 multi-agent",
+        "model": "gpt-5.5",
+        "model_settings": "reasoning_effort=medium;sandbox=workspace-write;approval=never",
+        "environment_fingerprint": "sha256:3c73fe8915baadba089e72f21048583345c0126c8ce96d80ebe1ac92cf10fb66",
+        "timeout_sec": 900,
+        "acceptance_commands": [
+          "npm test -- --runInBand",
+          "npx tsc --noEmit --skipLibCheck"
+        ],
+        "allowed_paths": [
+          "__tests__/portfolioSchema.test.ts",
+          "__tests__/workEvidenceRendering.test.tsx",
+          "__tests__/workManifest.test.ts",
+          "components/work/Hs7Verification.tsx",
+          "components/work/WorkSignal.tsx",
+          "data/work.fallback.json",
+          "lib/portfolio/schema.ts",
+          "types/work.ts"
+        ]
+      },
+      "control": {
+        "first_try_pass": false,
+        "retry_rounds": 1,
+        "scope_violations": [],
+        "duration_sec": 310.067,
+        "quality_score_1_to_5": 4,
+        "final_commit": "9e34c28f0468f3afaa2db7ff65a69a7f1a2c4b3a",
+        "artifact_dir": "data/evidence/real_project_trials/PORT-003/control",
+        "review_rationale": "Blind re-review scored control 4.5/5; clean direct invariants but structured bases remain optional and rendering coverage omits the mini-spike.",
+        "notes": "Repair round corrected incomplete WorkSignal unit; 21 suites/67 tests and TypeScript passed.",
+        "recorded_at": "2026-07-01T19:31:22.218681+00:00"
+      },
+      "harness": {
+        "first_try_pass": false,
+        "retry_rounds": 1,
+        "scope_violations": [],
+        "duration_sec": 345.349,
+        "quality_score_1_to_5": 5,
+        "final_commit": "617c6513b9f30113cc76c266b32ad3e1f74819df",
+        "artifact_dir": "data/evidence/real_project_trials/PORT-003/harness",
+        "review_rationale": "Blind re-review selected harness at 4.6/5 for mandatory bases, stronger semantic rendering, and broader regression coverage; filename-based source/class logic is brittle.",
+        "notes": "Repair round corrected WorkSignal unit and exploratory sample-unit invariant; 21 suites/75 tests, TypeScript, and released verifier passed.",
+        "recorded_at": "2026-07-01T19:31:22.427268+00:00"
+      }
     }
   ],
-  "paired_tasks": 6
+  "paired_tasks": 7
 }

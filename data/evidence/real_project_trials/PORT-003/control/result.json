@@ -1,0 +1,15 @@
+{
+  "condition": "control",
+  "project": "AudioServiceApp",
+  "base_commit": "5b967ef52efeba44b7ce246017203b673fa2c8d7",
+  "final_commit": "9e34c28f0468f3afaa2db7ff65a69a7f1a2c4b3a",
+  "duration_sec": 310.067,
+  "first_try_pass": false,
+  "retry_rounds": 1,
+  "scope_violations": [],
+  "quality_score_1_to_5": 4,
+  "tests": "21 suites, 67 tests passed",
+  "typescript": "passed",
+  "repair": "Corrected WorkSignal to state 15 paired tasks producing 30 condition runs.",
+  "local_raw_session_sha256": "aaadb6d6a3264ad00c101434699455f11fbc67c9c3d21400ec14cad24c1d8e4f"
+}

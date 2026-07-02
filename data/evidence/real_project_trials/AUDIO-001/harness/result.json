@@ -1,0 +1,16 @@
+{
+  "condition": "harness",
+  "project": "AudioServiceApp",
+  "base_commit": "ce33013822b9f2aecf860a607bb00c42d1c5bf0b",
+  "final_commit": "40b5b7b7b7813865d96600193e2f915963d08d07",
+  "duration_sec": 459.701,
+  "first_try_pass": false,
+  "retry_rounds": 1,
+  "scope_violations": [],
+  "quality_score_1_to_5": 5,
+  "tests": "10 focused tests; 21 Jest suites/75 tests passed",
+  "released_verifier": "passed 3/3 after repair",
+  "remote_mutation": "none; adapters mocked",
+  "repair": "Made all duplicate members invalid, enforced CLI failure/publish intent/history validity, and removed locale-dependent ordering.",
+  "local_raw_session_sha256": "bf5ceb9e57f9f7034907bf2c940255f3baa1f4d6d523ad2d2353ea0294c223f6"
+}

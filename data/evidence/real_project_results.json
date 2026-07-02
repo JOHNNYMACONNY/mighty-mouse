@@ -6,6 +6,53 @@
   "minimum_paired_tasks": 10,
   "tasks": [
     {
+      "task_id": "AUDIO-001",
+      "project": "AudioServiceApp",
+      "task_description": "Add a non-mutating SoundCloud destination dry run to the existing audio-export website pipeline.",
+      "base_commit": "ce33013822b9f2aecf860a607bb00c42d1c5bf0b",
+      "shared_config": {
+        "agent": "Codex CLI 0.120.0 multi-agent",
+        "model": "gpt-5.5",
+        "model_settings": "reasoning_effort=medium;sandbox=workspace-write;approval=never",
+        "environment_fingerprint": "sha256:3c73fe8915baadba089e72f21048583345c0126c8ce96d80ebe1ac92cf10fb66",
+        "timeout_sec": 900,
+        "acceptance_commands": [
+          "node --test scripts/test-sync-songs.js",
+          "npm test -- --runInBand"
+        ],
+        "allowed_paths": [
+          "scripts/lib/song-export.js",
+          "scripts/lib/soundcloud-destination.js",
+          "scripts/sync-songs.js",
+          "scripts/test-sync-songs.js"
+        ]
+      },
+      "control": {
+        "first_try_pass": false,
+        "retry_rounds": 1,
+        "scope_violations": [],
+        "duration_sec": 428.563,
+        "quality_score_1_to_5": 4,
+        "final_commit": "9540c7e8f2881960f258cb8ccc72b81a0d210a36",
+        "artifact_dir": "data/evidence/real_project_trials/AUDIO-001/control",
+        "review_rationale": "Blind re-review scored control 4.5/5; correct after repair, with stronger multipart request-shape test but weaker history normalization and live title metadata.",
+        "notes": "9 focused and 75 Jest tests passed; no remote mutation.",
+        "recorded_at": "2026-07-02T05:14:10.012922+00:00"
+      },
+      "harness": {
+        "first_try_pass": false,
+        "retry_rounds": 1,
+        "scope_violations": [],
+        "duration_sec": 459.701,
+        "quality_score_1_to_5": 5,
+        "final_commit": "40b5b7b7b7813865d96600193e2f915963d08d07",
+        "artifact_dir": "data/evidence/real_project_trials/AUDIO-001/harness",
+        "review_rationale": "Blind re-review selected harness at 4.7/5 for stronger history normalization, duplicate reporting, CLI safety, and dry-run isolation evidence.",
+        "notes": "10 focused and 75 Jest tests plus released verifier passed; no remote mutation.",
+        "recorded_at": "2026-07-02T05:14:10.210420+00:00"
+      }
+    },
+    {
       "task_id": "MM-001",
       "project": "mighty-mouse",
       "task_description": "Add public mighty-mouse verify <workspace> CLI with overrides, scope, timeout, human output, truthful 0/1/2 exits, tests, wheel smoke, and README documentation.",
@@ -359,5 +406,5 @@
       }
     }
   ],
-  "paired_tasks": 7
+  "paired_tasks": 8
 }

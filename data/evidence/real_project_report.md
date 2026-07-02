@@ -4,20 +4,21 @@ Status: **collecting**
 
 Every row is a paired control and harness run from the same recorded project commit, agent, model, and environment. Unfavorable results are retained.
 
-Current paired tasks: **7/10 minimum**.
+Current paired tasks: **8/10 minimum**.
 
 | Metric | Control | Mighty Mouse |
 |---|---:|---:|
-| First-try passes | 6/7 | 6/7 |
-| Total retries | 1 | 1 |
+| First-try passes | 6/8 | 6/8 |
+| Total retries | 2 | 2 |
 | Scope violations | 0 | 0 |
-| Mean duration (seconds) | 193.4 | 238.9 |
-| Mean quality (1–5) | 4.14 | 4.71 |
+| Mean duration (seconds) | 222.8 | 266.5 |
+| Mean quality (1–5) | 4.12 | 4.75 |
 
 ## Per-task results
 
 | Task | Control first pass | Harness first pass | Retries C/H | Scope C/H | Seconds C/H | Quality C/H |
 |---|---:|---:|---:|---:|---:|---:|
+| AUDIO-001 | no | no | 1/1 | 0/0 | 428.6/459.7 | 4/5 |
 | MM-001 | yes | yes | 0/0 | 0/0 | 139.0/200.1 | 4/5 |
 | MM-002 | yes | yes | 0/0 | 0/0 | 225.5/191.6 | 4/5 |
 | MM-003 | yes | yes | 0/0 | 0/0 | 154.5/167.7 | 5/4 |

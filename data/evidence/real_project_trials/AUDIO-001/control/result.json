@@ -1,0 +1,15 @@
+{
+  "condition": "control",
+  "project": "AudioServiceApp",
+  "base_commit": "ce33013822b9f2aecf860a607bb00c42d1c5bf0b",
+  "final_commit": "9540c7e8f2881960f258cb8ccc72b81a0d210a36",
+  "duration_sec": 428.563,
+  "first_try_pass": false,
+  "retry_rounds": 1,
+  "scope_violations": [],
+  "quality_score_1_to_5": 4,
+  "tests": "9 focused tests; 21 Jest suites/75 tests passed",
+  "remote_mutation": "none; adapters mocked",
+  "repair": "Replaced raw upload with multipart title+asset request and strengthened publisher/dry-run/history determinism gates.",
+  "local_raw_session_sha256": "c1570b381dd4eba70d136f5b9b14af29165dc4133b7c69821d3ebc10466a7925"
+}

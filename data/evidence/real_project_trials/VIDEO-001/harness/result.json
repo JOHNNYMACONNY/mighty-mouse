@@ -1,0 +1,19 @@
+{
+  "condition": "harness",
+  "project": "clawd/feddy-video",
+  "base_commit": "a653637a43f2d3d0d68d80f7b2d2d2d53beafd6e",
+  "final_commit": "c455a8be36594502edb9257f250c36394f046ab2",
+  "duration_sec": 53700.481,
+  "first_try_pass": false,
+  "retry_rounds": 1,
+  "scope_violations": [],
+  "quality_score_1_to_5": 4,
+  "tests": "19 focused; 87 full-suite tests passed",
+  "released_verifier": "passed full tests and scope",
+  "generated_media": "16/48 kHz sync, 24/29.97/30/60 fps, gaps, missing/empty/silent audio, valid screen+face reconstruction",
+  "repair": "Restored single-camera compatibility, EOF/windowed-rate handling, unique atomic outputs, and wider real fixtures.",
+  "local_raw_session_sha256": [
+    "6407552623d4c7afbef8a95b18aee0bfc164211a570bba804d4610a2af4db974",
+    "73475e0c68e529235f9a899d1b8115e58e7bbaf4c1bbfb0236f14fa7fc224461"
+  ]
+}

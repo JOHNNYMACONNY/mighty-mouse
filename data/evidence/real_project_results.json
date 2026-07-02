@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "status": "collecting",
+  "status": "complete",
   "method": "paired control and Mighty Mouse runs from the same pre-change project state",
   "study_protocol": "data/evidence/real_project_study_plan.md",
   "minimum_paired_tasks": 10,
@@ -449,7 +449,58 @@
         "notes": "6 focused and 19 regression tests plus released verifier passed; no draft or remote mutation.",
         "recorded_at": "2026-07-02T05:27:05.369614+00:00"
       }
+    },
+    {
+      "task_id": "VIDEO-001",
+      "project": "clawd/feddy-video",
+      "task_description": "Harden multicam synchronization for mismatched rates and unusable audio with atomic 30 fps rendering.",
+      "base_commit": "a653637a43f2d3d0d68d80f7b2d2d2d53beafd6e",
+      "shared_config": {
+        "agent": "Codex CLI 0.120.0 multi-agent",
+        "model": "gpt-5.5",
+        "model_settings": "reasoning_effort=medium;sandbox=workspace-write;approval=never",
+        "environment_fingerprint": "sha256:0435e67988d86f03ef78b001659aee621ccd02b7b884769a8e85188dc94b4ce8",
+        "timeout_sec": 1200,
+        "acceptance_commands": [
+          "PYTHONPATH=src /tmp/video001-venv/bin/python -m pytest -q tests/test_sync_edge_cases.py tests/test_render_edge_cases.py",
+          "PYTHONPATH=src /tmp/video001-venv/bin/python -m pytest -q"
+        ],
+        "allowed_paths": [
+          "feddy-video/src/feddy_video/audio.py",
+          "feddy-video/src/feddy_video/probe.py",
+          "feddy-video/src/feddy_video/reconstruct.py",
+          "feddy-video/src/feddy_video/render.py",
+          "feddy-video/src/feddy_video/sync.py",
+          "feddy-video/tests/helpers.py",
+          "feddy-video/tests/test_render_edge_cases.py",
+          "feddy-video/tests/test_sync_edge_cases.py"
+        ]
+      },
+      "control": {
+        "first_try_pass": false,
+        "retry_rounds": 3,
+        "scope_violations": [],
+        "duration_sec": 53706.481,
+        "quality_score_1_to_5": 5,
+        "final_commit": "b3ece83a6bf6035835fed34ab309c998e07dc5ee",
+        "artifact_dir": "data/evidence/real_project_trials/VIDEO-001/control",
+        "review_rationale": "Final blind review selected control at 4.6/5 for stronger real reconstruction/PiP, explicit status taxonomy, and representative windowed-resampling evidence.",
+        "notes": "18 focused and 86 full tests passed sequentially; duration includes platform quota pause.",
+        "recorded_at": "2026-07-02T20:32:28.242957+00:00"
+      },
+      "harness": {
+        "first_try_pass": false,
+        "retry_rounds": 1,
+        "scope_violations": [],
+        "duration_sec": 53700.481,
+        "quality_score_1_to_5": 4,
+        "final_commit": "c455a8be36594502edb9257f250c36394f046ab2",
+        "artifact_dir": "data/evidence/real_project_trials/VIDEO-001/harness",
+        "review_rationale": "Final blind review scored harness 3.9/5; stronger atomic tests but weaker PiP, status consistency, and windowed evidence.",
+        "notes": "19 focused and 87 full tests plus released verifier passed sequentially; duration includes platform quota pause.",
+        "recorded_at": "2026-07-02T20:32:28.577153+00:00"
+      }
     }
   ],
-  "paired_tasks": 9
+  "paired_tasks": 10
 }

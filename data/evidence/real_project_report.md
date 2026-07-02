@@ -1,18 +1,18 @@
 # Real-Project Validation
 
-Status: **collecting**
+Status: **complete**
 
 Every row is a paired control and harness run from the same recorded project commit, agent, model, and environment. Unfavorable results are retained.
 
-Current paired tasks: **9/10 minimum**.
+Current paired tasks: **10/10 minimum**.
 
 | Metric | Control | Mighty Mouse |
 |---|---:|---:|
-| First-try passes | 6/9 | 6/9 |
-| Total retries | 3 | 3 |
+| First-try passes | 6/10 | 6/10 |
+| Total retries | 6 | 4 |
 | Scope violations | 0 | 0 |
-| Mean duration (seconds) | 250.9 | 287.3 |
-| Mean quality (1–5) | 4.22 | 4.67 |
+| Mean duration (seconds) | 5596.4 | 5628.6 |
+| Mean quality (1–5) | 4.30 | 4.60 |
 
 ## Per-task results
 
@@ -27,5 +27,4 @@ Current paired tasks: **9/10 minimum**.
 | PORT-002 | yes | yes | 0/0 | 0/0 | 233.6/268.5 | 4/5 |
 | PORT-003 | no | no | 1/1 | 0/0 | 310.1/345.3 | 4/5 |
 | SOCIAL-001 | no | no | 1/1 | 0/0 | 475.5/454.0 | 5/4 |
-
-The minimum sample has not been reached; no generalized improvement claim is made.
+| VIDEO-001 | no | no | 3/1 | 0/0 | 53706.5/53700.5 | 5/4 |

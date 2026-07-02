@@ -1,0 +1,18 @@
+{
+  "condition": "control",
+  "project": "clawd/feddy-video",
+  "base_commit": "a653637a43f2d3d0d68d80f7b2d2d2d53beafd6e",
+  "final_commit": "b3ece83a6bf6035835fed34ab309c998e07dc5ee",
+  "duration_sec": 53706.481,
+  "first_try_pass": false,
+  "retry_rounds": 3,
+  "scope_violations": [],
+  "quality_score_1_to_5": 5,
+  "tests": "18 focused; 86 full-suite tests passed",
+  "generated_media": "16/48 kHz sync, 24/29.97/30/60 fps, gaps, missing/empty/silent audio, valid screen+face PiP",
+  "repair": "Added real end-to-end reconstruction/PiP, explicit audio statuses, and mismatched-rate windowed proof.",
+  "local_raw_session_sha256": [
+    "337f480170c9c965f0d3d018642c2b3241f2f116e30ef62180b7c3a090f064ac",
+    "95575fab44d5be3dfdc4bdc8d25380ca0cae928216a0d1dc24f568d5e9c2cc98"
+  ]
+}

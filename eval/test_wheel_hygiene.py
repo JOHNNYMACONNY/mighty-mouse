@@ -1,8 +1,12 @@
 from pathlib import Path
-import tomllib
 import zipfile
 
 import pytest
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib
 
 
 def _assert_clean_wheel(path: Path) -> None:

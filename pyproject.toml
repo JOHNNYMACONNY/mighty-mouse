@@ -28,6 +28,7 @@ dev = [
     "pytest",
     "build",
     "mcp>=1.0,<2",
+    "tomli>=2; python_version < '3.11'",
 ]
 
 [tool.setuptools.package-data]

@@ -47,7 +47,7 @@ jobs:
         run: |
           PY=/tmp/mighty-mouse-wheel-venv/bin/python
           CLI=/tmp/mighty-mouse-wheel-venv/bin/mighty-mouse
-          "$PY" -c "import mighty_mouse; assert mighty_mouse.__version__ == '0.2.0'"
+          "$PY" -c "import mighty_mouse; assert mighty_mouse.__version__ == '0.2.1'"
           "$PY" -c "import mighty_mouse_mcp.server"
           "$CLI" --help
           "$CLI" protocol "CI packaging smoke" --json | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d['interface']=='protocol' and d['schema_version']==1"

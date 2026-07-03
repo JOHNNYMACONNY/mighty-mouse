@@ -74,3 +74,24 @@ def prepare_metadata_for_build_wheel(metadata_directory, config_settings=None):
         metadata_directory,
         config_settings,
     )
+
+
+# Editable installs must reference the live checkout rather than the temporary
+# release staging tree, so delegate the PEP 660 hooks directly to setuptools.
+def build_editable(wheel_directory, config_settings=None, metadata_directory=None):
+    return _setuptools.build_editable(
+        wheel_directory,
+        config_settings,
+        metadata_directory,
+    )
+
+
+def get_requires_for_build_editable(config_settings=None):
+    return _setuptools.get_requires_for_build_editable(config_settings)
+
+
+def prepare_metadata_for_build_editable(metadata_directory, config_settings=None):
+    return _setuptools.prepare_metadata_for_build_editable(
+        metadata_directory,
+        config_settings,
+    )

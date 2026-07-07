@@ -1,6 +1,6 @@
 # Mighty Mouse
 
-Mighty Mouse is a provider-agnostic coding protocol and verification harness for AI agents. It can be imported as a Python library, exposed to any MCP-compatible client, or used through platform rules for Antigravity, Claude Code, Cursor, Codex, Hermes, and Windsurf.
+Mighty Mouse is a provider-agnostic coding protocol and verification harness for AI agents. Its primary research goal is to make small, locally operated models more viable for coding and agentic work through explicit protocols, project-native verification, and bounded recovery. It can be imported as a Python library, exposed to any MCP-compatible client, or used through platform rules for Antigravity, Claude Code, Cursor, Codex, Hermes, and Windsurf.
 
 The harness does not replace an agent's model provider. It supplies:
 
@@ -23,6 +23,8 @@ A new bare control sent the same 15 frozen tasks to `gemma4:e4b` with one raw re
 See [`data/evidence/results/baseline_comparison.md`](data/evidence/results/baseline_comparison.md) and the raw [`bare_baseline_results.json`](data/evidence/results/bare_baseline_results.json).
 
 The prospective real-project study is complete at 10 paired tasks. Both conditions passed 6/10 tasks on the first attempt, with no scope violations. Mighty Mouse used 4 retry rounds versus 6 for the control and received a higher mean blind-review quality score (4.60 versus 4.30), but it was slower by both mean and median duration. **No generalized improvement was demonstrated.** The result is mixed: fewer retries and higher review quality, without better first-pass reliability or speed. See the [`real-project study report`](data/evidence/real_project_report.md) and its paired raw evidence.
+
+That real-project study used GPT-5.5 through Codex CLI, so it does not test the primary small-local-model thesis. A prospective three-condition study—raw Gemma, Gemma with Mighty Mouse, and a larger-model reference—is specified in [`docs/local-model-capability-study.md`](docs/local-model-capability-study.md). Until that study is complete, Mighty Mouse does not claim that it closes the capability gap between small and large models.
 
 ## Install
 

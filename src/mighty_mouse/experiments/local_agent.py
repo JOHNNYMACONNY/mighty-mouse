@@ -304,7 +304,7 @@ class WorkspaceTools:
         target.write_bytes(encoded)
         return {"path": relative, "bytes_written": len(encoded)}
 
-    def run_check(self, check_id: str) -> dict[str, Any]:
+    def run_check(self, check_id: str, *, timeout_seconds: float | None = None) -> dict[str, Any]:
         argv = self.checks.get(check_id)
         if not argv or not all(isinstance(part, str) and part for part in argv):
             raise ValueError(f"Unknown check_id: {check_id}")
@@ -315,7 +315,7 @@ class WorkspaceTools:
                 cwd=self.workspace,
                 capture_output=True,
                 text=True,
-                timeout=self.command_timeout_seconds,
+                timeout=min(self.command_timeout_seconds, timeout_seconds) if timeout_seconds is not None else self.command_timeout_seconds,
                 check=False,
             )
             return {
@@ -336,7 +336,7 @@ class WorkspaceTools:
                 "duration_seconds": time.monotonic() - started,
             }
 
-    def execute(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    def execute(self, name: str, arguments: dict[str, Any], *, remaining_seconds: float | None = None) -> dict[str, Any]:
         if name == "list_files":
             return self.list_files(**arguments)
         if name == "read_file":
@@ -346,7 +346,7 @@ class WorkspaceTools:
         if name == "write_file":
             return self.write_file(**arguments)
         if name == "run_check":
-            return self.run_check(**arguments)
+            return self.run_check(**arguments, timeout_seconds=remaining_seconds)
         if name == "finish":
             return {"finished": True, "summary": str(arguments.get("summary", ""))}
         raise ValueError(f"Unknown tool: {name}")
@@ -499,9 +499,14 @@ def run_agent_condition(
                 break
             tool_calls += 1
             arguments: dict[str, Any] = {}
+            remaining_seconds = budget.max_wall_seconds - (time.monotonic() - started)
+            if remaining_seconds <= 0:
+                stop_reason = "wall_time_exhausted"
+                finished = True
+                break
             try:
                 name, arguments = _normalize_tool_call(call)
-                result = tools.execute(name, arguments)
+                result = tools.execute(name, arguments, remaining_seconds=remaining_seconds)
                 ok = True
             except Exception as error:  # Tool errors are evidence and feedback, not runner crashes.
                 name = (call.get("function") or {}).get("name", "unknown")

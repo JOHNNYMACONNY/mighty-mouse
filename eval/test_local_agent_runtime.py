@@ -76,6 +76,20 @@ def test_run_check_uses_an_argv_allowlist(tmp_path):
         tools.run_check("python -c malicious")
 
 
+def test_run_check_respects_a_stricter_remaining_wall_budget(tmp_path):
+    tools = WorkspaceTools(
+        tmp_path,
+        allowed_paths=["value.py"],
+        checks={"slow": [sys.executable, "-c", "import time; time.sleep(1)"]},
+        command_timeout_seconds=10,
+    )
+
+    result = tools.run_check("slow", timeout_seconds=0.01)
+
+    assert result["passed"] is False
+    assert result["timed_out"] is True
+
+
 def test_tool_contract_exposes_exact_write_scope_and_check_ids():
     definitions = build_tool_definitions(["src/value.py"], {"tests": ["pytest"], "lint": ["ruff"]})
     functions = {definition["function"]["name"]: definition["function"] for definition in definitions}

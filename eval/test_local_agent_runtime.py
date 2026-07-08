@@ -36,6 +36,7 @@ def task():
         "description": "Set value.py VALUE to 42 and verify it.",
         "complexity": "low",
         "allowed_paths": ["value.py"],
+        "ignored_paths": ["__pycache__"],
         "checks": {"tests": [sys.executable, "-c", "from value import VALUE; assert VALUE == 42"]},
         "check_timeout_seconds": 10,
     }
@@ -160,7 +161,7 @@ def test_hidden_acceptance_is_not_exposed_as_a_model_tool(tmp_path):
 
 def test_declared_generated_artifacts_are_recorded_without_failing_scope(tmp_path):
     generated_task = task()
-    generated_task["ignored_paths"] = [".test-cache"]
+    generated_task["ignored_paths"].append(".test-cache")
     client = ScriptedClient([
         tool_call("write_file", path="value.py", content="VALUE = 42\n"),
         tool_call("finish", summary="done"),
@@ -183,7 +184,7 @@ def test_declared_generated_artifacts_are_recorded_without_failing_scope(tmp_pat
 
     assert result["passed"] is True
     assert result["changed_paths"] == ["value.py"]
-    assert result["ignored_generated_paths"] == [".test-cache/during"]
+    assert ".test-cache/during" in result["ignored_generated_paths"]
     assert result["disallowed_changes"] == []
 
 

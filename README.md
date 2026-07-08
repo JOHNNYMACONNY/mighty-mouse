@@ -26,6 +26,8 @@ The prospective real-project study is complete at 10 paired tasks. Both conditio
 
 That real-project study used GPT-5.5 through Codex CLI, so it does not test the primary small-local-model thesis. A prospective three-condition study—raw Gemma, Gemma with Mighty Mouse, and a larger-model reference—is specified in [`docs/local-model-capability-study.md`](docs/local-model-capability-study.md). Until that study is complete, Mighty Mouse does not claim that it closes the capability gap between small and large models.
 
+The experimental runner and its permanently unscored low/medium/high pilot tasks live under [`eval/local_model_pilot/`](eval/local_model_pilot/). They use a genuine bounded tool loop, pristine workspaces, randomized condition order, held-out acceptance support, model-digest capture, and paired analysis. Pilot results validate the experiment machinery only; they are not performance evidence.
+
 ## Install
 
 ```bash

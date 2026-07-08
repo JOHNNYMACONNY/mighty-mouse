@@ -14,6 +14,7 @@ import hashlib
 import json
 import random
 import shutil
+import subprocess
 import sys
 import time
 import urllib.request
@@ -80,6 +81,52 @@ def load_task(task_path: Path) -> tuple[dict[str, Any], Path]:
     return task, template
 
 
+def _run_baseline_checks(task: dict[str, Any], workspace: Path) -> dict[str, Any]:
+    results = {}
+    timeout = int(task.get("check_timeout_seconds", 120))
+    for check_id, argv in task["checks"].items():
+        started = time.monotonic()
+        try:
+            completed = subprocess.run(
+                argv,
+                cwd=workspace,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            results[check_id] = {
+                "passed": completed.returncode == 0,
+                "returncode": completed.returncode,
+                "stdout": completed.stdout[-12_000:],
+                "stderr": completed.stderr[-12_000:],
+                "duration_seconds": time.monotonic() - started,
+            }
+        except subprocess.TimeoutExpired as error:
+            results[check_id] = {
+                "passed": False,
+                "timed_out": True,
+                "stdout": (error.stdout or "")[-12_000:] if isinstance(error.stdout, str) else "",
+                "stderr": (error.stderr or "")[-12_000:] if isinstance(error.stderr, str) else "",
+                "duration_seconds": time.monotonic() - started,
+            }
+    return results
+
+
+def _warm_model(client: OllamaChatClient, budget: AgentBudget) -> dict[str, Any]:
+    message, metrics = client.chat(
+        [
+            {"role": "system", "content": "This is an unscored runtime warm-up. Reply with READY only."},
+            {"role": "user", "content": "READY"},
+        ],
+        [],
+        timeout_seconds=min(300, budget.max_wall_seconds),
+        output_tokens=16,
+        context_tokens=min(2_048, budget.context_tokens),
+    )
+    return {"message": message, "metrics": metrics}
+
+
 def run_pilot(
     task_path: Path,
     output_dir: Path,
@@ -99,6 +146,18 @@ def run_pilot(
     output_dir.mkdir(parents=True)
     (output_dir / "workspaces").mkdir()
     (output_dir / "results").mkdir()
+
+    baseline_workspace = output_dir / "workspaces" / "baseline_validation"
+    shutil.copytree(
+        template,
+        baseline_workspace,
+        symlinks=True,
+        ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache", "node_modules"),
+    )
+    baseline_checks = _run_baseline_checks(task, baseline_workspace)
+    if baseline_checks and all(result["passed"] for result in baseline_checks.values()):
+        raise ValueError("Pilot task is already solved: every baseline acceptance check passed")
+    (output_dir / "baseline_checks.json").write_text(json.dumps(baseline_checks, indent=2), encoding="utf-8")
 
     model_by_condition = {
         "gemma_raw": gemma_model,
@@ -130,6 +189,7 @@ def run_pilot(
     (output_dir / "task.json").write_text(json.dumps(frozen_task, indent=2), encoding="utf-8")
 
     results = {}
+    warmups = {}
     for condition in order:
         workspace = output_dir / "workspaces" / condition
         shutil.copytree(
@@ -140,8 +200,14 @@ def run_pilot(
         )
         if _tree_digest(workspace) != source_digest:
             raise RuntimeError(f"Workspace copy mismatch before {condition}")
+        client = OllamaChatClient(model_by_condition[condition], host=host, temperature=0.1, seed=seed)
+        warmups[condition] = _warm_model(client, budget)
+        (output_dir / "results" / f"{condition}.warmup.json").write_text(
+            json.dumps(warmups[condition], indent=2),
+            encoding="utf-8",
+        )
         result = run_agent_condition(
-            OllamaChatClient(model_by_condition[condition], host=host, temperature=0.1, seed=seed),
+            client,
             workspace,
             task,
             condition=condition,
@@ -155,6 +221,7 @@ def run_pilot(
         "study_class": "unscored_pilot",
         "task_id": task["id"],
         "condition_order": order,
+        "baseline_checks": {check_id: result["passed"] for check_id, result in baseline_checks.items()},
         "results": {
             condition: {
                 "model": result["model"],

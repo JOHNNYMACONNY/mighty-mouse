@@ -56,6 +56,11 @@ def test_pilot_uses_pristine_workspaces_and_records_all_conditions(monkeypatch, 
         }
 
     monkeypatch.setattr(run_local_model_pilot, "run_agent_condition", fake_run)
+    monkeypatch.setattr(
+        run_local_model_pilot,
+        "_warm_model",
+        lambda client, budget: {"message": {"content": "READY"}, "metrics": {"model": client.model}},
+    )
     output = tmp_path / "run"
     summary = run_local_model_pilot.run_pilot(
         task_path,
@@ -76,6 +81,7 @@ def test_pilot_uses_pristine_workspaces_and_records_all_conditions(monkeypatch, 
         "reference_raw": "reference-test",
     }
     assert json.loads((output / "run_manifest.json").read_text())["study_class"] == "unscored_pilot"
+    assert json.loads((output / "baseline_checks.json").read_text())["tests"]["passed"] is False
     manifest = json.loads((output / "run_manifest.json").read_text())
     assert manifest["task_source"] == "task.json"
     assert str(tmp_path) not in json.dumps(manifest)
@@ -95,6 +101,27 @@ def test_pilot_refuses_to_overwrite_existing_output(monkeypatch, tmp_path):
         run_local_model_pilot.run_pilot(
             task_path,
             output,
+            gemma_model="gemma-test",
+            reference_model="reference-test",
+            host="http://ollama.test",
+            seed=7,
+            budget=AgentBudget(max_turns=2, max_tool_calls=2, max_wall_seconds=30),
+        )
+
+
+def test_pilot_rejects_an_already_solved_task(monkeypatch, tmp_path):
+    task_path = write_task(tmp_path)
+    (tmp_path / "template" / "value.py").write_text("VALUE = 42\n")
+    monkeypatch.setattr(
+        run_local_model_pilot,
+        "_model_provenance",
+        lambda host, model: {"name": model, "digest": f"digest-{model}"},
+    )
+
+    with pytest.raises(ValueError, match="already solved"):
+        run_local_model_pilot.run_pilot(
+            task_path,
+            tmp_path / "run",
             gemma_model="gemma-test",
             reference_model="reference-test",
             host="http://ollama.test",

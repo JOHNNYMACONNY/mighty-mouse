@@ -435,6 +435,13 @@ def run_agent_condition(
         checks=dict(task["checks"]),
         command_timeout_seconds=min(int(task.get("check_timeout_seconds", 120)), budget.max_wall_seconds),
     )
+    acceptance_checks = dict(task.get("acceptance_checks") or task["checks"])
+    acceptance_tools = WorkspaceTools(
+        workspace,
+        allowed_paths=list(task["allowed_paths"]),
+        checks=acceptance_checks,
+        command_timeout_seconds=min(int(task.get("check_timeout_seconds", 120)), budget.max_wall_seconds),
+    )
     before = _hash_workspace(workspace)
     ignored_paths = tuple(_normalize_relative_prefix(path) for path in task.get("ignored_paths", []))
     started = time.monotonic()
@@ -517,7 +524,7 @@ def run_agent_condition(
         if finished:
             break
 
-    acceptance = {check_id: tools.run_check(check_id) for check_id in task["checks"]}
+    acceptance = {check_id: acceptance_tools.run_check(check_id) for check_id in acceptance_checks}
     after = _hash_workspace(workspace)
     all_changed_paths = sorted(path for path in set(before) | set(after) if before.get(path) != after.get(path))
     generated_paths = sorted(path for path in all_changed_paths if _matches_prefix(path, ignored_paths))

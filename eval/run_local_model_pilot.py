@@ -72,19 +72,24 @@ def load_task(task_path: Path) -> tuple[dict[str, Any], Path]:
         raise ValueError("complexity must be low, medium, or high")
     if not task["checks"]:
         raise ValueError("Pilot task must define at least one acceptance check")
-    normalized_checks = {}
-    for check_id, argv in task["checks"].items():
-        if not isinstance(argv, list) or not argv or not all(isinstance(part, str) and part for part in argv):
-            raise ValueError(f"Check {check_id} must be a non-empty argv array")
-        normalized_checks[check_id] = [sys.executable if part == "{python}" else part for part in argv]
-    task["checks"] = normalized_checks
+    for field in ("checks", "acceptance_checks"):
+        if field not in task:
+            continue
+        normalized_checks = {}
+        for check_id, argv in task[field].items():
+            if not isinstance(argv, list) or not argv or not all(isinstance(part, str) and part for part in argv):
+                raise ValueError(f"Check {check_id} in {field} must be a non-empty argv array")
+            normalized_checks[check_id] = [sys.executable if part == "{python}" else part for part in argv]
+        task[field] = normalized_checks
+    if not (task.get("acceptance_checks") or task["checks"]):
+        raise ValueError("Pilot task must define at least one acceptance check")
     return task, template
 
 
 def _run_baseline_checks(task: dict[str, Any], workspace: Path) -> dict[str, Any]:
     results = {}
     timeout = int(task.get("check_timeout_seconds", 120))
-    for check_id, argv in task["checks"].items():
+    for check_id, argv in (task.get("acceptance_checks") or task["checks"]).items():
         started = time.monotonic()
         try:
             completed = subprocess.run(

@@ -131,6 +131,33 @@ def test_external_acceptance_overrides_false_finish_claim(tmp_path):
     assert result["acceptance"]["tests"]["passed"] is False
 
 
+def test_hidden_acceptance_is_not_exposed_as_a_model_tool(tmp_path):
+    hidden_task = task()
+    hidden_task["checks"] = {"public_tests": [sys.executable, "-c", "pass"]}
+    hidden_task["acceptance_checks"] = {
+        "held_out_tests": [sys.executable, "-c", "from value import VALUE; assert VALUE == 42"]
+    }
+    captured_tools = []
+
+    class CapturingClient(ScriptedClient):
+        def chat(self, messages, tools, **kwargs):
+            captured_tools.extend(tools)
+            return super().chat(messages, tools, **kwargs)
+
+    result = run_agent_condition(
+        CapturingClient([tool_call("write_file", path="value.py", content="VALUE = 42\n"), tool_call("finish", summary="done")]),
+        tmp_path,
+        hidden_task,
+        condition="gemma_raw",
+        budget=AgentBudget(max_turns=3, max_tool_calls=3, max_wall_seconds=30),
+    )
+
+    run_check = next(tool for tool in captured_tools if tool["function"]["name"] == "run_check")
+    assert run_check["function"]["parameters"]["properties"]["check_id"]["enum"] == ["public_tests"]
+    assert "held_out_tests" not in json.dumps(captured_tools)
+    assert result["acceptance"]["held_out_tests"]["passed"] is True
+
+
 def test_declared_generated_artifacts_are_recorded_without_failing_scope(tmp_path):
     generated_task = task()
     generated_task["ignored_paths"] = [".test-cache"]

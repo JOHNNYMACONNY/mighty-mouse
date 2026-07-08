@@ -32,6 +32,18 @@ def test_load_task_resolves_template_and_python(tmp_path):
     assert task["checks"]["tests"][0] == sys.executable
 
 
+def test_load_task_normalizes_separate_held_out_checks(tmp_path):
+    task_path = write_task(tmp_path)
+    payload = json.loads(task_path.read_text())
+    payload["acceptance_checks"] = {"held_out": ["{python}", "-c", "assert True"]}
+    task_path.write_text(json.dumps(payload))
+
+    task, _ = run_local_model_pilot.load_task(task_path)
+
+    assert task["checks"]["tests"][0] == sys.executable
+    assert task["acceptance_checks"]["held_out"][0] == sys.executable
+
+
 def test_pilot_uses_pristine_workspaces_and_records_all_conditions(monkeypatch, tmp_path):
     task_path = write_task(tmp_path)
     seen = []

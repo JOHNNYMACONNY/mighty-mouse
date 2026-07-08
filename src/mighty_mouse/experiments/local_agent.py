@@ -142,9 +142,14 @@ TOOL_DEFINITIONS = [
         "read_file",
         "Read a bounded UTF-8 slice of a workspace file.",
         {
-            "path": {"type": "string"},
-            "offset": {"type": "integer", "minimum": 0},
-            "limit": {"type": "integer", "minimum": 1, "maximum": 20000},
+            "path": {"type": "string", "description": "Workspace-relative file path."},
+            "offset": {"type": "integer", "minimum": 0, "description": "Zero-based character offset. Omit or use 0 to start at the beginning."},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20000,
+                "description": "Maximum characters to return. Omit to read up to 20,000 characters; avoid tiny repeated reads when the full file fits.",
+            },
         },
         ["path"],
     ),

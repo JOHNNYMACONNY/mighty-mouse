@@ -96,6 +96,7 @@ def test_tool_contract_exposes_exact_write_scope_and_check_ids():
 
     assert "src/value.py" in functions["write_file"]["description"]
     assert functions["run_check"]["parameters"]["properties"]["check_id"]["enum"] == ["lint", "tests"]
+    assert "Omit to read up to 20,000" in functions["read_file"]["parameters"]["properties"]["limit"]["description"]
 
 
 def test_agent_writes_checks_and_finishes_with_structured_evidence(tmp_path):

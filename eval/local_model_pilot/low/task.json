@@ -1,0 +1,12 @@
+{
+  "id": "pilot-low-bounded-counter",
+  "description": "Fix bounded_increment so it increments values below the limit but returns the limit unchanged when value is already at or above the limit. Inspect the existing files and run the tests.",
+  "complexity": "low",
+  "workspace_template": "workspace",
+  "allowed_paths": ["counter.py"],
+  "ignored_paths": [".pytest_cache", "__pycache__"],
+  "checks": {
+    "tests": ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test_counter.py"]
+  },
+  "check_timeout_seconds": 30
+}

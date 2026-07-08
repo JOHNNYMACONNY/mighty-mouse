@@ -76,6 +76,13 @@ def test_pilot_uses_pristine_workspaces_and_records_all_conditions(monkeypatch, 
         "reference_raw": "reference-test",
     }
     assert json.loads((output / "run_manifest.json").read_text())["study_class"] == "unscored_pilot"
+    manifest = json.loads((output / "run_manifest.json").read_text())
+    assert manifest["task_source"] == "task.json"
+    assert str(tmp_path) not in json.dumps(manifest)
+    frozen_task = json.loads((output / "task.json").read_text())
+    assert frozen_task["workspace_template"] == "template"
+    assert frozen_task["checks"]["tests"][0] == "{python}"
+    assert str(tmp_path) not in json.dumps(frozen_task)
     assert json.loads((output / "summary.json").read_text()) == summary
 
 

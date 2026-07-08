@@ -116,7 +116,8 @@ def run_pilot(
         "schema_version": 1,
         "study_class": "unscored_pilot",
         "task_id": task["id"],
-        "task_source": str(task_path.resolve()),
+        "task_source": task_path.name,
+        "task_digest": hashlib.sha256(task_path.resolve().read_bytes()).hexdigest(),
         "source_digest": source_digest,
         "condition_order": order,
         "models": provenance,
@@ -125,7 +126,7 @@ def run_pilot(
         "started_at_unix": time.time(),
     }
     (output_dir / "run_manifest.json").write_text(json.dumps(run_manifest, indent=2), encoding="utf-8")
-    frozen_task = {**task, "workspace_template": str(template), "checks": task["checks"]}
+    frozen_task = json.loads(task_path.resolve().read_text(encoding="utf-8"))
     (output_dir / "task.json").write_text(json.dumps(frozen_task, indent=2), encoding="utf-8")
 
     results = {}

@@ -1,6 +1,6 @@
 # Local-Model Capability Study
 
-Status: **prospective protocol draft — no scored runs may begin until this document is frozen in Git**
+Status: **prospective protocol draft — no scored runs may begin until this document and a held-out corpus manifest are frozen in Git**
 
 ## Product thesis
 
@@ -67,6 +67,8 @@ The full scored corpus contains at least **30 unseen tasks**:
 
 Task selection and acceptance criteria are frozen before scored execution. If a task becomes invalid, the reason is recorded and a prospectively authored replacement is added; a completed task is never substituted.
 
+The held-out task bundle is stored outside this public repository. Its `corpus.json` records each task's relative path, category, complexity, repository, and implementation language. The runner validates the 15/15 category split, 10/10/10 complexity split, and three-repository/two-language minimum before contacting a model; it records the corpus digest in every run manifest. Only the final evidence manifest and redacted results are published.
+
 ## Pilot gate
 
 Before freezing the scored corpus, run exactly three unscored pilot tasks—one low, one medium, and one high complexity—to verify:
@@ -79,6 +81,10 @@ Before freezing the scored corpus, run exactly three unscored pilot tasks—one 
 - the runner can resume without silently rerunning completed conditions.
 
 Any prompt, runner, rubric, or budget change after the pilot requires a new protocol version. No tuning is allowed after scored execution begins.
+
+## Scored execution
+
+`python -m eval.run_local_model_study --corpus /private/corpus.json --output-dir /private/run --reference-model gpt-oss:20b` runs the three conditions on isolated workspaces. The command can resume only when the existing study manifest exactly matches the frozen corpus digest, model digests, seed, and budget. Completed condition result files are reused; they are never silently rerun.
 
 ## Outcomes
 

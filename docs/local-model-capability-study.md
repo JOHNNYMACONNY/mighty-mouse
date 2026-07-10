@@ -1,6 +1,6 @@
 # Local-Model Capability Study
 
-Status: **prospective protocol draft — no scored runs may begin until this document and a held-out corpus manifest are frozen in Git**
+Status: **frozen for scored execution — protocol commit pending; held-out corpus commit `3fc24eb`**
 
 ## Product thesis
 

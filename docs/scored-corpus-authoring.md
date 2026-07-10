@@ -57,9 +57,10 @@ Before a task enters the private `corpus.json`, its author must record:
 
 1. The task prompt and explicit writable-path allowlist.
 2. A deliberately broken baseline whose hidden acceptance check fails.
-3. At least one likely-but-incorrect implementation that the hidden check rejects.
-4. A clean, deterministic command that completes within 30 seconds.
-5. A source snapshot digest and a task definition digest.
-6. A human review confirming the task does not need an external service or a secret.
+3. A separate, known-correct `solution_template` whose hidden acceptance check passes.
+4. At least one likely-but-incorrect implementation that the hidden check rejects.
+5. A clean, deterministic command that completes within 30 seconds.
+6. A source snapshot digest and a task definition digest.
+7. A human review confirming the task does not need an external service or a secret.
 
 The corpus runner rejects the corpus unless these balance constraints are met, then records its exact manifest and model digests before the first condition starts.

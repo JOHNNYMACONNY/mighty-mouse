@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from eval.run_local_model_study import _resolve_held_out_check_paths, load_corpus
+from eval.run_local_model_study import _resolve_held_out_check_paths, load_corpus, run_study_task
+from mighty_mouse.experiments.local_agent import AgentBudget
 
 
 def write_task(root, task_id, complexity):
@@ -68,3 +69,56 @@ def test_held_out_check_paths_are_anchored_but_public_checks_are_unchanged(tmp_p
 
     assert resolved["checks"]["public"] == ["python", "test.py"]
     assert resolved["acceptance_checks"]["held_out"][1] == str(hidden)
+
+
+def test_task_runner_hides_and_anchors_acceptance_checks_and_resumes(tmp_path, monkeypatch):
+    task_dir = tmp_path / "task"
+    workspace = task_dir / "workspace"
+    hidden = task_dir / "hidden"
+    workspace.mkdir(parents=True)
+    hidden.mkdir()
+    (workspace / "module.py").write_text("value = 0\n")
+    hidden_check = hidden / "held_out.py"
+    hidden_check.write_text("raise SystemExit(1)\n")
+    task_path = task_dir / "task.json"
+    task_path.write_text(json.dumps({
+        "id": "resume-fixture",
+        "description": "Fix the fixture.",
+        "complexity": "low",
+        "workspace_template": "workspace",
+        "allowed_paths": ["module.py"],
+        "checks": {"public": ["{python}", "-c", "raise SystemExit(1)"]},
+        "acceptance_checks": {"held_out": ["{python}", "../hidden/held_out.py"]},
+    }))
+    calls = []
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            calls.append(("client", args[0]))
+
+    def fake_warmup(*args, **kwargs):
+        return {"message": {}, "metrics": {}}
+
+    def fake_run(_client, condition_workspace, task, *, condition, budget):
+        calls.append(("run", condition))
+        assert task["checks"]["public"][-1] == "raise SystemExit(1)"
+        assert task["acceptance_checks"]["held_out"][1] == str(hidden_check)
+        return {
+            "model": "fake", "passed": True, "turns": 1, "tool_calls": 1,
+            "duration_seconds": 1, "usage": {"total_tokens": 1}, "disallowed_changes": [],
+        }
+
+    monkeypatch.setattr("eval.run_local_model_study.OllamaChatClient", FakeClient)
+    monkeypatch.setattr("eval.run_local_model_study._warm_model", fake_warmup)
+    monkeypatch.setattr("eval.run_local_model_study.run_agent_condition", fake_run)
+    manifest = {
+        "corpus_digest": "test", "seed": 7,
+        "model_by_condition": {key: "fake" for key in ("gemma_raw", "gemma_mighty_mouse", "reference_raw")},
+        "budget": AgentBudget(max_turns=1, max_tool_calls=1, max_wall_seconds=30).__dict__,
+    }
+
+    first = run_study_task(task_path, tmp_path / "output", manifest=manifest, host="http://unused")
+    second = run_study_task(task_path, tmp_path / "output", manifest=manifest, host="http://unused")
+
+    assert first == second
+    assert [call for call in calls if call[0] == "run"] == [("run", condition) for condition in first["condition_order"]]

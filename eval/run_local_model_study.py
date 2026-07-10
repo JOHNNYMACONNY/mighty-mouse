@@ -15,6 +15,7 @@ import json
 import random
 import shutil
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,27 @@ def _copy_workspace(template: Path, destination: Path) -> None:
         symlinks=True,
         ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache", "node_modules"),
     )
+
+
+def _resolve_held_out_check_paths(task: dict[str, Any], template: Path) -> dict[str, Any]:
+    """Anchor source-relative held-out checks before workspace copies are made.
+
+    Public checks deliberately remain workspace-relative and agent-visible.  Only
+    acceptance checks are rewritten, and only when a command argument names an
+    existing path next to the private task definition.
+    """
+    resolved = deepcopy(task)
+    checks = resolved.get("acceptance_checks", {})
+    for check_id, argv in checks.items():
+        anchored = []
+        for argument in argv:
+            candidate = (template / argument).resolve()
+            if argument.startswith(("./", "../")) and candidate.exists():
+                anchored.append(str(candidate))
+            else:
+                anchored.append(argument)
+        checks[check_id] = anchored
+    return resolved
 
 
 def load_corpus(corpus_path: Path) -> tuple[dict[str, Any], list[Path]]:
@@ -130,6 +152,7 @@ def run_study_task(
     task_path: Path, task_output: Path, *, manifest: dict[str, Any], host: str,
 ) -> dict[str, Any]:
     task, template = load_task(task_path)
+    task_for_run = _resolve_held_out_check_paths(task, template)
     summary_path = task_output / "summary.json"
     if summary_path.exists():
         return json.loads(summary_path.read_text(encoding="utf-8"))
@@ -148,7 +171,7 @@ def run_study_task(
     if baseline_path.exists():
         baseline_checks = json.loads(baseline_path.read_text(encoding="utf-8"))
     else:
-        baseline_checks = _run_baseline_checks(task, baseline_workspace)
+        baseline_checks = _run_baseline_checks(task_for_run, baseline_workspace)
         baseline_path.write_text(json.dumps(baseline_checks, indent=2), encoding="utf-8")
     if baseline_checks and all(row["passed"] for row in baseline_checks.values()):
         raise ValueError(f"Task is already solved at baseline: {task['id']}")
@@ -180,7 +203,7 @@ def run_study_task(
         warmup_path = task_output / "results" / f"{condition}.warmup.json"
         if not warmup_path.exists():
             warmup_path.write_text(json.dumps(_warm_model(client, AgentBudget(**manifest["budget"])), indent=2), encoding="utf-8")
-        result = run_agent_condition(client, workspace, task, condition=condition, budget=AgentBudget(**manifest["budget"]))
+        result = run_agent_condition(client, workspace, task_for_run, condition=condition, budget=AgentBudget(**manifest["budget"]))
         result_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
         results[condition] = result
 

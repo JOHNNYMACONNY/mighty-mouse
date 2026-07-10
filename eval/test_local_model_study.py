@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from eval.run_local_model_study import load_corpus
+from eval.run_local_model_study import _resolve_held_out_check_paths, load_corpus
 
 
 def write_task(root, task_id, complexity):
@@ -47,3 +47,24 @@ def test_corpus_rejects_underpowered_category_balance(tmp_path):
 
     with pytest.raises(ValueError, match="at least 30"):
         load_corpus(corpus_path)
+
+
+def test_held_out_check_paths_are_anchored_but_public_checks_are_unchanged(tmp_path):
+    task_dir = tmp_path / "task"
+    task_dir.mkdir()
+    hidden = task_dir / "hidden" / "check.py"
+    hidden.parent.mkdir()
+    hidden.write_text("pass\n")
+    task_path = task_dir / "task.json"
+    task_path.write_text("{}")
+    template = task_dir / "workspace"
+    template.mkdir()
+    task = {
+        "checks": {"public": ["python", "test.py"]},
+        "acceptance_checks": {"held_out": ["python", "../hidden/check.py"]},
+    }
+
+    resolved = _resolve_held_out_check_paths(task, template)
+
+    assert resolved["checks"]["public"] == ["python", "test.py"]
+    assert resolved["acceptance_checks"]["held_out"][1] == str(hidden)

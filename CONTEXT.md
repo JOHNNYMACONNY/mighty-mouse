@@ -36,6 +36,10 @@ _Avoid_: Version number, runtime session
 A content-free, structured observation from routine use, such as outcome, duration, retry count, verifier category, or environment metadata. It never contains source code, prompts, transcripts, or secrets.
 _Avoid_: Transcript, telemetry payload
 
+**Background Research**:
+An explicitly user-started, resource-bounded local or cloud-backed activity that turns accumulated Signals into evaluated Policy Candidates. It remains stopped after a user stop until the user starts it again, including across idle periods and reboots.
+_Avoid_: Always-on optimization, idle daemon
+
 **Task Category**:
 An optional, coarse, controlled-vocabulary classification of a task used to segment Signals, policy evaluation, and live policy selection. It is either user-supplied or automatically inferred; an insufficiently confident inference falls back to `unknown`. It never contains free text, paths, source code, prompts, or task outputs.
 _Avoid_: Task description, prompt summary

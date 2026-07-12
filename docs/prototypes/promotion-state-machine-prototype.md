@@ -12,7 +12,7 @@ Do automatic promotion, a user Pin, Preview, post-promotion guard failure, autom
 python3 docs/prototypes/promotion_state_machine_prototype.py
 ```
 
-Try this sequence first: `i` → `p` → `u` → `s` → `g` → `a`. It demonstrates a Pin creating an eligible successor, then removal of the Pin and a fresh gate before activation. The display refreshes after every action and retains state only in memory.
+Try this sequence first: `i` → `p` → `u` → `s` → `g` → `h`. It demonstrates a Pin creating an eligible successor, then removal of the Pin and a fresh gate before activation. A guard failure restricts the harmful Champion, rolls back immediately, keeps research running, and lets a controller-owned health check reopen automatic activation. The display refreshes after every action and retains state only in memory.
 
 ## Notes
 

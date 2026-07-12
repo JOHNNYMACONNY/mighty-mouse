@@ -14,6 +14,8 @@ class PromotionState:
     pin: str | None = None
     preview: str | None = None
     auto_enabled: bool = True
+    research_enabled: bool = True
+    restricted: list[str] = field(default_factory=list)
     history: list[str] = field(default_factory=lambda: ["champion-v1"])
     events: list[str] = field(default_factory=list)
 
@@ -23,7 +25,9 @@ def reduce(state: PromotionState, action: str) -> PromotionState:
     next_state = PromotionState(**asdict(state))
 
     if action == "promote":
-        if not next_state.auto_enabled:
+        if next_state.candidate in next_state.restricted:
+            next_state.events.append("promotion blocked: candidate is restricted")
+        elif not next_state.auto_enabled:
             next_state.events.append("promotion blocked: auto is paused")
         elif next_state.pin:
             next_state.eligible_successor = next_state.candidate
@@ -34,14 +38,16 @@ def reduce(state: PromotionState, action: str) -> PromotionState:
             next_state.history.append(next_state.candidate)
             next_state.events.append("candidate promoted; post-promotion guard is now active")
     elif action == "guard_fail":
+        failed = next_state.active_champion
+        if failed not in next_state.restricted:
+            next_state.restricted.append(failed)
+        next_state.auto_enabled = False
         if next_state.previous_eligible:
-            failed = next_state.active_champion
             next_state.active_champion = next_state.previous_eligible
             next_state.previous_eligible = None
-            next_state.auto_enabled = False
-            next_state.events.append(f"guard failed for {failed}; rolled back and paused auto")
+            next_state.events.append(f"guard failed for {failed}; restricted, rolled back, activation paused")
         else:
-            next_state.events.append("guard failure needs recovery: no previous eligible champion")
+            next_state.events.append(f"guard failed for {failed}; restricted, activation paused; no rollback target")
     elif action == "pin":
         next_state.pin = next_state.active_champion
         next_state.events.append(f"pinned {next_state.pin}")
@@ -75,6 +81,9 @@ def reduce(state: PromotionState, action: str) -> PromotionState:
     elif action == "resume_auto":
         next_state.auto_enabled = True
         next_state.events.append("auto promotion resumed")
+    elif action == "health_check_passes":
+        next_state.auto_enabled = True
+        next_state.events.append("controller health check passed; activation automatically reopened")
     else:
         next_state.events.append(f"unknown action: {action}")
 

@@ -24,6 +24,10 @@ _Avoid_: Pending promotion, queued Champion
 The Candidate currently promoted as the active default for a defined Mode and evaluation scope.
 _Avoid_: Default policy, best policy
 
+**Restriction**:
+An auditable safety state that makes a Champion ineligible for selection or reactivation after a verified guard, provenance, integrity, or security failure. It preserves history and triggers Rollback where possible.
+_Avoid_: Deletion, ordinary quality regression
+
 **Generation**:
 An immutable improvement-cycle record linking one base Champion, its input Signals, Experiment settings, and the Candidates it produced.
 _Avoid_: Version number, runtime session

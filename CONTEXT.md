@@ -28,6 +28,10 @@ _Avoid_: Version number, runtime session
 A content-free, structured observation from routine use, such as outcome, duration, retry count, verifier category, or environment metadata. It never contains source code, prompts, transcripts, or secrets.
 _Avoid_: Transcript, telemetry payload
 
+**Task Category**:
+An optional, coarse, controlled-vocabulary classification of a task used to segment Signals, policy evaluation, and live policy selection. It is either user-supplied or automatically inferred; an insufficiently confident inference falls back to `unknown`. It never contains free text, paths, source code, prompts, or task outputs.
+_Avoid_: Task description, prompt summary
+
 **Evidence Bundle**:
 A local, experiment-specific provenance record that may retain the richer diagnostic material needed to reproduce a deliberate evaluation; it is separate from routine Signals.
 _Avoid_: Signal, analytics event

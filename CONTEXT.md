@@ -16,6 +16,10 @@ _Avoid_: Mode, preset
 An immutable proposed Policy version awaiting or undergoing evaluation for a defined Mode and scope.
 _Avoid_: Draft, experiment
 
+**Eligible Successor**:
+A verified Candidate that may replace the active Champion automatically when no Pin applies and its evidence, Model Identity, and post-promotion gates remain current.
+_Avoid_: Pending promotion, queued Champion
+
 **Champion**:
 The Candidate currently promoted as the active default for a defined Mode and evaluation scope.
 _Avoid_: Default policy, best policy

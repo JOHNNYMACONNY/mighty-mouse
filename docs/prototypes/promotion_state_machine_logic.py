@@ -10,6 +10,7 @@ class PromotionState:
     active_champion: str = "champion-v1"
     previous_eligible: str | None = None
     candidate: str = "candidate-v2"
+    eligible_successor: str | None = None
     pin: str | None = None
     preview: str | None = None
     auto_enabled: bool = True
@@ -25,7 +26,8 @@ def reduce(state: PromotionState, action: str) -> PromotionState:
         if not next_state.auto_enabled:
             next_state.events.append("promotion blocked: auto is paused")
         elif next_state.pin:
-            next_state.events.append("promotion recorded, but pin keeps active champion unchanged")
+            next_state.eligible_successor = next_state.candidate
+            next_state.events.append("candidate verified as eligible successor; pin keeps champion unchanged")
         else:
             next_state.previous_eligible = next_state.active_champion
             next_state.active_champion = next_state.candidate
@@ -46,6 +48,17 @@ def reduce(state: PromotionState, action: str) -> PromotionState:
     elif action == "unpin":
         next_state.events.append(f"removed pin {next_state.pin or 'none'}")
         next_state.pin = None
+    elif action == "revalidate_successor":
+        if next_state.pin:
+            next_state.events.append("successor gate blocked: pin still applies")
+        elif not next_state.eligible_successor:
+            next_state.events.append("successor gate skipped: no eligible successor")
+        else:
+            next_state.previous_eligible = next_state.active_champion
+            next_state.active_champion = next_state.eligible_successor
+            next_state.history.append(next_state.eligible_successor)
+            next_state.eligible_successor = None
+            next_state.events.append("successor revalidated and promoted; post-promotion guard is active")
     elif action == "preview":
         next_state.preview = next_state.candidate
         next_state.events.append(f"previewing {next_state.preview}; champion unchanged")

@@ -71,3 +71,15 @@ _Avoid_: Reset, deletion
 **Scope**:
 The explicit applicability boundary for a Champion, Pin, or Preview, including at least Mode, project or repository, and task or model class.
 _Avoid_: Global default, implicit context
+
+**Host Integration**:
+A thin, host-specific adapter (CLI, MCP client, skill, rules, or plugin) that invokes the local Mighty Mouse core and renders its state. It may contribute to the recorded Execution Profile, but it does not own Candidates, Champions, Pins, Evidence Bundles, or Rollbacks.
+_Avoid_: Separate improvement system, portable behavior guarantee
+
+**Integration Surface**:
+The compact host-facing controls and notices: current status, Background Research start/stop, Pin, Preview, Rollback, and Promotion notification. Detailed Evidence Bundles, full history, and advanced recovery remain in the standalone CLI and future TUI.
+_Avoid_: Full per-host settings console, a separate history
+
+**Effective Policy**:
+The Policy that Mighty Mouse will use for the current task after evaluating the current Mode, Scope, Model Identity, and Execution Profile. The user sees it in plain language as a project improvement, shared improvement, or safe starting settings, with a short reason and a path to the underlying record.
+_Avoid_: Hidden active configuration, unexplained default

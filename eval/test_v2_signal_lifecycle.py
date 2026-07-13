@@ -78,6 +78,17 @@ def test_history_only_exposes_safe_aggregates(tmp_path):
     assert set(history) == {"collection_paused", "receipt_count", "aggregates"}
 
 
+def test_history_is_read_only_even_when_receipts_are_expired(tmp_path):
+    lifecycle = SignalLifecycle(tmp_path)
+    lifecycle.collect(_signal(), now=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    receipt_before = next(lifecycle.receipt_dir.glob("*.json")).read_bytes()
+
+    history = lifecycle.history(now=datetime(2026, 2, 1, tzinfo=timezone.utc))
+
+    assert history["receipt_count"] == 1
+    assert next(lifecycle.receipt_dir.glob("*.json")).read_bytes() == receipt_before
+
+
 def test_compaction_moves_expired_receipts_to_durable_aggregates(tmp_path):
     lifecycle = SignalLifecycle(tmp_path)
     collected_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -166,3 +177,35 @@ def test_signal_cli_collects_and_renders_only_aggregate_history(monkeypatch, tmp
     assert history["interface"] == "signals"
     assert history["history"]["aggregates"][0]["count"] == 1
     assert "signal-001" not in str(history)
+
+
+def test_status_cli_exposes_safe_scoped_signal_history_without_mutation(monkeypatch, tmp_path, capsys):
+    lifecycle = SignalLifecycle(tmp_path)
+    lifecycle.collect(_signal())
+    receipt_before = next(lifecycle.receipt_dir.glob("*.json")).read_bytes()
+    monkeypatch.setattr(sys, "argv", [
+        "mighty-mouse", "status", "--state-dir", str(tmp_path), "--mode", "coding",
+        "--repository", "JOHNNYMACONNY/mighty-mouse", "--task-category", "feature",
+        "--model-class", "local-small", "--execution-profile", "codex-local", "--json",
+    ])
+
+    cli.main()
+
+    document = json.loads(capsys.readouterr().out)
+    assert document["signals"]["receipt_count"] == 1
+    assert document["signals"]["aggregates"][0]["count"] == 1
+    assert next(lifecycle.receipt_dir.glob("*.json")).read_bytes() == receipt_before
+
+
+def test_signal_cli_pause_and_purge_controls(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(sys, "argv", ["mighty-mouse", "signals", "pause", "--state-dir", str(tmp_path), "--json"])
+    cli.main()
+    assert json.loads(capsys.readouterr().out)["collection_paused"] is True
+
+    monkeypatch.setattr(sys, "argv", ["mighty-mouse", "signals", "purge", "--state-dir", str(tmp_path), "--json"])
+    cli.main()
+    assert json.loads(capsys.readouterr().out)["removed_receipts"] == 0
+
+    monkeypatch.setattr(sys, "argv", ["mighty-mouse", "signals", "history", "--state-dir", str(tmp_path), "--json"])
+    cli.main()
+    assert json.loads(capsys.readouterr().out)["history"]["collection_paused"] is True

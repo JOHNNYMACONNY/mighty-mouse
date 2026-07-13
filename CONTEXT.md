@@ -72,6 +72,10 @@ _Avoid_: Reset, deletion
 The explicit applicability boundary for a Champion, Pin, or Preview, including at least Mode, project or repository, and task or model class.
 _Avoid_: Global default, implicit context
 
+**Routing Decision**:
+An immutable record of the inferred or user-selected Mode for one Scope, including its confidence, reason, Model Identity, and Execution Profile. It explains a completed run; it does not itself choose a Policy.
+_Avoid_: Current Mode preference, Policy selection
+
 **Host Integration**:
 A thin, host-specific adapter (CLI, MCP client, skill, rules, or plugin) that invokes the local Mighty Mouse core and renders its state. It may contribute to the recorded Execution Profile, but it does not own Candidates, Champions, Pins, Evidence Bundles, or Rollbacks.
 _Avoid_: Separate improvement system, portable behavior guarantee

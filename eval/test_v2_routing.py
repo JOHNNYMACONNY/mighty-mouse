@@ -11,6 +11,7 @@ from mighty_mouse.v2.foundation import (
     Mode,
     Scope,
     TaskCategory,
+    status_document,
 )
 from mighty_mouse.v2.runtime import AutopilotRunRequest, run_autopilot
 
@@ -33,6 +34,14 @@ def test_autopilot_honors_an_explicit_mode_override(tmp_path):
     assert result.mode is Mode.AGENTIC
     assert result.routing_reason == "explicit user Mode override"
     assert result.selection.policy.policy_id == "safe-baseline-agentic"
+    assert result.routing_record_hash is not None
+    document = status_document(
+        tmp_path,
+        Scope(Mode.AGENTIC, "JOHNNYMACONNY/mighty-mouse", TaskCategory.FEATURE, "local-small"),
+        ModelIdentity(None), ExecutionProfile("codex-local", frozenset()),
+    )
+    assert document["routing"]["reason"] == "explicit user Mode override"
+    assert document["routing"]["record_pointer"].endswith(result.routing_record_hash)
 
 
 def test_autopilot_direct_routes_a_high_confidence_inferred_mode(tmp_path):
@@ -166,6 +175,57 @@ def test_run_cli_uses_the_autopilot_boundary(monkeypatch, tmp_path, capsys):
     assert document["interface"] == "run"
     assert document["mode"] == "agentic"
     assert document["routing_reason"] == "explicit user Mode override"
+
+
+@pytest.mark.parametrize(
+    ("confidence_percent", "expected_mode"), [(80, "agentic"), (55, "hybrid")],
+)
+def test_run_cli_covers_direct_and_hybrid_confidence_boundaries(monkeypatch, tmp_path, capsys, confidence_percent, expected_mode):
+    arguments = [
+        "mighty-mouse", "run", "--state-dir", str(tmp_path), "--repository", "JOHNNYMACONNY/mighty-mouse",
+        "--task-category", "feature", "--model-class", "local-small", "--inferred-mode", "agentic",
+        "--confidence-percent", str(confidence_percent), "--execution-profile", "codex-local", "--json",
+    ]
+    if confidence_percent == 55:
+        handoff_path = tmp_path / "handoff.json"
+        handoff_path.write_text(json.dumps({"handoff_id": "handoff-001", "summary": "Investigated.", "constraints": [], "acceptance_checks": ["tests"], "file_scope": ["src"], "risks": []}))
+        arguments.extend(["--handoff-file", str(handoff_path)])
+    monkeypatch.setattr("sys.argv", arguments)
+
+    cli.main()
+
+    assert json.loads(capsys.readouterr().out)["mode"] == expected_mode
+
+
+def test_run_cli_requires_an_explicit_mode_below_confidence_floor(monkeypatch, tmp_path):
+    monkeypatch.setattr("sys.argv", [
+        "mighty-mouse", "run", "--state-dir", str(tmp_path), "--repository", "JOHNNYMACONNY/mighty-mouse",
+        "--task-category", "feature", "--model-class", "local-small", "--inferred-mode", "coding",
+        "--confidence-percent", "54", "--execution-profile", "codex-local", "--json",
+    ])
+
+    with pytest.raises(ValueError, match="explicit user Mode choice"):
+        cli.main()
+
+
+def test_status_cli_uses_the_durable_selected_mode(monkeypatch, tmp_path, capsys):
+    store = ImmutableStateStore(tmp_path)
+    run_autopilot(AutopilotRunRequest(
+        repository="JOHNNYMACONNY/mighty-mouse", task_category=TaskCategory.FEATURE, model_class="local-small",
+        inferred_mode=Mode.AGENTIC, confidence_percent=80, model_identity=ModelIdentity(None),
+        execution_profile=ExecutionProfile("codex-local", frozenset()),
+    ), store)
+    monkeypatch.setattr("sys.argv", [
+        "mighty-mouse", "status", "--state-dir", str(tmp_path), "--mode", "coding",
+        "--repository", "JOHNNYMACONNY/mighty-mouse", "--task-category", "feature",
+        "--model-class", "local-small", "--execution-profile", "codex-local", "--json",
+    ])
+
+    cli.main()
+
+    document = json.loads(capsys.readouterr().out)
+    assert document["scope"]["mode"] == "agentic"
+    assert document["routing"]["selected_mode"] == "agentic"
 
 
 def test_run_cli_accepts_a_hybrid_handoff_file(monkeypatch, tmp_path, capsys):

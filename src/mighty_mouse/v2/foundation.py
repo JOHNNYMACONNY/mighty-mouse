@@ -320,13 +320,26 @@ class Rollback:
 
 
 @dataclass(frozen=True)
+class RoutingDecision:
+    """Immutable explanation of one selected Mode and its durable routing inputs."""
+
+    scope: Scope
+    inferred_mode: Mode
+    confidence_percent: int
+    selected_mode: Mode
+    reason: str
+    model_digest: str | None
+    execution_profile_id: str
+
+
+@dataclass(frozen=True)
 class EvaluationOutcome:
     task_id: str
     candidate_id: str
     kind: EvaluationOutcomeKind
 
 
-RecordValue = Champion | Candidate | Promotion | Signal | HybridHandoff | EvidenceBundle | Experiment | Generation | Restriction | Pin | Preview | Rollback
+RecordValue = Champion | Candidate | Promotion | Signal | HybridHandoff | EvidenceBundle | Experiment | Generation | Restriction | Pin | Preview | Rollback | RoutingDecision
 
 
 @dataclass(frozen=True)
@@ -368,6 +381,9 @@ class ImmutableStateStore:
         return self.append(value)
 
     def append_hybrid_handoff(self, value: HybridHandoff) -> StoredRecord:
+        return self.append(value)
+
+    def append_routing_decision(self, value: RoutingDecision) -> StoredRecord:
         return self.append(value)
 
     def append_promotion(self, value: Promotion) -> StoredRecord:
@@ -475,7 +491,7 @@ def _record_type(value: RecordValue) -> str:
     return {
         Champion: "champion", Candidate: "candidate", Promotion: "promotion", Signal: "signal", HybridHandoff: "hybrid_handoff", EvidenceBundle: "evidence_bundle",
         Experiment: "experiment", Generation: "generation", Restriction: "restriction", Pin: "pin",
-        Preview: "preview", Rollback: "rollback",
+        Preview: "preview", Rollback: "rollback", RoutingDecision: "routing_decision",
     }[type(value)]
 
 
@@ -543,6 +559,8 @@ def _record_from_value(record_type: str, value: dict[str, Any]) -> RecordValue:
         return Preview(value["preview_id"], _scope_from_document(value["scope"]), value["candidate_id"], value["evidence_bundle_id"], value["model_digest"], value["execution_profile_id"])
     if record_type == "rollback":
         return Rollback(value["rollback_id"], _scope_from_document(value["scope"]), value["promotion_id"], value["restored_champion_id"], value["model_digest"], value["execution_profile_id"], value["reason"])
+    if record_type == "routing_decision":
+        return RoutingDecision(_scope_from_document(value["scope"]), Mode(value["inferred_mode"]), value["confidence_percent"], Mode(value["selected_mode"]), value["reason"], value["model_digest"], value["execution_profile_id"])
     raise ValueError(f"unknown state record type: {record_type}")
 
 
@@ -561,12 +579,21 @@ def resolve_execution_profile(*, runtime_kind: str, runtime_version: str, effect
 
 
 def status_document(state_dir: str | Path, scope: Scope, model_identity: ModelIdentity, execution_profile: ExecutionProfile) -> dict[str, Any]:
-    selection = ImmutableStateStore(state_dir).select_policy(scope=scope, model_identity=model_identity, execution_profile=execution_profile)
+    store = ImmutableStateStore(state_dir)
+    routing = next((
+        record for record in reversed(store.records())
+        if isinstance(record.value, RoutingDecision)
+        and (record.value.scope.repository, record.value.scope.task_category, record.value.scope.model_class)
+        == (scope.repository, scope.task_category, scope.model_class)
+    ), None)
+    selected_scope = routing.value.scope if routing is not None else scope
+    selection = store.select_policy(scope=selected_scope, model_identity=model_identity, execution_profile=execution_profile)
     return {
         "schema_version": ImmutableStateStore.schema_version, "interface": "status",
-        "scope": _to_json_value(scope), "model_identity": {"artifact_digest": model_identity.artifact_digest},
+        "scope": _to_json_value(selected_scope), "model_identity": {"artifact_digest": model_identity.artifact_digest},
         "execution_profile": _to_json_value(execution_profile),
         "selection": {"policy_id": selection.policy.policy_id, "policy_version": selection.policy.version, "source": selection.source, "reason": selection.reason, "record_pointer": f"{ImmutableStateStore(state_dir).path}#{selection.record_hash}" if selection.record_hash else None},
+        "routing": None if routing is None else {"selected_mode": routing.value.selected_mode.value, "reason": routing.value.reason, "record_pointer": f"{store.path}#{routing.record_hash}"},
     }
 
 

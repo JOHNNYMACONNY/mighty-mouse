@@ -78,7 +78,6 @@ class SignalLifecycle:
 
     def history(self, *, scope: Scope | None = None, now: datetime | None = None) -> dict[str, Any]:
         """Return safe aggregate facts only, never individual Signal fields or identifiers."""
-        self.compact(now=now)
         receipts = [receipt for receipt in self._receipts() if scope is None or self._scope(receipt["signal"]) == scope]
         aggregates = [aggregate["aggregate"] for aggregate in self._aggregates() if scope is None or self._aggregate_matches_scope(aggregate, scope)]
         return {"collection_paused": self.collection_paused, "receipt_count": len(receipts), "aggregates": self._combine_aggregates([*aggregates, *self._aggregate(receipts)])}

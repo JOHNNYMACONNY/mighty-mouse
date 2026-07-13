@@ -11,6 +11,7 @@ from mighty_mouse.v2.foundation import (
     resolve_model_identity,
     status_document,
 )
+from mighty_mouse.v2.signals import SignalLifecycle
 
 
 def run_status(
@@ -26,14 +27,12 @@ def run_status(
     capabilities: list[str] | None,
     json_output: bool,
 ) -> None:
+    scope = Scope(
+        mode=Mode(mode), repository=repository, task_category=TaskCategory(task_category), model_class=model_class,
+    )
     document = status_document(
         state_dir=state_dir,
-        scope=Scope(
-            mode=Mode(mode),
-            repository=repository,
-            task_category=TaskCategory(task_category),
-            model_class=model_class,
-        ),
+        scope=scope,
         model_identity=resolve_model_identity(
             artifact_path=model_artifact,
             artifact_digest=model_digest,
@@ -43,6 +42,11 @@ def run_status(
             capabilities=frozenset(capabilities or []),
         ),
     )
+    selected_scope = Scope(
+        mode=Mode(document["scope"]["mode"]), repository=repository,
+        task_category=TaskCategory(task_category), model_class=model_class,
+    )
+    document["signals"] = SignalLifecycle(state_dir).history(scope=selected_scope)
     if json_output:
         print(json.dumps(document, sort_keys=True))
         return
@@ -54,3 +58,4 @@ def run_status(
     print(f"Effective Policy: {label} ({selection['policy_id']})")
     print(f"Reason: {selection['reason']}")
     print(f"State record: {selection['record_pointer'] or ImmutableStateStore(state_dir).path}")
+    print(f"Signal receipts: {document['signals']['receipt_count']}; aggregate buckets: {len(document['signals']['aggregates'])}")

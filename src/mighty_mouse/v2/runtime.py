@@ -11,6 +11,7 @@ from mighty_mouse.v2.foundation import (
     ModelIdentity,
     Mode,
     PolicySelection,
+    RoutingDecision,
     Scope,
     TaskCategory,
 )
@@ -41,6 +42,7 @@ class AutopilotRunResult:
     routing_reason: str
     selection: PolicySelection
     handoff_record_hash: str | None = None
+    routing_record_hash: str | None = None
 
 
 def run_autopilot(request: AutopilotRunRequest, store: ImmutableStateStore) -> AutopilotRunResult:
@@ -71,13 +73,20 @@ def run_autopilot(request: AutopilotRunRequest, store: ImmutableStateStore) -> A
         if request.hybrid_handoff.scope != scope:
             raise ValueError("Hybrid handoff Scope must match the selected run Scope")
         handoff_record_hash = store.append_hybrid_handoff(request.hybrid_handoff).record_hash
+    selection = store.select_policy(
+        scope=scope,
+        model_identity=request.model_identity,
+        execution_profile=request.execution_profile,
+    )
+    routing_record = store.append_routing_decision(RoutingDecision(
+        scope=scope, inferred_mode=request.inferred_mode, confidence_percent=request.confidence_percent,
+        selected_mode=mode, reason=routing_reason, model_digest=request.model_identity.artifact_digest,
+        execution_profile_id=request.execution_profile.profile_id,
+    ))
     return AutopilotRunResult(
         mode=mode,
         routing_reason=routing_reason,
-        selection=store.select_policy(
-            scope=scope,
-            model_identity=request.model_identity,
-            execution_profile=request.execution_profile,
-        ),
+        selection=selection,
         handoff_record_hash=handoff_record_hash,
+        routing_record_hash=routing_record.record_hash,
     )

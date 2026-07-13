@@ -60,6 +60,19 @@ def main():
     )
     parser_protocol.add_argument("--json", action="store_true", help="Emit versioned JSON output")
 
+    # status
+    parser_status = subparsers.add_parser("status", help="Show the read-only v2 Effective Policy")
+    parser_status.add_argument("--state-dir", default=".mighty-mouse", help="Local v2 state directory")
+    parser_status.add_argument("--mode", choices=("coding", "agentic", "hybrid"), required=True)
+    parser_status.add_argument("--repository", required=True, help="Repository or project Scope")
+    parser_status.add_argument("--task-category", choices=("unknown", "maintenance", "feature", "debugging", "refactoring"), default="unknown", help="Controlled Task Category")
+    parser_status.add_argument("--model-class", required=True, help="Model class Scope")
+    parser_status.add_argument("--model-digest", help="Exact model artifact digest")
+    parser_status.add_argument("--model-artifact", help="Model artifact to fingerprint for exact identity")
+    parser_status.add_argument("--execution-profile", default="unknown", help="Host execution profile")
+    parser_status.add_argument("--capability", action="append", default=None, help="Observed model capability (repeatable)")
+    parser_status.add_argument("--json", action="store_true", help="Emit versioned JSON output")
+
     args = parser.parse_args()
 
     if args.command == "doctor":
@@ -91,6 +104,21 @@ def main():
         run_protocol(
             task_description=args.task_description,
             complexity=args.complexity,
+            json_output=args.json,
+        )
+
+    elif args.command == "status":
+        from mighty_mouse.commands.status_cmd import run_status
+        run_status(
+            state_dir=args.state_dir,
+            mode=args.mode,
+            repository=args.repository,
+            task_category=args.task_category,
+            model_class=args.model_class,
+            model_digest=args.model_digest,
+            model_artifact=args.model_artifact,
+            execution_profile=args.execution_profile,
+            capabilities=args.capability,
             json_output=args.json,
         )
 

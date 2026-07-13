@@ -11,7 +11,7 @@ from tempfile import TemporaryDirectory
 from typing import Callable
 from uuid import uuid4
 
-from mighty_mouse.v2.foundation import Candidate, Champion, EvidenceBundle, EvaluationOutcome, EvaluationOutcomeKind, Experiment, ExperimentDecision, ExperimentOutcome, Generation, ImmutableStateStore
+from mighty_mouse.v2.foundation import Candidate, Champion, EvidenceBundle, EvaluationOutcome, EvaluationOutcomeKind, Experiment, ExperimentDecision, ExperimentOutcome, FreshHoldout, Generation, ImmutableStateStore
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,27 @@ class EvaluationResult:
     outcome: ExperimentOutcome
     decision: ExperimentDecision
     holdout_nominee_id: str | None
+
+
+@dataclass(frozen=True)
+class FreshHoldoutRequest:
+    """Quarantined, precommitted paired evaluation inputs; never used for tuning."""
+
+    experiment_id: str
+    candidate_id: str
+    base_workspace: Path
+    task_ids: tuple[str, ...]
+    protocol_digest: str
+    environment_digest: str
+    corpus_digest: str
+    contaminated: bool = False
+    exposed: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.task_ids or not all((self.protocol_digest, self.environment_digest, self.corpus_digest)):
+            raise ValueError("fresh holdout requires frozen tasks and versioned protocol inputs")
+        if self.contaminated or self.exposed:
+            raise ValueError("consumed, contaminated, or exposed holdout tasks are ineligible")
 
 class DevelopmentEvaluator:
     """Runs frozen development tasks only; no holdout input exists in this API."""
@@ -146,3 +167,36 @@ class DevelopmentEvaluator:
         for item in sorted(path.rglob("*")):
             if item.is_file(): digest.update(str(item.relative_to(path)).encode()); digest.update(item.read_bytes())
         return "sha256:" + digest.hexdigest()
+
+
+class FreshHoldoutEvaluator:
+    """One-way quarantined gate: its results never feed Generation or Signals."""
+
+    def __init__(self, state_dir: str | Path) -> None:
+        self.store = ImmutableStateStore(state_dir)
+
+    def evaluate(self, request: FreshHoldoutRequest, runner: Runner) -> FreshHoldout:
+        records = self.store.records()
+        experiment = next((r.value for r in reversed(records) if isinstance(r.value, Experiment) and r.value.experiment_id == request.experiment_id), None)
+        candidates = {r.value.candidate_id: r.value for r in records if isinstance(r.value, Candidate)}
+        if not experiment or experiment.holdout_nominee_id != request.candidate_id:
+            raise ValueError("fresh holdout requires one recorded nominated contender")
+        candidate, baseline = candidates.get(request.candidate_id), candidates.get(experiment.baseline_candidate_id)
+        if not candidate or not baseline or not request.base_workspace.is_dir():
+            raise ValueError("fresh holdout requires recorded paired inputs and a base workspace")
+        passed = True
+        with TemporaryDirectory(prefix="mighty-mouse-holdout-") as root:
+            for task_id in request.task_ids:
+                for condition in (baseline, candidate):
+                    workspace = Path(root) / f"{task_id}-{condition.candidate_id}"
+                    copytree(request.base_workspace, workspace)
+                    try:
+                        run = runner(task_id, condition, workspace, 0)
+                        kind = run.kind if isinstance(run, EvaluationRun) else run
+                    except Exception:
+                        kind = EvaluationOutcomeKind.ERROR
+                    if kind is not EvaluationOutcomeKind.PASSED:
+                        passed = False
+        result = FreshHoldout(candidate.candidate_id, candidate.scope, candidate.model_digest, experiment.execution_profile_id, passed)
+        self.store.append(result)
+        return result

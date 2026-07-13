@@ -1,7 +1,7 @@
 import pytest
 from dataclasses import replace
 
-from mighty_mouse.v2.evaluation import DevelopmentEvaluator, EvaluationRequest, EvaluationRun
+from mighty_mouse.v2.evaluation import DevelopmentEvaluator, EvaluationRequest, EvaluationRun, FreshHoldoutEvaluator, FreshHoldoutRequest
 from mighty_mouse.v2.foundation import Candidate, EvaluationOutcomeKind, ImmutableStateStore, Policy
 from test_v2_background_research import _controller, _start
 
@@ -31,6 +31,18 @@ def test_development_evaluation_nominates_a_valid_paired_winner(tmp_path):
 
     assert result.decision.value == "nominate"
     assert result.holdout_nominee_id
+
+
+def test_fresh_holdout_is_quarantined_and_persists_only_its_gate(tmp_path):
+    generation_id = _generation(tmp_path)
+    result = DevelopmentEvaluator(tmp_path).evaluate(
+        _request(tmp_path, generation_id), lambda task, candidate, workspace, seed: EvaluationOutcomeKind.PASSED if candidate.policy.version == "generated-1" else EvaluationOutcomeKind.FAILED
+    )
+    request = FreshHoldoutRequest(result.experiment_id, result.holdout_nominee_id, _request(tmp_path, generation_id).base_workspace, ("fresh-task-001",), "sha256:protocol", "sha256:environment", "sha256:corpus")
+    held = FreshHoldoutEvaluator(tmp_path).evaluate(request, lambda *_: EvaluationOutcomeKind.PASSED)
+    assert held.passed
+    with pytest.raises(ValueError, match="ineligible"):
+        FreshHoldoutRequest(result.experiment_id, result.holdout_nominee_id, request.base_workspace, request.task_ids, request.protocol_digest, request.environment_digest, request.corpus_digest, contaminated=True)
 
 
 def test_development_evaluation_records_no_change_for_a_tie(tmp_path):

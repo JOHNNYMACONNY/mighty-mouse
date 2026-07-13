@@ -10,6 +10,7 @@ from mighty_mouse.v2.foundation import (
     ImmutableStateStore,
     Mode,
     Pin,
+    PromotionController,
     Preview,
     Scope,
     TaskCategory,
@@ -45,3 +46,12 @@ def run_pin(*, state_dir: str, candidate_id: str, mode: str, repository: str, ta
     )
     document = {"interface": "pin", "candidate_id": candidate_id, "scope": {"mode": mode, "repository": repository, "task_category": task_category, "model_class": model_class}, "record_pointer": stored.record_hash}
     print(json.dumps(document, sort_keys=True) if json_output else f"Pinned active Candidate {candidate_id} for the declared Scope.")
+
+
+def run_rollback(*, state_dir: str, reason: str, mode: str, repository: str, task_category: str, model_class: str, model_digest: str | None, model_artifact: str | None, execution_profile: str, capabilities: list[str] | None, json_output: bool) -> None:
+    scope, identity, profile = _inputs(mode=mode, repository=repository, task_category=task_category, model_class=model_class, model_digest=model_digest, model_artifact=model_artifact, execution_profile=execution_profile, capabilities=capabilities)
+    notice = PromotionController(ImmutableStateStore(state_dir)).recover(
+        scope=scope, model_identity=identity, execution_profile=profile, reason=reason,
+    )
+    document = {"interface": "rollback", "action": notice.action, "candidate_id": notice.candidate_id, "reason": notice.reason}
+    print(json.dumps(document, sort_keys=True) if json_output else f"Rolled back {notice.candidate_id}: {notice.reason}.")

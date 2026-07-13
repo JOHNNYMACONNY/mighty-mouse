@@ -1,5 +1,6 @@
 import json
 import sys
+import threading
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -68,7 +69,7 @@ def _promotion():
     )
 
 
-def _eligible_successor(store, *, candidate_id="candidate-002"):
+def _eligible_successor(store, *, candidate_id="candidate-002", security=True):
     candidate = Candidate(
         candidate_id=candidate_id,
         policy=Policy(policy_id="policy-002", mode=Mode.CODING, version="2"),
@@ -82,15 +83,16 @@ def _eligible_successor(store, *, candidate_id="candidate-002"):
     store.append(Experiment(
         "experiment-002", "generation-002", "candidate-001", "sha256:exact-model", "codex-local",
         (candidate.candidate_id,), ("evidence-002",), ("sha256:evidence",), (),
-        (("safety", True), ("freshness", True)), "v2", ExperimentOutcome.COMPLETED,
+        (("safety", True), ("security", security), ("provenance", True), ("integrity", True), ("freshness", True)), "v2", ExperimentOutcome.COMPLETED,
         ExperimentDecision.NOMINATE, candidate.candidate_id,
     ))
     store.append(FreshHoldout(candidate.candidate_id, _scope(), "sha256:exact-model", "codex-local", True))
-    store.append_eligible_successor(
-        EligibleSuccessor(candidate, "experiment-002", "evidence-002"),
-        model_identity=ModelIdentity("sha256:exact-model"),
-        execution_profile=ExecutionProfile("codex-local", frozenset({"tools"})),
-    )
+    if security:
+        store.append_eligible_successor(
+            EligibleSuccessor(candidate, "experiment-002", "evidence-002"),
+            model_identity=ModelIdentity("sha256:exact-model"),
+            execution_profile=ExecutionProfile("codex-local", frozenset({"tools"})),
+        )
     return candidate
 
 
@@ -115,6 +117,9 @@ def test_immutable_store_selects_only_an_exactly_compatible_candidate(tmp_path):
 def test_immutable_store_uses_safe_baseline_for_incomplete_or_incompatible_identity(tmp_path):
     store = ImmutableStateStore(tmp_path)
     store.append_promotion(_promotion())
+    _eligible_successor(store)
+    successor = next(record.value for record in reversed(store.records()) if isinstance(record.value, EligibleSuccessor))
+    controller = PromotionController(store)
 
     selection = store.select_policy(
         scope=_scope(),
@@ -139,7 +144,8 @@ def test_eligibility_explains_all_required_gates_and_preview_never_activates(tmp
     )
     assert eligibility.is_eligible
     assert dict(eligibility.gates) == {
-        "compatibility": True, "evidence": True, "safety": True, "freshness": True, "scope": True,
+        "experiment": True, "compatibility": True, "evidence": True, "safety": True,
+        "security": True, "provenance": True, "integrity": True, "freshness": True, "scope": True,
     }
 
     before = store.select_policy(scope=_scope(), model_identity=identity, execution_profile=profile)
@@ -158,7 +164,8 @@ def test_eligibility_explains_all_required_gates_and_preview_never_activates(tmp
     assert document["eligible_successors"] == [{
         "candidate_id": "candidate-002", "experiment_id": "experiment-002", "evidence_bundle_id": "evidence-002",
         "eligible": True,
-        "gates": {"compatibility": True, "evidence": True, "safety": True, "freshness": True, "scope": True},
+        "gates": {"experiment": True, "compatibility": True, "evidence": True, "safety": True,
+                  "security": True, "provenance": True, "integrity": True, "freshness": True, "scope": True},
     }]
     assert [entry["kind"] for entry in document["history"]] == ["champion", "preview"]
 
@@ -228,10 +235,53 @@ def test_promotion_controller_requires_health_check_and_recovers_prior_champion(
     assert notice.candidate_id == "candidate-002"
     assert store.select_policy(scope=_scope(), model_identity=identity, execution_profile=profile).policy.policy_id == "policy-002"
 
-    rollback_notice = controller.enforce_live_guards(scope=_scope(), model_identity=identity, execution_profile=profile, quality_guard=lambda: False, security_guard=lambda: False)
+    rollback_notice = controller.enforce_live_guards(scope=_scope(), model_identity=identity, execution_profile=profile, quality_guard=lambda: False, security_guard=lambda: True)
     assert rollback_notice.action == "rolled_back"
     assert store.select_policy(scope=_scope(), model_identity=identity, execution_profile=profile).policy.policy_id == "policy-001"
     assert [record.value.promotion_id for record in store.records() if isinstance(record.value, Rollback)] == [promoted.record_hash]
+
+
+def test_promotion_refuses_an_experiment_missing_a_required_security_gate(tmp_path):
+    store = ImmutableStateStore(tmp_path)
+    store.append_promotion(_promotion())
+    candidate = _eligible_successor(store, security=False)
+    identity = ModelIdentity("sha256:exact-model")
+    profile = ExecutionProfile("codex-local", frozenset({"tools"}))
+
+    eligibility = store.eligibility(candidate_id=candidate.candidate_id, scope=_scope(), model_identity=identity, execution_profile=profile)
+    assert not eligibility.is_eligible
+    assert dict(eligibility.gates)["security"] is False
+    with pytest.raises(ValueError, match="recorded Eligible Successor"):
+        store.append_promotion(Promotion(EligibleSuccessor(candidate, "experiment-002", "evidence-002"), "candidate-001", True))
+
+
+def test_concurrent_selection_never_observes_a_partial_promotion_record(tmp_path):
+    store = ImmutableStateStore(tmp_path)
+    store.append_promotion(_promotion())
+    _eligible_successor(store)
+    successor = next(record.value for record in reversed(store.records()) if isinstance(record.value, EligibleSuccessor))
+    controller = PromotionController(store)
+    identity = ModelIdentity("sha256:exact-model")
+    profile = ExecutionProfile("codex-local", frozenset({"tools"}))
+    failures = []
+    started = threading.Event()
+
+    def reader():
+        started.set()
+        for _ in range(200):
+            try:
+                selection = ImmutableStateStore(tmp_path).select_policy(scope=_scope(), model_identity=identity, execution_profile=profile)
+                assert selection.policy.policy_id in {"policy-001", "policy-002"}
+            except Exception as error:  # pragma: no cover - asserted below
+                failures.append(error)
+
+    thread = threading.Thread(target=reader)
+    thread.start()
+    started.wait()
+    for _ in range(25):
+        controller.promote(successor, model_identity=identity, execution_profile=profile, health_check=lambda: True)
+    thread.join()
+    assert failures == []
 
 
 def test_promotion_controller_restricts_security_breach_and_never_reactivates_it(tmp_path):
@@ -250,6 +300,21 @@ def test_promotion_controller_restricts_security_breach_and_never_reactivates_it
     assert [record.value.reason for record in store.records() if isinstance(record.value, Restriction)] == ["verified_provenance_breach"]
     with pytest.raises(ValueError, match="restricted Champion"):
         controller.promote(successor, model_identity=identity, execution_profile=profile, health_check=lambda: True)
+    with pytest.raises(ValueError, match="controlled"):
+        controller.recover(scope=_scope(), model_identity=identity, execution_profile=profile, reason="raw user content")
+
+
+def test_security_guard_failure_restricts_the_active_champion(tmp_path):
+    store = ImmutableStateStore(tmp_path)
+    store.append_promotion(_promotion())
+    controller = PromotionController(store)
+    notice = controller.enforce_live_guards(
+        scope=_scope(), model_identity=ModelIdentity("sha256:exact-model"),
+        execution_profile=ExecutionProfile("codex-local", frozenset({"tools"})),
+        quality_guard=lambda: True, security_guard=lambda: False,
+    )
+    assert notice.action == "restricted_and_rolled_back"
+    assert len([record for record in store.records() if isinstance(record.value, Restriction)]) == 1
 
 
 def test_immutable_store_records_are_frozen_and_traceable(tmp_path):
@@ -376,10 +441,10 @@ def test_immutable_store_round_trips_every_phase_a_record_type(tmp_path):
         store.append(experiment),
         store.append(generation),
         store.append_promotion(promotion),
-        store.append(Restriction("restriction-001", _scope(), candidate.candidate_id, "sha256:exact-model", profile.profile_id, "guard_failure")),
+        store.append(Restriction("restriction-001", _scope(), candidate.candidate_id, "sha256:exact-model", profile.profile_id, "verified_security_guard_failure")),
         store.append(Pin("pin-001", _scope(), candidate.candidate_id, "sha256:exact-model", profile.profile_id)),
         store.append(Preview("preview-001", _scope(), candidate.candidate_id, evidence.evidence_bundle_id, "sha256:exact-model", profile.profile_id)),
-        store.append(Rollback("rollback-001", _scope(), "promotion-001", candidate.candidate_id, "sha256:exact-model", profile.profile_id, "manual")),
+        store.append(Rollback("rollback-001", _scope(), "promotion-001", candidate.candidate_id, "sha256:exact-model", profile.profile_id, "user_requested")),
     )
 
     restored = store.records()

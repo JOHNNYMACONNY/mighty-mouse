@@ -92,6 +92,19 @@ def main():
         successor_parser.add_argument("--capability", action="append", default=None, help="Observed model capability (repeatable)")
         successor_parser.add_argument("--json", action="store_true", help="Emit versioned JSON output")
 
+    parser_rollback = subparsers.add_parser("rollback", help="Restore the prior eligible Champion for one exact Scope")
+    parser_rollback.add_argument("--reason", default="user_requested", help="Controlled rollback reason")
+    parser_rollback.add_argument("--state-dir", default=".mighty-mouse", help="Local v2 state directory")
+    parser_rollback.add_argument("--mode", choices=("coding", "agentic", "hybrid"), required=True)
+    parser_rollback.add_argument("--repository", required=True, help="Repository or project Scope")
+    parser_rollback.add_argument("--task-category", choices=("unknown", "maintenance", "feature", "debugging", "refactoring"), default="unknown")
+    parser_rollback.add_argument("--model-class", required=True, help="Model class Scope")
+    parser_rollback.add_argument("--model-digest", help="Exact model artifact digest")
+    parser_rollback.add_argument("--model-artifact", help="Model artifact to fingerprint for exact identity")
+    parser_rollback.add_argument("--execution-profile", default="unknown", help="Host execution profile")
+    parser_rollback.add_argument("--capability", action="append", default=None, help="Observed model capability (repeatable)")
+    parser_rollback.add_argument("--json", action="store_true", help="Emit versioned JSON output")
+
     # run
     parser_run = subparsers.add_parser("run", help="Route one task through the v2 Autopilot boundary")
     parser_run.add_argument("--state-dir", default=".mighty-mouse", help="Local v2 state directory")
@@ -215,6 +228,15 @@ def main():
         from mighty_mouse.commands.successor_cmd import run_pin
         run_pin(
             state_dir=args.state_dir, candidate_id=args.candidate_id,
+            mode=args.mode, repository=args.repository, task_category=args.task_category, model_class=args.model_class,
+            model_digest=args.model_digest, model_artifact=args.model_artifact,
+            execution_profile=args.execution_profile, capabilities=args.capability, json_output=args.json,
+        )
+
+    elif args.command == "rollback":
+        from mighty_mouse.commands.successor_cmd import run_rollback
+        run_rollback(
+            state_dir=args.state_dir, reason=args.reason,
             mode=args.mode, repository=args.repository, task_category=args.task_category, model_class=args.model_class,
             model_digest=args.model_digest, model_artifact=args.model_artifact,
             execution_profile=args.execution_profile, capabilities=args.capability, json_output=args.json,

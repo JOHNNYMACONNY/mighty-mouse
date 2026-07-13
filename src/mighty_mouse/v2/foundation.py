@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
 from hashlib import sha256
@@ -24,6 +24,8 @@ _SIGNAL_ENVIRONMENT_VALUES = {
     "architecture": frozenset({"x86_64", "arm64", "unknown"}),
     "runtime": frozenset({"codex", "claude-code", "hermes", "cursor", "unknown"}),
 }
+_REQUIRED_PROMOTION_GATES = ("safety", "security", "provenance", "integrity")
+_RECOVERY_REASONS = frozenset({"user_requested", "quality_guard_failed", "verified_security_guard_failure", "verified_provenance_breach", "verified_integrity_breach"})
 
 
 class Mode(str, Enum):
@@ -314,6 +316,10 @@ class Restriction:
     execution_profile_id: str
     reason: str
 
+    def __post_init__(self) -> None:
+        if self.reason not in _RECOVERY_REASONS - {"user_requested", "quality_guard_failed"}:
+            raise ValueError("Restriction reason must be a verified controlled security reason")
+
 
 @dataclass(frozen=True)
 class Pin:
@@ -343,6 +349,10 @@ class Rollback:
     model_digest: str
     execution_profile_id: str
     reason: str
+
+    def __post_init__(self) -> None:
+        if self.reason not in _RECOVERY_REASONS:
+            raise ValueError("Rollback reason must be controlled and content-free")
 
 
 @dataclass(frozen=True)
@@ -396,6 +406,12 @@ class PromotionNotice:
     inspect_command: str = "mighty-mouse status --json"
     rollback_command: str = "mighty-mouse rollback"
 
+    def __post_init__(self) -> None:
+        if self.action not in {"promoted", "rolled_back", "restricted_and_rolled_back"}:
+            raise ValueError("Promotion notice action must be controlled")
+        if self.reason not in _RECOVERY_REASONS and self.reason != "eligible_successor_passed_health_checks":
+            raise ValueError("Promotion notice reason must be controlled and content-free")
+
 
 class ImmutableStateStore:
     """Durable append-only storage for all versioned v2 domain records."""
@@ -435,6 +451,20 @@ class ImmutableStateStore:
             self._lock(lock_file)
             try:
                 records = self._records_unlocked()
+                prior = next((
+                    record.value.eligible_successor.candidate.candidate_id
+                    for record in reversed(records)
+                    if isinstance(record.value, Promotion)
+                    and record.value.eligible_successor.candidate.scope == candidate.scope
+                    and record.value.eligible_successor.candidate.model_digest == candidate.model_digest
+                ), None)
+                value = replace(value, prior_champion_id=prior)
+                if value.prior_champion_id is not None and not any(
+                    isinstance(record.value, EligibleSuccessor)
+                    and record.value == value.eligible_successor
+                    for record in records
+                ):
+                    raise ValueError("Promotion requires a recorded Eligible Successor with verified evidence")
                 if any(isinstance(record.value, Restriction) and record.value.candidate_id == candidate.candidate_id and record.value.scope == candidate.scope and record.value.model_digest == candidate.model_digest and record.value.execution_profile_id in candidate.compatible_execution_profiles for record in records):
                     raise ValueError("Promotion cannot reactivate a restricted Champion")
                 if any(isinstance(record.value, Pin) and record.value.scope == candidate.scope and record.value.model_digest == candidate.model_digest and record.value.execution_profile_id in candidate.compatible_execution_profiles for record in records):
@@ -514,6 +544,13 @@ class ImmutableStateStore:
             and evidence.execution_profile_id == execution_profile.profile_id
         )
         experiment_gates = dict(experiment.gate_results) if experiment is not None else {}
+        experiment_matches = bool(
+            experiment is not None
+            and candidate is not None
+            and experiment.model_digest == candidate.model_digest
+            and experiment.execution_profile_id == execution_profile.profile_id
+            and candidate_id in experiment.candidate_ids
+        )
         fresh_holdout = next(
             (record.value for record in reversed(records)
              if isinstance(record.value, FreshHoldout)
@@ -525,9 +562,10 @@ class ImmutableStateStore:
             None,
         )
         gates = (
+            ("experiment", experiment_matches),
             ("compatibility", compatibility),
             ("evidence", evidence_matches),
-            ("safety", experiment_gates.get("safety", False)),
+            *((gate, experiment_gates.get(gate, False)) for gate in _REQUIRED_PROMOTION_GATES),
             ("freshness", fresh_holdout is not None),
             ("scope", candidate is not None and candidate.scope == scope),
         )
@@ -695,6 +733,23 @@ class ImmutableStateStore:
             finally:
                 self._unlock(lock_file)
 
+    def append_many(self, values: tuple[RecordValue, ...]) -> tuple[StoredRecord, ...]:
+        """Append a recovery transition while readers are excluded by the state lock."""
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = self.state_dir / "v2-state.lock"
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            self._lock(lock_file)
+            try:
+                existing = self._records_unlocked()
+                stored = []
+                for value in values:
+                    record = self._append_locked(_record_type(value), value, existing)
+                    stored.append(record)
+                    existing = (*existing, record)
+                return tuple(stored)
+            finally:
+                self._unlock(lock_file)
+
     def _append_locked(self, record_type: str, value: RecordValue, existing: tuple[StoredRecord, ...]) -> StoredRecord:
         document = {
             "schema_version": self.schema_version,
@@ -755,21 +810,24 @@ class PromotionController:
             raise ValueError("Promotion requires a current exact Eligible Successor")
         prior = self._active_promotion(candidate.scope, model_identity, execution_profile)
         stored = self.store.append_promotion(Promotion(successor, prior.value.eligible_successor.candidate.candidate_id if prior else None, True))
-        return stored, PromotionNotice("promoted", candidate.candidate_id, "eligible successor passed controller health checks")
+        return stored, PromotionNotice("promoted", candidate.candidate_id, "eligible_successor_passed_health_checks")
 
     def recover(self, *, scope: Scope, model_identity: ModelIdentity, execution_profile: ExecutionProfile, reason: str, security_breach: bool = False) -> PromotionNotice:
         active = self._active_promotion(scope, model_identity, execution_profile)
         if active is None:
             raise ValueError("Recovery requires a current exact compatible Champion")
         candidate = active.value.eligible_successor.candidate
+        values: tuple[RecordValue, ...] = ()
+        security_breach = security_breach or reason.startswith("verified_")
         if security_breach:
-            self.store.append(Restriction(f"restriction-{active.record_hash[:12]}", scope, candidate.candidate_id, candidate.model_digest, execution_profile.profile_id, reason))
-        self.store.append(Rollback(f"rollback-{active.record_hash[:12]}", scope, active.record_hash, active.value.prior_champion_id, candidate.model_digest, execution_profile.profile_id, reason))
+            values += (Restriction(f"restriction-{active.record_hash[:12]}", scope, candidate.candidate_id, candidate.model_digest, execution_profile.profile_id, reason),)
+        values += (Rollback(f"rollback-{active.record_hash[:12]}", scope, active.record_hash, active.value.prior_champion_id, candidate.model_digest, execution_profile.profile_id, reason),)
+        self.store.append_many(values)
         return PromotionNotice("restricted_and_rolled_back" if security_breach else "rolled_back", candidate.candidate_id, reason)
 
     def enforce_live_guards(self, *, scope: Scope, model_identity: ModelIdentity, execution_profile: ExecutionProfile, quality_guard: Callable[[], bool], security_guard: Callable[[], bool]) -> PromotionNotice | None:
         """Automatically recover the live Champion when an independent guard fails."""
-        if security_guard():
+        if not security_guard():
             return self.recover(scope=scope, model_identity=model_identity, execution_profile=execution_profile, reason="verified_security_guard_failure", security_breach=True)
         if not quality_guard():
             return self.recover(scope=scope, model_identity=model_identity, execution_profile=execution_profile, reason="quality_guard_failed")

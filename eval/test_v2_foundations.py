@@ -166,7 +166,7 @@ def test_immutable_store_round_trips_every_phase_a_record_type(tmp_path):
     signal = Signal(
         signal_id="signal-001",
         scope=_scope(),
-        model_digest="sha256:exact-model",
+        model_digest="sha256:" + "a" * 64,
         execution_profile_id=profile.profile_id,
         outcome="passed",
         duration_ms=123,

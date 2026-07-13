@@ -89,6 +89,25 @@ def main():
     parser_run.add_argument("--handoff-file", help="JSON handoff produced by the Hybrid Investigation stage")
     parser_run.add_argument("--json", action="store_true", help="Emit versioned JSON output")
 
+    # signals
+    parser_signals = subparsers.add_parser("signals", help="Collect privacy-safe v2 Signals or view aggregate history")
+    parser_signals.add_argument("action", choices=("collect", "pause", "resume", "purge", "history"))
+    parser_signals.add_argument("--state-dir", default=".mighty-mouse", help="Local v2 state directory")
+    parser_signals.add_argument("--signal-id", help="Controlled Signal identifier")
+    parser_signals.add_argument("--repository", help="Repository Scope for collection")
+    parser_signals.add_argument("--mode", choices=("coding", "agentic", "hybrid"), help="Mode Scope for collection")
+    parser_signals.add_argument("--task-category", choices=("unknown", "maintenance", "feature", "debugging", "refactoring"), help="Controlled Task Category")
+    parser_signals.add_argument("--model-class", help="Model class Scope for collection")
+    parser_signals.add_argument("--model-digest", help="Exact model identity digest")
+    parser_signals.add_argument("--execution-profile", help="Host execution profile")
+    parser_signals.add_argument("--outcome", choices=("passed", "failed", "cancelled", "error"), help="Controlled task outcome")
+    parser_signals.add_argument("--duration-ms", type=int, help="Task duration in milliseconds")
+    parser_signals.add_argument("--retry-count", type=int, help="Retry count")
+    parser_signals.add_argument("--verifier-category", choices=("tests", "build", "lint", "typecheck", "manual", "none"), help="Controlled verifier category")
+    parser_signals.add_argument("--verifier-result", choices=("passed", "failed", "not_run"), help="Controlled verifier result")
+    parser_signals.add_argument("--rating", type=int, choices=(1, 2, 3, 4, 5), help="Optional rating from 1 through 5")
+    parser_signals.add_argument("--json", action="store_true", help="Emit versioned JSON output")
+
     args = parser.parse_args()
 
     if args.command == "doctor":
@@ -154,6 +173,18 @@ def main():
             capabilities=args.capability,
             handoff_file=args.handoff_file,
             json_output=args.json,
+        )
+
+    elif args.command == "signals":
+        from mighty_mouse.commands.signals_cmd import run_signals
+        run_signals(
+            action=args.action, state_dir=args.state_dir, signal_id=args.signal_id,
+            repository=args.repository, mode=args.mode, task_category=args.task_category,
+            model_class=args.model_class, model_digest=args.model_digest,
+            execution_profile=args.execution_profile, outcome=args.outcome,
+            duration_ms=args.duration_ms, retry_count=args.retry_count,
+            verifier_category=args.verifier_category, verifier_result=args.verifier_result,
+            rating=args.rating, json_output=args.json,
         )
 
 

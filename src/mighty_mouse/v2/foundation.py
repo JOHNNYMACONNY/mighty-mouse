@@ -9,7 +9,21 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import re
 from typing import Any
+
+
+_SIGNAL_IDENTIFIER = re.compile(r"signal-[0-9]{3,}")
+_SIGNAL_REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
+_SIGNAL_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+_SIGNAL_EXECUTION_PROFILE = re.compile(r"sha256:[0-9a-f]{64}")
+_SIGNAL_MODEL_CLASSES = frozenset({"local-small", "local-medium", "local-large", "unknown"})
+_SIGNAL_FIXED_EXECUTION_PROFILES = frozenset({"codex-local", "unknown"})
+_SIGNAL_ENVIRONMENT_VALUES = {
+    "os": frozenset({"linux", "macos", "windows", "unknown"}),
+    "architecture": frozenset({"x86_64", "arm64", "unknown"}),
+    "runtime": frozenset({"codex", "claude-code", "hermes", "cursor", "unknown"}),
+}
 
 
 class Mode(str, Enum):
@@ -140,10 +154,41 @@ class Signal:
     duration_ms: int
     retry_count: int
     verifier_category: str
+    verifier_result: str = "not_run"
+    environment_metadata: tuple[tuple[str, str], ...] = ()
+    rating: int | None = None
 
     def __post_init__(self) -> None:
+        if type(self.duration_ms) is not int or type(self.retry_count) is not int:
+            raise ValueError("Signal durations and retry counts must be non-boolean integers")
         if self.duration_ms < 0 or self.retry_count < 0:
             raise ValueError("Signal durations and retry counts must be non-negative")
+        if self.outcome not in {"passed", "failed", "cancelled", "error"}:
+            raise ValueError("Signal outcome must be controlled and content-free")
+        if self.verifier_category not in {"tests", "build", "lint", "typecheck", "manual", "none"}:
+            raise ValueError("Signal verifier_category must be controlled and content-free")
+        if self.verifier_result not in {"passed", "failed", "not_run"}:
+            raise ValueError("Signal verifier_result must be controlled and content-free")
+        if self.rating is not None and (type(self.rating) is not int or self.rating not in {1, 2, 3, 4, 5}):
+            raise ValueError("Signal rating must be an integer from 1 through 5")
+        if not _SIGNAL_IDENTIFIER.fullmatch(self.signal_id):
+            raise ValueError("Signal identifier must be controlled and content-free")
+        repository_parts = self.scope.repository.split("/")
+        if not _SIGNAL_REPOSITORY.fullmatch(self.scope.repository) or any(part in {".", ".."} for part in repository_parts):
+            raise ValueError("Signal Scope repository must be a repository identifier, not content or a path")
+        if not _SIGNAL_DIGEST.fullmatch(self.model_digest):
+            raise ValueError("Signal model_digest must be a sha256 digest")
+        if not (_SIGNAL_EXECUTION_PROFILE.fullmatch(self.execution_profile_id) or self.execution_profile_id in _SIGNAL_FIXED_EXECUTION_PROFILES):
+            raise ValueError("Signal execution_profile_id must be controlled and content-free")
+        if self.scope.model_class not in _SIGNAL_MODEL_CLASSES:
+            raise ValueError("Signal provenance must be controlled and content-free")
+        if len(self.environment_metadata) > 3:
+            raise ValueError("Signal environment metadata is bounded")
+        if len({key for key, _ in self.environment_metadata}) != len(self.environment_metadata):
+            raise ValueError("Signal environment metadata keys must be unique")
+        for key, value in self.environment_metadata:
+            if value not in _SIGNAL_ENVIRONMENT_VALUES.get(key, frozenset()):
+                raise ValueError("Signal environment metadata must be controlled and content-free")
 
 
 @dataclass(frozen=True)
@@ -476,7 +521,12 @@ def _record_from_value(record_type: str, value: dict[str, Any]) -> RecordValue:
         successor = value["eligible_successor"]
         return Promotion(EligibleSuccessor(_candidate(successor["candidate"]), successor["experiment_id"], successor["evidence_bundle_id"]), value["prior_champion_id"], value["machine_gates_passed"])
     if record_type == "signal":
-        return Signal(value["signal_id"], _scope_from_document(value["scope"]), value["model_digest"], value["execution_profile_id"], value["outcome"], value["duration_ms"], value["retry_count"], value["verifier_category"])
+        return Signal(
+            value["signal_id"], _scope_from_document(value["scope"]), value["model_digest"],
+            value["execution_profile_id"], value["outcome"], value["duration_ms"],
+            value["retry_count"], value["verifier_category"], value.get("verifier_result", "not_run"),
+            tuple(tuple(item) for item in value.get("environment_metadata", ())), value.get("rating"),
+        )
     if record_type == "hybrid_handoff":
         return HybridHandoff(value["handoff_id"], _scope_from_document(value["scope"]), value["summary"], tuple(value["constraints"]), tuple(value["acceptance_checks"]), tuple(value["file_scope"]), tuple(value["risks"]))
     if record_type == "evidence_bundle":

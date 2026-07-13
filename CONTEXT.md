@@ -76,6 +76,10 @@ _Avoid_: Global default, implicit context
 An immutable record of the inferred or user-selected Mode for one Scope, including its confidence, reason, Model Identity, and Execution Profile. It explains a completed run; it does not itself choose a Policy.
 _Avoid_: Current Mode preference, Policy selection
 
+**Migration**:
+An explicit, dry-run-first import that creates independent v2 copies from eligible v1 configuration or state. It never mutates v1 files, changes legacy command behavior, or reinterprets historical v1 Evidence.
+_Avoid_: In-place upgrade, automatic conversion
+
 **Host Integration**:
 A thin, host-specific adapter (CLI, MCP client, skill, rules, or plugin) that invokes the local Mighty Mouse core and renders its state. It may contribute to the recorded Execution Profile, but it does not own Candidates, Champions, Pins, Evidence Bundles, or Rollbacks.
 _Avoid_: Separate improvement system, portable behavior guarantee

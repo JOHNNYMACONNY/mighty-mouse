@@ -10,7 +10,7 @@ import json
 import os
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Callable
 
 
 _SIGNAL_IDENTIFIER = re.compile(r"signal-[0-9]{3,}")
@@ -386,6 +386,17 @@ class PolicySelection:
     record_hash: str | None
 
 
+@dataclass(frozen=True)
+class PromotionNotice:
+    """Content-free explanation of a live Champion transition."""
+
+    action: str
+    candidate_id: str
+    reason: str
+    inspect_command: str = "mighty-mouse status --json"
+    rollback_command: str = "mighty-mouse rollback"
+
+
 class ImmutableStateStore:
     """Durable append-only storage for all versioned v2 domain records."""
 
@@ -398,7 +409,7 @@ class ImmutableStateStore:
 
     def append(self, value: RecordValue) -> StoredRecord:
         if isinstance(value, Promotion):
-            self._validate_promotion(value)
+            return self.append_promotion(value)
         if isinstance(value, EligibleSuccessor):
             self._validate_eligible_successor(value)
         return self._append(_record_type(value), value)
@@ -418,15 +429,19 @@ class ImmutableStateStore:
     def append_promotion(self, value: Promotion) -> StoredRecord:
         self._validate_promotion(value)
         candidate = value.eligible_successor.candidate
-        if any(
-            isinstance(record.value, Pin)
-            and record.value.scope == candidate.scope
-            and record.value.model_digest == candidate.model_digest
-            and record.value.execution_profile_id in candidate.compatible_execution_profiles
-            for record in self.records()
-        ):
-            raise ValueError("Promotion is blocked by a Pin for this Scope")
-        return self._append(_record_type(value), value)
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = self.state_dir / "v2-state.lock"
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            self._lock(lock_file)
+            try:
+                records = self._records_unlocked()
+                if any(isinstance(record.value, Restriction) and record.value.candidate_id == candidate.candidate_id and record.value.scope == candidate.scope and record.value.model_digest == candidate.model_digest and record.value.execution_profile_id in candidate.compatible_execution_profiles for record in records):
+                    raise ValueError("Promotion cannot reactivate a restricted Champion")
+                if any(isinstance(record.value, Pin) and record.value.scope == candidate.scope and record.value.model_digest == candidate.model_digest and record.value.execution_profile_id in candidate.compatible_execution_profiles for record in records):
+                    raise ValueError("Promotion is blocked by a Pin for this Scope")
+                return self._append_locked(_record_type(value), value, records)
+            finally:
+                self._unlock(lock_file)
 
     def append_eligible_successor(self, value: EligibleSuccessor, *, model_identity: ModelIdentity, execution_profile: ExecutionProfile) -> StoredRecord:
         eligibility = self.eligibility(candidate_id=value.candidate.candidate_id, scope=value.candidate.scope, model_identity=model_identity, execution_profile=execution_profile)
@@ -575,10 +590,24 @@ class ImmutableStateStore:
                 candidate, record_hash = pinned
                 return PolicySelection(candidate.policy, "project_improvement", "exact compatible pinned Champion", record_hash)
             return self._safe_baseline(scope.mode, "pinned Champion is unavailable")
+        rolled_back_promotions = {
+            record.value.promotion_id for record in records if isinstance(record.value, Rollback)
+        }
+        restricted_candidates = {
+            record.value.candidate_id for record in records
+            if isinstance(record.value, Restriction)
+            and record.value.scope == scope
+            and record.value.model_digest == model_identity.artifact_digest
+            and record.value.execution_profile_id == execution_profile.profile_id
+        }
         for record in reversed(records):
             if not isinstance(record.value, Promotion):
                 continue
+            if record.record_hash in rolled_back_promotions:
+                continue
             candidate = record.value.eligible_successor.candidate
+            if candidate.candidate_id in restricted_candidates:
+                continue
             if candidate.scope != scope or candidate.model_digest != model_identity.artifact_digest:
                 continue
             if not candidate.required_capabilities.issubset(execution_profile.capabilities):
@@ -596,10 +625,25 @@ class ImmutableStateStore:
         execution_profile: ExecutionProfile,
         records: tuple[StoredRecord, ...] | None = None,
     ) -> tuple[Candidate, str] | None:
-        for record in reversed(records if records is not None else self.records()):
+        available_records = records if records is not None else self.records()
+        rolled_back_promotions = {
+            record.value.promotion_id for record in available_records if isinstance(record.value, Rollback)
+        }
+        restricted_candidates = {
+            record.value.candidate_id for record in available_records
+            if isinstance(record.value, Restriction)
+            and record.value.scope == scope
+            and record.value.model_digest == model_identity.artifact_digest
+            and record.value.execution_profile_id == execution_profile.profile_id
+        }
+        for record in reversed(available_records):
             if not isinstance(record.value, Promotion):
                 continue
+            if record.record_hash in rolled_back_promotions:
+                continue
             candidate = record.value.eligible_successor.candidate
+            if candidate.candidate_id in restricted_candidates:
+                continue
             if candidate.candidate_id != candidate_id or candidate.scope != scope or candidate.model_digest != model_identity.artifact_digest:
                 continue
             if not candidate.required_capabilities.issubset(execution_profile.capabilities):
@@ -609,7 +653,20 @@ class ImmutableStateStore:
             return candidate, record.record_hash
         return None
 
+
     def records(self) -> tuple[StoredRecord, ...]:
+        if not self.path.exists():
+            return ()
+        lock_path = self.state_dir / "v2-state.lock"
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            import fcntl
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
+            try:
+                return self._records_unlocked()
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def _records_unlocked(self) -> tuple[StoredRecord, ...]:
         if not self.path.exists():
             return ()
         records: list[StoredRecord] = []
@@ -633,21 +690,24 @@ class ImmutableStateStore:
         with lock_path.open("a+", encoding="utf-8") as lock_file:
             self._lock(lock_file)
             try:
-                existing = self.records()
-                document = {
-                    "schema_version": self.schema_version,
-                    "record_type": record_type,
-                    "recorded_at": datetime.now(timezone.utc).isoformat(),
-                    "previous_record_hash": existing[-1].record_hash if existing else None,
-                    "value": _to_json_value(value),
-                }
-                document["record_hash"] = self._hash_document(document)
-                with self.path.open("a", encoding="utf-8") as state_file:
-                    state_file.write(json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n")
-                    state_file.flush()
-                    os.fsync(state_file.fileno())
+                existing = self._records_unlocked()
+                return self._append_locked(record_type, value, existing)
             finally:
                 self._unlock(lock_file)
+
+    def _append_locked(self, record_type: str, value: RecordValue, existing: tuple[StoredRecord, ...]) -> StoredRecord:
+        document = {
+            "schema_version": self.schema_version,
+            "record_type": record_type,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "previous_record_hash": existing[-1].record_hash if existing else None,
+            "value": _to_json_value(value),
+        }
+        document["record_hash"] = self._hash_document(document)
+        with self.path.open("a", encoding="utf-8") as state_file:
+            state_file.write(json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n")
+            state_file.flush()
+            os.fsync(state_file.fileno())
         return self._record_from_document(document)
 
     @staticmethod
@@ -678,6 +738,62 @@ class ImmutableStateStore:
             previous_record_hash=document["previous_record_hash"],
             schema_version=document["schema_version"],
         )
+
+
+class PromotionController:
+    """Owns the guarded live transition from an Eligible Successor to Champion."""
+
+    def __init__(self, store: ImmutableStateStore) -> None:
+        self.store = store
+
+    def promote(self, successor: EligibleSuccessor, *, model_identity: ModelIdentity, execution_profile: ExecutionProfile, health_check: Callable[[], bool]) -> tuple[StoredRecord, PromotionNotice]:
+        candidate = successor.candidate
+        if not health_check():
+            raise ValueError("Promotion controller health check must pass before activation")
+        eligibility = self.store.eligibility(candidate_id=candidate.candidate_id, scope=candidate.scope, model_identity=model_identity, execution_profile=execution_profile)
+        if not eligibility.is_eligible or (eligibility.experiment_id, eligibility.evidence_bundle_id) != (successor.experiment_id, successor.evidence_bundle_id):
+            raise ValueError("Promotion requires a current exact Eligible Successor")
+        prior = self._active_promotion(candidate.scope, model_identity, execution_profile)
+        stored = self.store.append_promotion(Promotion(successor, prior.value.eligible_successor.candidate.candidate_id if prior else None, True))
+        return stored, PromotionNotice("promoted", candidate.candidate_id, "eligible successor passed controller health checks")
+
+    def recover(self, *, scope: Scope, model_identity: ModelIdentity, execution_profile: ExecutionProfile, reason: str, security_breach: bool = False) -> PromotionNotice:
+        active = self._active_promotion(scope, model_identity, execution_profile)
+        if active is None:
+            raise ValueError("Recovery requires a current exact compatible Champion")
+        candidate = active.value.eligible_successor.candidate
+        if security_breach:
+            self.store.append(Restriction(f"restriction-{active.record_hash[:12]}", scope, candidate.candidate_id, candidate.model_digest, execution_profile.profile_id, reason))
+        self.store.append(Rollback(f"rollback-{active.record_hash[:12]}", scope, active.record_hash, active.value.prior_champion_id, candidate.model_digest, execution_profile.profile_id, reason))
+        return PromotionNotice("restricted_and_rolled_back" if security_breach else "rolled_back", candidate.candidate_id, reason)
+
+    def enforce_live_guards(self, *, scope: Scope, model_identity: ModelIdentity, execution_profile: ExecutionProfile, quality_guard: Callable[[], bool], security_guard: Callable[[], bool]) -> PromotionNotice | None:
+        """Automatically recover the live Champion when an independent guard fails."""
+        if security_guard():
+            return self.recover(scope=scope, model_identity=model_identity, execution_profile=execution_profile, reason="verified_security_guard_failure", security_breach=True)
+        if not quality_guard():
+            return self.recover(scope=scope, model_identity=model_identity, execution_profile=execution_profile, reason="quality_guard_failed")
+        return None
+
+    def _active_promotion(self, scope: Scope, model_identity: ModelIdentity, execution_profile: ExecutionProfile) -> StoredRecord | None:
+        records = self.store.records()
+        rolled_back = {record.value.promotion_id for record in records if isinstance(record.value, Rollback)}
+        restricted = {
+            record.value.candidate_id for record in records
+            if isinstance(record.value, Restriction)
+            and record.value.scope == scope
+            and record.value.model_digest == model_identity.artifact_digest
+            and record.value.execution_profile_id == execution_profile.profile_id
+        }
+        for record in reversed(records):
+            if not isinstance(record.value, Promotion) or record.record_hash in rolled_back:
+                continue
+            candidate = record.value.eligible_successor.candidate
+            if candidate.candidate_id in restricted or candidate.scope != scope or candidate.model_digest != model_identity.artifact_digest:
+                continue
+            if execution_profile.profile_id in candidate.compatible_execution_profiles and candidate.required_capabilities.issubset(execution_profile.capabilities):
+                return record
+        return None
 
 
 def _record_type(value: RecordValue) -> str:

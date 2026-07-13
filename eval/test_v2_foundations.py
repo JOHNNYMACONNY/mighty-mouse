@@ -23,6 +23,7 @@ from mighty_mouse.v2.foundation import (
     Mode,
     Pin,
     Policy,
+    PromotionController,
     Preview,
     Promotion,
     Restriction,
@@ -208,6 +209,47 @@ def test_preview_and_pin_cli_never_silently_activate_a_candidate(monkeypatch, tm
         execution_profile=ExecutionProfile("codex-local", frozenset({"tools"})),
     )
     assert selection.policy.policy_id == "policy-001"
+
+
+def test_promotion_controller_requires_health_check_and_recovers_prior_champion(tmp_path):
+    store = ImmutableStateStore(tmp_path)
+    store.append_promotion(_promotion())
+    _eligible_successor(store)
+    successor = next(record.value for record in reversed(store.records()) if isinstance(record.value, EligibleSuccessor))
+    identity = ModelIdentity("sha256:exact-model")
+    profile = ExecutionProfile("codex-local", frozenset({"tools"}))
+    controller = PromotionController(store)
+
+    with pytest.raises(ValueError, match="health check"):
+        controller.promote(successor, model_identity=identity, execution_profile=profile, health_check=lambda: False)
+
+    promoted, notice = controller.promote(successor, model_identity=identity, execution_profile=profile, health_check=lambda: True)
+    assert notice.action == "promoted"
+    assert notice.candidate_id == "candidate-002"
+    assert store.select_policy(scope=_scope(), model_identity=identity, execution_profile=profile).policy.policy_id == "policy-002"
+
+    rollback_notice = controller.enforce_live_guards(scope=_scope(), model_identity=identity, execution_profile=profile, quality_guard=lambda: False, security_guard=lambda: False)
+    assert rollback_notice.action == "rolled_back"
+    assert store.select_policy(scope=_scope(), model_identity=identity, execution_profile=profile).policy.policy_id == "policy-001"
+    assert [record.value.promotion_id for record in store.records() if isinstance(record.value, Rollback)] == [promoted.record_hash]
+
+
+def test_promotion_controller_restricts_security_breach_and_never_reactivates_it(tmp_path):
+    store = ImmutableStateStore(tmp_path)
+    store.append_promotion(_promotion())
+    _eligible_successor(store)
+    successor = next(record.value for record in reversed(store.records()) if isinstance(record.value, EligibleSuccessor))
+    identity = ModelIdentity("sha256:exact-model")
+    profile = ExecutionProfile("codex-local", frozenset({"tools"}))
+    controller = PromotionController(store)
+    controller.promote(successor, model_identity=identity, execution_profile=profile, health_check=lambda: True)
+
+    notice = controller.recover(scope=_scope(), model_identity=identity, execution_profile=profile, reason="verified_provenance_breach", security_breach=True)
+    assert notice.action == "restricted_and_rolled_back"
+    assert store.select_policy(scope=_scope(), model_identity=identity, execution_profile=profile).policy.policy_id == "policy-001"
+    assert [record.value.reason for record in store.records() if isinstance(record.value, Restriction)] == ["verified_provenance_breach"]
+    with pytest.raises(ValueError, match="restricted Champion"):
+        controller.promote(successor, model_identity=identity, execution_profile=profile, health_check=lambda: True)
 
 
 def test_immutable_store_records_are_frozen_and_traceable(tmp_path):

@@ -147,6 +147,25 @@ class Signal:
 
 
 @dataclass(frozen=True)
+class HybridHandoff:
+    """Typed Investigation output persisted before Hybrid Coding starts."""
+
+    handoff_id: str
+    scope: Scope
+    summary: str
+    constraints: tuple[str, ...]
+    acceptance_checks: tuple[str, ...]
+    file_scope: tuple[str, ...]
+    risks: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.scope.mode is not Mode.HYBRID:
+            raise ValueError("Hybrid handoff requires a Hybrid Scope")
+        if not all((self.handoff_id, self.summary, self.acceptance_checks, self.file_scope)):
+            raise ValueError("Hybrid handoff requires id, summary, acceptance checks, and file scope")
+
+
+@dataclass(frozen=True)
 class EvidenceBundle:
     """Restricted experiment-specific provenance, referenced only by digest."""
 
@@ -262,7 +281,7 @@ class EvaluationOutcome:
     kind: EvaluationOutcomeKind
 
 
-RecordValue = Champion | Candidate | Promotion | Signal | EvidenceBundle | Experiment | Generation | Restriction | Pin | Preview | Rollback
+RecordValue = Champion | Candidate | Promotion | Signal | HybridHandoff | EvidenceBundle | Experiment | Generation | Restriction | Pin | Preview | Rollback
 
 
 @dataclass(frozen=True)
@@ -301,6 +320,9 @@ class ImmutableStateStore:
         return self.append(value)
 
     def append_champion(self, value: Champion) -> StoredRecord:
+        return self.append(value)
+
+    def append_hybrid_handoff(self, value: HybridHandoff) -> StoredRecord:
         return self.append(value)
 
     def append_promotion(self, value: Promotion) -> StoredRecord:
@@ -406,7 +428,7 @@ class ImmutableStateStore:
 
 def _record_type(value: RecordValue) -> str:
     return {
-        Champion: "champion", Candidate: "candidate", Promotion: "promotion", Signal: "signal", EvidenceBundle: "evidence_bundle",
+        Champion: "champion", Candidate: "candidate", Promotion: "promotion", Signal: "signal", HybridHandoff: "hybrid_handoff", EvidenceBundle: "evidence_bundle",
         Experiment: "experiment", Generation: "generation", Restriction: "restriction", Pin: "pin",
         Preview: "preview", Rollback: "rollback",
     }[type(value)]
@@ -455,6 +477,8 @@ def _record_from_value(record_type: str, value: dict[str, Any]) -> RecordValue:
         return Promotion(EligibleSuccessor(_candidate(successor["candidate"]), successor["experiment_id"], successor["evidence_bundle_id"]), value["prior_champion_id"], value["machine_gates_passed"])
     if record_type == "signal":
         return Signal(value["signal_id"], _scope_from_document(value["scope"]), value["model_digest"], value["execution_profile_id"], value["outcome"], value["duration_ms"], value["retry_count"], value["verifier_category"])
+    if record_type == "hybrid_handoff":
+        return HybridHandoff(value["handoff_id"], _scope_from_document(value["scope"]), value["summary"], tuple(value["constraints"]), tuple(value["acceptance_checks"]), tuple(value["file_scope"]), tuple(value["risks"]))
     if record_type == "evidence_bundle":
         return EvidenceBundle(value["evidence_bundle_id"], value["experiment_id"], value["model_digest"], value["execution_profile_id"], value["bundle_digest"])
     if record_type == "experiment":

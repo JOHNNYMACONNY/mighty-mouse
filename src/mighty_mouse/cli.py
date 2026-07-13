@@ -73,6 +73,22 @@ def main():
     parser_status.add_argument("--capability", action="append", default=None, help="Observed model capability (repeatable)")
     parser_status.add_argument("--json", action="store_true", help="Emit versioned JSON output")
 
+    # run
+    parser_run = subparsers.add_parser("run", help="Route one task through the v2 Autopilot boundary")
+    parser_run.add_argument("--state-dir", default=".mighty-mouse", help="Local v2 state directory")
+    parser_run.add_argument("--repository", required=True, help="Repository or project Scope")
+    parser_run.add_argument("--task-category", choices=("unknown", "maintenance", "feature", "debugging", "refactoring"), default="unknown", help="Controlled Task Category")
+    parser_run.add_argument("--model-class", required=True, help="Model class Scope")
+    parser_run.add_argument("--inferred-mode", choices=("coding", "agentic"), required=True, help="Autopilot's inferred Mode")
+    parser_run.add_argument("--confidence-percent", type=int, required=True, help="Autopilot routing confidence from 0 to 100")
+    parser_run.add_argument("--mode", choices=("coding", "agentic", "hybrid"), help="Optional explicit user Mode override")
+    parser_run.add_argument("--model-digest", help="Exact model artifact digest")
+    parser_run.add_argument("--model-artifact", help="Model artifact to fingerprint for exact identity")
+    parser_run.add_argument("--execution-profile", default="unknown", help="Host execution profile")
+    parser_run.add_argument("--capability", action="append", default=None, help="Observed model capability (repeatable)")
+    parser_run.add_argument("--handoff-file", help="JSON handoff produced by the Hybrid Investigation stage")
+    parser_run.add_argument("--json", action="store_true", help="Emit versioned JSON output")
+
     args = parser.parse_args()
 
     if args.command == "doctor":
@@ -119,6 +135,24 @@ def main():
             model_artifact=args.model_artifact,
             execution_profile=args.execution_profile,
             capabilities=args.capability,
+            json_output=args.json,
+        )
+
+    elif args.command == "run":
+        from mighty_mouse.commands.run_cmd import run_run
+        run_run(
+            state_dir=args.state_dir,
+            repository=args.repository,
+            task_category=args.task_category,
+            model_class=args.model_class,
+            inferred_mode=args.inferred_mode,
+            confidence_percent=args.confidence_percent,
+            mode=args.mode,
+            model_digest=args.model_digest,
+            model_artifact=args.model_artifact,
+            execution_profile=args.execution_profile,
+            capabilities=args.capability,
+            handoff_file=args.handoff_file,
             json_output=args.json,
         )
 

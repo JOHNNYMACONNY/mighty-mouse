@@ -52,6 +52,18 @@ _Avoid_: Task description, prompt summary
 A local, experiment-specific provenance record that may retain the richer diagnostic material needed to reproduce a deliberate evaluation; it is separate from routine Signals.
 _Avoid_: Signal, analytics event
 
+**Fresh Holdout**:
+A private, frozen, quarantined corpus used once for an independently paired claim gate. Its manifest, task digests, protocol, consumption, and terminal result bind durably to one nominated Holdout Contender and Experiment.
+_Avoid_: Development Suite, reusable benchmark
+
+**Claim Receipt**:
+An immutable, expiring, evidence-bound authorization for narrowly scoped public wording. A receipt becomes stale or blocked when its inputs, identity, restrictions, freshness, or integrity no longer verify.
+_Avoid_: Marketing approval, timeless result
+
+**Quarantine**:
+The non-authoritative boundary for private holdouts and imported Improvement Bundle data. Quarantined material cannot tune, promote, or activate a Policy; imported material must pass local evaluation.
+_Avoid_: Trusted import, deployment channel
+
 **Experiment**:
 A frozen evaluation that compares one or more Candidates against a baseline under a defined protocol. Its terminal outcome is completed, invalid, or failed.
 _Avoid_: Candidate, generation

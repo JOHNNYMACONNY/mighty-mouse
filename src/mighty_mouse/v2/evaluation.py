@@ -40,6 +40,7 @@ class EvaluationRequest:
     budget_digest: str
     capability_probe_passed: bool
     sandbox_check_passed: bool
+    protected_task_categories: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
 @dataclass(frozen=True)
 class EvaluationResult:
@@ -60,14 +61,19 @@ class FreshHoldoutRequest:
     protocol_digest: str
     environment_digest: str
     corpus_digest: str
+    task_digests: tuple[tuple[str, str], ...] = ()
+    manifest_digest: str | None = None
     contaminated: bool = False
     exposed: bool = False
 
     def __post_init__(self) -> None:
-        if not self.task_ids or not all((self.protocol_digest, self.environment_digest, self.corpus_digest)):
+        if (not self.task_ids or len(set(self.task_ids)) != len(self.task_ids)
+                or not all((self.protocol_digest, self.environment_digest, self.corpus_digest))):
             raise ValueError("fresh holdout requires frozen tasks and versioned protocol inputs")
         if self.contaminated or self.exposed:
             raise ValueError("consumed, contaminated, or exposed holdout tasks are ineligible")
+        if self.task_digests and {task for task, _ in self.task_digests} != set(self.task_ids):
+            raise ValueError("fresh holdout task IDs and frozen task digests must match")
 
 class DevelopmentEvaluator:
     """Runs frozen development tasks only; no holdout input exists in this API."""
@@ -115,12 +121,15 @@ class DevelopmentEvaluator:
                 item.run.kind is EvaluationOutcomeKind.INVALID for item in runs
             )
             outcome = ExperimentOutcome.INVALID if invalid else ExperimentOutcome.FAILED if base_failed else ExperimentOutcome.COMPLETED
-            winner = None if outcome is not ExperimentOutcome.COMPLETED else self._winner(baseline, candidates, runs)
+            winner = None if outcome is not ExperimentOutcome.COMPLETED else self._winner(baseline, candidates, runs, request.protected_task_categories)
             experiment_id = f"experiment-{uuid4().hex}"
             digest = self._digest({"generation": generation.generation_id, "base_digest": base_digest, "preparation_digest": request.preparation_digest, "budget_digest": request.budget_digest, "tasks": generation.task_order, "seeds": generation.seed_schedule, "condition_order": generation.condition_order, "gates": gates, "runs": [(item.task_id, item.paired_candidate_id, item.candidate_id, item.run.kind.value, item.run.duration_ms, item.run.tool_calls, item.run.retries, item.run.reason) for item in runs]})
             evidence = EvidenceBundle(f"evidence-{uuid4().hex}", experiment_id, generation.model_digest, generation.execution_profile_id, digest)
-            experiment = Experiment(experiment_id, generation.generation_id, baseline.candidate_id, generation.model_digest, generation.execution_profile_id, tuple(c.candidate_id for c in candidates), (evidence.evidence_bundle_id,), (evidence.bundle_digest,), outcomes, gates, generation.protocol_version, outcome, ExperimentDecision.NOMINATE if winner else ExperimentDecision.NO_CHANGE, winner.candidate_id if winner else None)
-            self.store.append(evidence); self.store.append(experiment)
+            condition_evidence = tuple(EvidenceBundle(f"evidence-{uuid4().hex}", experiment_id, generation.model_digest, generation.execution_profile_id, self._digest({"experiment": experiment_id, "task": item.task_id, "paired": item.paired_candidate_id, "candidate": item.candidate_id, "outcome": item.run.kind.value, "reason": item.run.reason})) for item in runs)
+            all_evidence = (evidence, *condition_evidence)
+            experiment = Experiment(experiment_id, generation.generation_id, baseline.candidate_id, generation.model_digest, generation.execution_profile_id, tuple(c.candidate_id for c in candidates), tuple(item.evidence_bundle_id for item in all_evidence), tuple(item.bundle_digest for item in all_evidence), outcomes, gates, generation.protocol_version, outcome, ExperimentDecision.NOMINATE if winner else ExperimentDecision.NO_CHANGE, winner.candidate_id if winner else None)
+            for bundle in all_evidence: self.store.append(bundle)
+            self.store.append(experiment)
             return EvaluationResult(experiment_id, experiment.outcome, experiment.decision, experiment.holdout_nominee_id)
 
     def _inputs(self, generation_id: str):
@@ -135,12 +144,18 @@ class DevelopmentEvaluator:
 
     def _already_nominated(self, generation_id): return any(isinstance(r.value, Experiment) and r.value.generation_id == generation_id and r.value.holdout_nominee_id for r in self.store.records())
     @staticmethod
-    def _winner(baseline, candidates, runs):
+    def _winner(baseline, candidates, runs, protected_task_categories=()):
         def score(candidate, paired_candidate_id):
             values = [item.run for item in runs if item.paired_candidate_id == paired_candidate_id and item.candidate_id == candidate.candidate_id]
             return (sum(run.kind is EvaluationOutcomeKind.PASSED for run in values), -sum(run.duration_ms + run.tool_calls for run in values), -sum(run.retries for run in values))
         eligible = [candidate for candidate in candidates if not any(item.run.kind is EvaluationOutcomeKind.ERROR for item in runs if item.candidate_id == candidate.candidate_id)]
-        contenders = [candidate for candidate in eligible if score(candidate, candidate.candidate_id) > score(baseline, candidate.candidate_id)]
+        def protects(candidate):
+            for _, task_ids in protected_task_categories:
+                candidate_passes = sum(item.run.kind is EvaluationOutcomeKind.PASSED for item in runs if item.paired_candidate_id == candidate.candidate_id and item.candidate_id == candidate.candidate_id and item.task_id in task_ids)
+                baseline_passes = sum(item.run.kind is EvaluationOutcomeKind.PASSED for item in runs if item.paired_candidate_id == candidate.candidate_id and item.candidate_id == baseline.candidate_id and item.task_id in task_ids)
+                if candidate_passes < baseline_passes: return False
+            return True
+        contenders = [candidate for candidate in eligible if protects(candidate) and score(candidate, candidate.candidate_id) > score(baseline, candidate.candidate_id)]
         if not contenders:
             return None
         best_score = max(score(candidate, candidate.candidate_id) for candidate in contenders)
@@ -184,6 +199,16 @@ class FreshHoldoutEvaluator:
         candidate, baseline = candidates.get(request.candidate_id), candidates.get(experiment.baseline_candidate_id)
         if not candidate or not baseline or not request.base_workspace.is_dir():
             raise ValueError("fresh holdout requires recorded paired inputs and a base workspace")
+        if not request.task_digests or not request.manifest_digest:
+            raise ValueError("fresh holdout requires a controller-frozen private manifest")
+        task_digests, manifest_digest = request.task_digests, request.manifest_digest
+        manifest_path = self._manifest_path(manifest_digest)
+        if not manifest_path.is_file() or json.loads(manifest_path.read_text()) != {"corpus": request.corpus_digest, "protocol": request.protocol_digest, "environment": request.environment_digest, "tasks": [list(item) for item in task_digests]}:
+            raise ValueError("fresh holdout manifest does not match frozen private corpus")
+        if any(isinstance(r.value, FreshHoldout) and (
+            r.value.manifest_digest == manifest_digest or set(r.value.task_digests).intersection(task_digests)
+        ) for r in records):
+            raise ValueError("fresh holdout manifest or task has already been consumed")
         passed = True
         with TemporaryDirectory(prefix="mighty-mouse-holdout-") as root:
             for task_id in request.task_ids:
@@ -197,6 +222,24 @@ class FreshHoldoutEvaluator:
                         kind = EvaluationOutcomeKind.ERROR
                     if kind is not EvaluationOutcomeKind.PASSED:
                         passed = False
-        result = FreshHoldout(candidate.candidate_id, candidate.scope, candidate.model_digest, experiment.execution_profile_id, passed)
+        evidence_id = next((identifier for identifier in experiment.evidence_bundle_ids), None)
+        result = FreshHoldout(candidate.candidate_id, candidate.scope, candidate.model_digest, experiment.execution_profile_id, passed,
+                              experiment.experiment_id, evidence_id, manifest_digest, request.corpus_digest,
+                              request.protocol_digest, task_digests, True, request.contaminated, request.exposed)
         self.store.append(result)
         return result
+
+    @staticmethod
+    def _digest(value) -> str:
+        return "sha256:" + sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    def _manifest_path(self, digest: str) -> Path:
+        return self.store.path.parent / "fresh-holdout-manifests" / f"{digest.removeprefix('sha256:')}.json"
+
+    def freeze_manifest(self, *, task_digests: tuple[tuple[str, str], ...], corpus_digest: str, protocol_digest: str, environment_digest: str) -> str:
+        if not task_digests or len({task for task, _ in task_digests}) != len(task_digests): raise ValueError("private manifest requires unique frozen task digests")
+        payload = {"corpus": corpus_digest, "protocol": protocol_digest, "environment": environment_digest, "tasks": [list(item) for item in task_digests]}
+        digest = self._digest(payload); path = self._manifest_path(digest); path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists() and json.loads(path.read_text()) != payload: raise ValueError("private manifest digest collision")
+        path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        return digest

@@ -86,7 +86,9 @@ def _eligible_successor(store, *, candidate_id="candidate-002", security=True):
         (("safety", True), ("security", security), ("provenance", True), ("integrity", True), ("freshness", True)), "v2", ExperimentOutcome.COMPLETED,
         ExperimentDecision.NOMINATE, candidate.candidate_id,
     ))
-    store.append(FreshHoldout(candidate.candidate_id, _scope(), "sha256:exact-model", "codex-local", True))
+    store.append(FreshHoldout(candidate.candidate_id, _scope(), "sha256:exact-model", "codex-local", True,
+                              "experiment-002", "evidence-002", "sha256:manifest", "sha256:corpus",
+                              "v2", (("holdout-task", "sha256:task"),)))
     if security:
         store.append_eligible_successor(
             EligibleSuccessor(candidate, "experiment-002", "evidence-002"),

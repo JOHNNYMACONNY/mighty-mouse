@@ -247,6 +247,15 @@ class FreshHoldout:
     model_digest: str
     execution_profile_id: str
     passed: bool
+    experiment_id: str | None = None
+    evidence_bundle_id: str | None = None
+    manifest_digest: str | None = None
+    corpus_digest: str | None = None
+    protocol_digest: str | None = None
+    task_digests: tuple[tuple[str, str], ...] = ()
+    consumed: bool = True
+    contaminated: bool = False
+    exposed: bool = False
 
 
 @dataclass(frozen=True)
@@ -558,7 +567,11 @@ class ImmutableStateStore:
              and record.value.scope == scope
              and record.value.model_digest == model_identity.artifact_digest
              and record.value.execution_profile_id == execution_profile.profile_id
-             and record.value.passed),
+             and record.value.passed
+             and record.value.experiment_id == (experiment.experiment_id if experiment else None)
+             and record.value.evidence_bundle_id == (evidence.evidence_bundle_id if evidence else None)
+             and all((record.value.manifest_digest, record.value.corpus_digest, record.value.protocol_digest, record.value.task_digests))
+             and record.value.consumed and not record.value.contaminated and not record.value.exposed),
             None,
         )
         gates = (
@@ -915,7 +928,7 @@ def _record_from_value(record_type: str, value: dict[str, Any]) -> RecordValue:
     if record_type == "evidence_bundle":
         return EvidenceBundle(value["evidence_bundle_id"], value["experiment_id"], value["model_digest"], value["execution_profile_id"], value["bundle_digest"])
     if record_type == "fresh_holdout":
-        return FreshHoldout(value["candidate_id"], _scope_from_document(value["scope"]), value["model_digest"], value["execution_profile_id"], value["passed"])
+        return FreshHoldout(value["candidate_id"], _scope_from_document(value["scope"]), value["model_digest"], value["execution_profile_id"], value["passed"], value.get("experiment_id"), value.get("evidence_bundle_id"), value.get("manifest_digest"), value.get("corpus_digest"), value.get("protocol_digest"), tuple(tuple(item) for item in value.get("task_digests", ())), value.get("consumed", False), value.get("contaminated", False), value.get("exposed", False))
     if record_type == "eligible_successor":
         return EligibleSuccessor(_candidate(value["candidate"]), value["experiment_id"], value["evidence_bundle_id"])
     if record_type == "experiment":
@@ -980,7 +993,7 @@ def status_document(state_dir: str | Path, scope: Scope, model_identity: ModelId
     history = [
         {"kind": "champion" if isinstance(record.value, Promotion) else _record_type(record.value), "record_pointer": record.record_hash}
         for record in records
-        if isinstance(record.value, (Champion, Promotion, Pin, Preview))
+        if isinstance(record.value, (Champion, Promotion, Pin, Preview, Rollback, Restriction))
     ]
     return {
         "schema_version": ImmutableStateStore.schema_version, "interface": "status",

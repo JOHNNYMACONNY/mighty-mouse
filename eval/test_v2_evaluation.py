@@ -2,7 +2,7 @@ import pytest
 from dataclasses import replace
 
 from mighty_mouse.v2.evaluation import DevelopmentEvaluator, EvaluationRequest, EvaluationRun, FreshHoldoutEvaluator, FreshHoldoutRequest
-from mighty_mouse.v2.foundation import Candidate, EvaluationOutcomeKind, ImmutableStateStore, Policy
+from mighty_mouse.v2.foundation import Candidate, EvaluationOutcomeKind, Generation, ImmutableStateStore, Policy
 from test_v2_background_research import _controller, _start
 
 
@@ -38,8 +38,11 @@ def test_fresh_holdout_is_quarantined_and_persists_only_its_gate(tmp_path):
     result = DevelopmentEvaluator(tmp_path).evaluate(
         _request(tmp_path, generation_id), lambda task, candidate, workspace, seed: EvaluationOutcomeKind.PASSED if candidate.policy.version == "generated-1" else EvaluationOutcomeKind.FAILED
     )
-    request = FreshHoldoutRequest(result.experiment_id, result.holdout_nominee_id, _request(tmp_path, generation_id).base_workspace, ("fresh-task-001",), "sha256:protocol", "sha256:environment", "sha256:corpus")
-    held = FreshHoldoutEvaluator(tmp_path).evaluate(request, lambda *_: EvaluationOutcomeKind.PASSED)
+    evaluator = FreshHoldoutEvaluator(tmp_path)
+    task_digests = (("fresh-task-001", "sha256:fresh-task"),)
+    manifest = evaluator.freeze_manifest(task_digests=task_digests, corpus_digest="sha256:corpus", protocol_digest="sha256:protocol", environment_digest="sha256:environment")
+    request = FreshHoldoutRequest(result.experiment_id, result.holdout_nominee_id, _request(tmp_path, generation_id).base_workspace, ("fresh-task-001",), "sha256:protocol", "sha256:environment", "sha256:corpus", task_digests, manifest)
+    held = evaluator.evaluate(request, lambda *_: EvaluationOutcomeKind.PASSED)
     assert held.passed
     with pytest.raises(ValueError, match="ineligible"):
         FreshHoldoutRequest(result.experiment_id, result.holdout_nominee_id, request.base_workspace, request.task_ids, request.protocol_digest, request.environment_digest, request.corpus_digest, contaminated=True)
@@ -54,6 +57,18 @@ def test_development_evaluation_records_no_change_for_a_tie(tmp_path):
 
     assert result.decision.value == "no_change"
     assert result.holdout_nominee_id is None
+
+def test_protected_category_regression_cannot_be_nominated(tmp_path):
+    generation_id = _generation(tmp_path)
+    protected_task = next(record.value for record in ImmutableStateStore(tmp_path).records() if isinstance(record.value, Generation)).task_order[0]
+    request = _request(tmp_path, generation_id)
+    request = replace(request, protected_task_categories=(("maintenance", (protected_task,)),))
+    def runner(task, candidate, *_):
+        if task == protected_task:
+            return EvaluationOutcomeKind.FAILED if candidate.policy.version == "generated-1" else EvaluationOutcomeKind.PASSED
+        return EvaluationOutcomeKind.PASSED if candidate.policy.version == "generated-1" else EvaluationOutcomeKind.FAILED
+    result = DevelopmentEvaluator(tmp_path).evaluate(request, runner)
+    assert result.decision.value == "no_change"
 
 
 def test_development_evaluation_is_invalid_when_a_gate_or_task_is_invalid(tmp_path):

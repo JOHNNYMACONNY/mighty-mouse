@@ -91,7 +91,7 @@ def main():
 
     # signals
     parser_signals = subparsers.add_parser("signals", help="Collect privacy-safe v2 Signals or view aggregate history")
-    parser_signals.add_argument("action", choices=("collect", "pause", "resume", "purge", "history"))
+    parser_signals.add_argument("action", choices=("collect", "pause", "resume", "compact", "purge", "history"))
     parser_signals.add_argument("--state-dir", default=".mighty-mouse", help="Local v2 state directory")
     parser_signals.add_argument("--signal-id", help="Controlled Signal identifier")
     parser_signals.add_argument("--repository", help="Repository Scope for collection")

@@ -106,6 +106,30 @@ def test_compaction_moves_expired_receipts_to_durable_aggregates(tmp_path):
     }]
 
 
+def test_collection_compacts_expired_receipts_before_persisting_a_new_receipt(tmp_path):
+    lifecycle = SignalLifecycle(tmp_path)
+    collected_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    lifecycle.collect(_signal(signal_id="signal-001"), now=collected_at)
+
+    lifecycle.collect(_signal(signal_id="signal-002"), now=collected_at + timedelta(days=30))
+
+    history = lifecycle.history()
+    assert history["receipt_count"] == 1
+    assert history["aggregates"][0]["count"] == 2
+
+
+def test_compact_cli_exposes_expired_receipt_maintenance(monkeypatch, tmp_path, capsys):
+    lifecycle = SignalLifecycle(tmp_path)
+    lifecycle.collect(_signal(), now=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    monkeypatch.setattr("mighty_mouse.commands.signals_cmd.SignalLifecycle", lambda _state_dir: lifecycle)
+    monkeypatch.setattr(sys, "argv", ["mighty-mouse", "signals", "compact", "--state-dir", str(tmp_path), "--json"])
+
+    cli.main()
+
+    document = json.loads(capsys.readouterr().out)
+    assert document == {"action": "compact", "compacted_receipts": 1, "interface": "signals"}
+
+
 def test_compaction_preserves_the_append_only_chain_for_retained_receipts(tmp_path):
     lifecycle = SignalLifecycle(tmp_path)
     collected_at = datetime(2026, 1, 1, tzinfo=timezone.utc)

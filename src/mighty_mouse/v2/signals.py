@@ -32,6 +32,7 @@ class SignalLifecycle:
         """Persist one validated Signal receipt unless collection is paused."""
         if self.collection_paused:
             return None
+        self.compact(now=now)
         document = {"schema_version": self.schema_version, "recorded_at": self._timestamp(now), "signal": _to_json_value(signal)}
         document["receipt_hash"] = self._hash(document)
         self._write_immutable(self.receipt_dir / f"{document['receipt_hash']}.json", document)

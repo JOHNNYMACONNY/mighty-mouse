@@ -24,6 +24,8 @@ def run_signals(
         document = {"interface": "signals", "action": action, "collection_paused": False}
     elif action == "history":
         document = {"interface": "signals", "history": lifecycle.history()}
+    elif action == "compact":
+        document = {"interface": "signals", "action": action, "compacted_receipts": lifecycle.compact()}
     elif action == "purge":
         document = {"interface": "signals", "action": action, "removed_receipts": lifecycle.purge()}
     else:

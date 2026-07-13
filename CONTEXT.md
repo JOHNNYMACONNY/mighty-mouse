@@ -32,6 +32,10 @@ _Avoid_: Deletion, ordinary quality regression
 An immutable improvement-cycle record linking one base Champion, its input Signals, Experiment settings, and the Candidates it produced.
 _Avoid_: Version number, runtime session
 
+**Protocol Manifest**:
+An immutable, content-addressed declaration of one Generation's frozen inputs, including its compatible base Champion, Model Identity, Execution Profile, Signal aggregate, protocol version, budgets, seeds, task ordering, and allowed Policy mutation surface.
+_Avoid_: Mutable runtime settings, Candidate payload
+
 **Signal**:
 A content-free, structured observation from routine use, such as outcome, duration, retry count, verifier category, or environment metadata. It never contains source code, prompts, transcripts, or secrets.
 _Avoid_: Transcript, telemetry payload
@@ -51,6 +55,18 @@ _Avoid_: Signal, analytics event
 **Experiment**:
 A frozen evaluation that compares one or more Candidates against a baseline under a defined protocol. Its terminal outcome is completed, invalid, or failed.
 _Avoid_: Candidate, generation
+
+**Development Suite**:
+A versioned, local, access-controlled corpus with executable acceptance and adversarial checks, frozen by digest in a Protocol Manifest to compare a Candidate with its base Champion. It is reproducible evaluation input, never a source of fresh-holdout evidence.
+_Avoid_: Holdout, live-user corpus
+
+**Paired Development Experiment**:
+An Experiment that independently compares every Candidate in one Generation with the same base Champion on the frozen Development Suite under matched, precommitted conditions. Ordinary task failures are scored evidence; Candidate errors make that Candidate ineligible, while baseline errors, failed integrity gates, contamination, or safety failures invalidate the Experiment. It may record no change or nominate one Holdout Contender.
+_Avoid_: Candidate tournament, holdout evaluation
+
+**Holdout Contender**:
+The sole Candidate, if any, nominated by a valid Paired Development Experiment for independent fresh-holdout evaluation. It is not an Eligible Successor or Champion.
+_Avoid_: Winner, promoted Candidate
 
 **Promotion**:
 An auditable, machine-gated state change that makes a Candidate the Champion. A failed post-promotion guard triggers automatic rollback.

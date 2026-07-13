@@ -51,6 +51,7 @@ class EvaluationOutcomeKind(str, Enum):
     FAILED = "failed"
     INVALID = "invalid"
     TIMEOUT = "timeout"
+    ERROR = "error"
 
 
 class ExperimentDecision(str, Enum):
@@ -337,6 +338,7 @@ class EvaluationOutcome:
     task_id: str
     candidate_id: str
     kind: EvaluationOutcomeKind
+    reason: str | None = None
 
 
 RecordValue = Champion | Candidate | Promotion | Signal | HybridHandoff | EvidenceBundle | Experiment | Generation | Restriction | Pin | Preview | Rollback | RoutingDecision
@@ -548,7 +550,7 @@ def _record_from_value(record_type: str, value: dict[str, Any]) -> RecordValue:
     if record_type == "evidence_bundle":
         return EvidenceBundle(value["evidence_bundle_id"], value["experiment_id"], value["model_digest"], value["execution_profile_id"], value["bundle_digest"])
     if record_type == "experiment":
-        return Experiment(value["experiment_id"], value["generation_id"], value["baseline_candidate_id"], value["model_digest"], value["execution_profile_id"], tuple(value["candidate_ids"]), tuple(value["evidence_bundle_ids"]), tuple(value["evidence_bundle_digests"]), tuple(EvaluationOutcome(item["task_id"], item["candidate_id"], EvaluationOutcomeKind(item["kind"])) for item in value["evaluation_outcomes"]), tuple((item[0], item[1]) for item in value["gate_results"]), value["protocol_version"], ExperimentOutcome(value["outcome"]), ExperimentDecision(value["decision"]), value["holdout_nominee_id"])
+        return Experiment(value["experiment_id"], value["generation_id"], value["baseline_candidate_id"], value["model_digest"], value["execution_profile_id"], tuple(value["candidate_ids"]), tuple(value["evidence_bundle_ids"]), tuple(value["evidence_bundle_digests"]), tuple(EvaluationOutcome(item["task_id"], item["candidate_id"], EvaluationOutcomeKind(item["kind"]), item.get("reason")) for item in value["evaluation_outcomes"]), tuple((item[0], item[1]) for item in value["gate_results"]), value["protocol_version"], ExperimentOutcome(value["outcome"]), ExperimentDecision(value["decision"]), value["holdout_nominee_id"])
     if record_type == "generation":
         return Generation(value["generation_id"], value["base_champion_id"], _scope_from_document(value["scope"]), value["model_digest"], value["execution_profile_id"], tuple(value["compatible_execution_profile_ids"]), tuple(value["signal_ids"]), value["signal_aggregate_digest"], tuple(value["experiment_ids"]), tuple(value["candidate_ids"]), value["protocol_version"], value["mutation_budget"], tuple(value["seed_schedule"]), tuple(value["task_order"]), tuple(value["condition_order"]))
     if record_type == "restriction":

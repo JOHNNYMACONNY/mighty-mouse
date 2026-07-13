@@ -429,11 +429,13 @@ def test_immutable_store_round_trips_every_phase_a_record_type(tmp_path):
         experiment_ids=(experiment.experiment_id,),
         candidate_ids=(candidate.candidate_id,),
         protocol_version="v1",
-        mutation_budget=1,
-        seed_schedule=(7,),
-        task_order=("task-001",),
-        condition_order=("baseline", candidate.candidate_id),
-    )
+            mutation_budget=1,
+            seed_schedule=(7,),
+            task_order=("task-001",),
+            condition_order=("baseline", candidate.candidate_id),
+            protected_task_categories=(("all-development-tasks", ("task-001",)),),
+            protocol_manifest_digest="sha256:manifest",
+        )
     promotion = _promotion()
     records = (
         store.append_champion(Champion("champion-001", candidate.candidate_id, _scope(), "sha256:exact-model", profile.profile_id)),

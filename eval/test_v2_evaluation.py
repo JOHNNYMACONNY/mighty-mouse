@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from dataclasses import replace
 
@@ -13,11 +15,13 @@ def _generation(tmp_path):
     return generation_id
 
 
-def _request(tmp_path, generation_id, capability=True, sandbox=True):
+def _request(tmp_path, generation_id, capability=True, sandbox=True, protected_task_categories=None):
     base = tmp_path / "base"
     base.mkdir(parents=True, exist_ok=True)
     (base / "same-base.txt").write_text("frozen")
-    return EvaluationRequest(generation_id, base, "sha256:preparation", "sha256:budget", capability, sandbox)
+    if protected_task_categories is None:
+        protected_task_categories = next(record.value.protected_task_categories for record in reversed(ImmutableStateStore(tmp_path).records()) if isinstance(record.value, Generation) and record.value.generation_id == generation_id)
+    return EvaluationRequest(generation_id, base, "sha256:preparation", "sha256:budget", capability, sandbox, protected_task_categories)
 
 
 def test_development_evaluation_nominates_a_valid_paired_winner(tmp_path):
@@ -59,16 +63,45 @@ def test_development_evaluation_records_no_change_for_a_tie(tmp_path):
     assert result.holdout_nominee_id is None
 
 def test_protected_category_regression_cannot_be_nominated(tmp_path):
-    generation_id = _generation(tmp_path)
-    protected_task = next(record.value for record in ImmutableStateStore(tmp_path).records() if isinstance(record.value, Generation)).task_order[0]
-    request = _request(tmp_path, generation_id)
-    request = replace(request, protected_task_categories=(("maintenance", (protected_task,)),))
+    controller = _controller(tmp_path)
+    generation_id = _start(controller, protected_task_categories=(("maintenance", ("dev-001",)),))["generation_id"]
+    controller.run(thermal_state="normal")
+    protected_task = "dev-001"
+    request = _request(tmp_path, generation_id, protected_task_categories=(("maintenance", (protected_task,)),))
+    generation = next(record.value for record in ImmutableStateStore(tmp_path).records() if isinstance(record.value, Generation))
+    assert generation.protected_task_categories == (("maintenance", (protected_task,)),)
     def runner(task, candidate, *_):
         if task == protected_task:
             return EvaluationOutcomeKind.FAILED if candidate.policy.version == "generated-1" else EvaluationOutcomeKind.PASSED
         return EvaluationOutcomeKind.PASSED if candidate.policy.version == "generated-1" else EvaluationOutcomeKind.FAILED
     result = DevelopmentEvaluator(tmp_path).evaluate(request, runner)
     assert result.decision.value == "no_change"
+
+
+def test_evaluation_rejects_protected_categories_that_do_not_match_the_generation(tmp_path):
+    controller = _controller(tmp_path)
+    generation_id = _start(controller, protected_task_categories=(("maintenance", ("dev-001",)),))["generation_id"]
+    controller.run(thermal_state="normal")
+
+    request = replace(_request(tmp_path, generation_id), protected_task_categories=())
+
+    with pytest.raises(ValueError, match="protected task categories"):
+        DevelopmentEvaluator(tmp_path).evaluate(request, lambda *_: EvaluationOutcomeKind.PASSED)
+
+    generation = next(record.value for record in ImmutableStateStore(tmp_path).records() if isinstance(record.value, Generation))
+    with pytest.raises(ValueError, match="precommitted"):
+        replace(generation, protected_task_categories=())
+
+
+def test_evaluation_rejects_a_tampered_protocol_manifest(tmp_path):
+    generation_id = _generation(tmp_path)
+    manifest_path = tmp_path / "v2-background-research-manifests" / f"{generation_id}.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["task_order"] = ["tampered-task"]
+    manifest_path.write_text(json.dumps(manifest))
+
+    with pytest.raises(ValueError, match="Protocol Manifest"):
+        DevelopmentEvaluator(tmp_path).evaluate(_request(tmp_path, generation_id), lambda *_: EvaluationOutcomeKind.PASSED)
 
 
 def test_development_evaluation_is_invalid_when_a_gate_or_task_is_invalid(tmp_path):
@@ -172,3 +205,33 @@ def test_timeout_is_recorded_as_an_error_with_a_machine_readable_reason(tmp_path
     candidate_outcome = next(outcome for outcome in experiment.evaluation_outcomes if outcome.candidate_id != "candidate-base")
     assert candidate_outcome.kind is EvaluationOutcomeKind.ERROR
     assert candidate_outcome.reason == "timeout"
+
+
+def test_each_condition_outcome_links_to_its_immutable_evidence_bundle(tmp_path, monkeypatch):
+    generation_id = _generation(tmp_path)
+    captured_evidence_payloads = []
+    digest = DevelopmentEvaluator._digest
+
+    def capture_digest(value):
+        if "protocol_manifest_digest" in value:
+            captured_evidence_payloads.append(value)
+        return digest(value)
+
+    monkeypatch.setattr(DevelopmentEvaluator, "_digest", staticmethod(capture_digest))
+    result = DevelopmentEvaluator(tmp_path).evaluate(
+        _request(tmp_path, generation_id),
+        lambda task_id, candidate, workspace, seed: EvaluationOutcomeKind.PASSED,
+    )
+
+    records = ImmutableStateStore(tmp_path).records()
+    experiment = next(record.value for record in records if getattr(record.value, "experiment_id", None) == result.experiment_id and type(record.value).__name__ == "Experiment")
+    bundles = {record.value.evidence_bundle_id for record in records if type(record.value).__name__ == "EvidenceBundle"}
+    bundle_by_id = {record.value.evidence_bundle_id: record.value for record in records if type(record.value).__name__ == "EvidenceBundle"}
+
+    assert all(outcome.evidence_bundle_id in bundles for outcome in experiment.evaluation_outcomes)
+    assert {outcome.evidence_bundle_id for outcome in experiment.evaluation_outcomes}.issubset(experiment.evidence_bundle_ids)
+    assert all(bundle_by_id[outcome.evidence_bundle_id].candidate_id == outcome.candidate_id for outcome in experiment.evaluation_outcomes)
+    generation = next(record.value for record in records if isinstance(record.value, Generation) and record.value.generation_id == generation_id)
+    assert captured_evidence_payloads
+    assert all(payload["protocol_manifest_digest"] == generation.protocol_manifest_digest for payload in captured_evidence_payloads)
+    assert all(payload["model_digest"] == generation.model_digest and payload["execution_profile_id"] == generation.execution_profile_id for payload in captured_evidence_payloads)

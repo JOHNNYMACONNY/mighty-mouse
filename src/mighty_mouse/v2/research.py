@@ -24,6 +24,7 @@ from mighty_mouse.v2.foundation import (
     ModelIdentity,
     Policy,
     Scope,
+    validate_protected_task_categories,
 )
 from mighty_mouse.v2.signals import SignalLifecycle
 
@@ -72,10 +73,13 @@ class BackgroundResearch:
         seed_schedule: tuple[int, ...],
         task_order: tuple[str, ...],
         mutation_paths: tuple[str, ...],
+        protected_task_categories: tuple[tuple[str, tuple[str, ...]], ...] = (),
     ) -> dict[str, Any]:
         if self._runnable_generation_id() is not None:
             raise ValueError("a Background Research Generation is running or resumable; stop it before starting another")
         self._validate_start_inputs(model_identity, execution_profile, protocol_version, seed_schedule, task_order, mutation_paths)
+        protected_task_categories = protected_task_categories or (("all-development-tasks", task_order),)
+        validate_protected_task_categories(protected_task_categories, task_order)
         champion, candidate = self._base_champion(scope, model_identity, execution_profile)
         generation_id = f"generation-{uuid4().hex}"
         manifest = {
@@ -93,6 +97,7 @@ class BackgroundResearch:
             "seed_schedule": list(seed_schedule),
             "task_order": list(task_order),
             "condition_order": ["baseline", "candidate"],
+            "protected_task_categories": [[category, list(task_ids)] for category, task_ids in protected_task_categories],
             "mutation_paths": list(mutation_paths),
             "recorded_at": self._timestamp(),
         }
@@ -150,6 +155,8 @@ class BackgroundResearch:
             signal_aggregate_digest=manifest["signal_aggregate_digest"], experiment_ids=(experiment_id,), candidate_ids=(candidate.candidate_id,),
             protocol_version=manifest["protocol_version"], mutation_budget=manifest["limits"]["candidate_cap"],
             seed_schedule=tuple(manifest["seed_schedule"]), task_order=tuple(manifest["task_order"]), condition_order=tuple(manifest["condition_order"]),
+            protected_task_categories=tuple((category, tuple(task_ids)) for category, task_ids in manifest.get("protected_task_categories", ())),
+            protocol_manifest_digest=manifest["manifest_digest"],
         )
         self.store.append_candidate(candidate)
         self.store.append(evidence)

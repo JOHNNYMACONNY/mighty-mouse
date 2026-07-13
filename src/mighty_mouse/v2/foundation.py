@@ -236,6 +236,7 @@ class EvidenceBundle:
     model_digest: str
     execution_profile_id: str
     bundle_digest: str
+    candidate_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -306,6 +307,8 @@ class Generation:
     seed_schedule: tuple[int, ...]
     task_order: tuple[str, ...]
     condition_order: tuple[str, ...]
+    protected_task_categories: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    protocol_manifest_digest: str = ""
 
     def __post_init__(self) -> None:
         if self.mutation_budget < 0:
@@ -314,6 +317,7 @@ class Generation:
             raise ValueError("Generation requires complete identity, profile, and Signal aggregate")
         if self.execution_profile_id not in self.compatible_execution_profile_ids:
             raise ValueError("Generation compatibility must include its resolved profile")
+        validate_protected_task_categories(self.protected_task_categories, self.task_order)
 
 
 @dataclass(frozen=True)
@@ -383,6 +387,16 @@ class EvaluationOutcome:
     candidate_id: str
     kind: EvaluationOutcomeKind
     reason: str | None = None
+    evidence_bundle_id: str | None = None
+
+
+def validate_protected_task_categories(categories: tuple[tuple[str, tuple[str, ...]], ...], task_order: tuple[str, ...]) -> None:
+    if not categories:
+        raise ValueError("protected task categories must be precommitted")
+    if any(not category or not task_ids or not set(task_ids).issubset(task_order) for category, task_ids in categories):
+        raise ValueError("protected task categories must name frozen Development Suite tasks")
+    if len({category for category, _ in categories}) != len(categories):
+        raise ValueError("protected task categories must have unique names")
 
 
 RecordValue = Champion | Candidate | Promotion | Signal | HybridHandoff | EvidenceBundle | FreshHoldout | EligibleSuccessor | Experiment | Generation | Restriction | Pin | Preview | Rollback | RoutingDecision
@@ -926,15 +940,15 @@ def _record_from_value(record_type: str, value: dict[str, Any]) -> RecordValue:
     if record_type == "hybrid_handoff":
         return HybridHandoff(value["handoff_id"], _scope_from_document(value["scope"]), value["summary"], tuple(value["constraints"]), tuple(value["acceptance_checks"]), tuple(value["file_scope"]), tuple(value["risks"]))
     if record_type == "evidence_bundle":
-        return EvidenceBundle(value["evidence_bundle_id"], value["experiment_id"], value["model_digest"], value["execution_profile_id"], value["bundle_digest"])
+        return EvidenceBundle(value["evidence_bundle_id"], value["experiment_id"], value["model_digest"], value["execution_profile_id"], value["bundle_digest"], value.get("candidate_id"))
     if record_type == "fresh_holdout":
         return FreshHoldout(value["candidate_id"], _scope_from_document(value["scope"]), value["model_digest"], value["execution_profile_id"], value["passed"], value.get("experiment_id"), value.get("evidence_bundle_id"), value.get("manifest_digest"), value.get("corpus_digest"), value.get("protocol_digest"), tuple(tuple(item) for item in value.get("task_digests", ())), value.get("consumed", False), value.get("contaminated", False), value.get("exposed", False))
     if record_type == "eligible_successor":
         return EligibleSuccessor(_candidate(value["candidate"]), value["experiment_id"], value["evidence_bundle_id"])
     if record_type == "experiment":
-        return Experiment(value["experiment_id"], value["generation_id"], value["baseline_candidate_id"], value["model_digest"], value["execution_profile_id"], tuple(value["candidate_ids"]), tuple(value["evidence_bundle_ids"]), tuple(value["evidence_bundle_digests"]), tuple(EvaluationOutcome(item["task_id"], item["candidate_id"], EvaluationOutcomeKind(item["kind"]), item.get("reason")) for item in value["evaluation_outcomes"]), tuple((item[0], item[1]) for item in value["gate_results"]), value["protocol_version"], ExperimentOutcome(value["outcome"]), ExperimentDecision(value["decision"]), value["holdout_nominee_id"])
+        return Experiment(value["experiment_id"], value["generation_id"], value["baseline_candidate_id"], value["model_digest"], value["execution_profile_id"], tuple(value["candidate_ids"]), tuple(value["evidence_bundle_ids"]), tuple(value["evidence_bundle_digests"]), tuple(EvaluationOutcome(item["task_id"], item["candidate_id"], EvaluationOutcomeKind(item["kind"]), item.get("reason"), item.get("evidence_bundle_id")) for item in value["evaluation_outcomes"]), tuple((item[0], item[1]) for item in value["gate_results"]), value["protocol_version"], ExperimentOutcome(value["outcome"]), ExperimentDecision(value["decision"]), value["holdout_nominee_id"])
     if record_type == "generation":
-        return Generation(value["generation_id"], value["base_champion_id"], _scope_from_document(value["scope"]), value["model_digest"], value["execution_profile_id"], tuple(value["compatible_execution_profile_ids"]), tuple(value["signal_ids"]), value["signal_aggregate_digest"], tuple(value["experiment_ids"]), tuple(value["candidate_ids"]), value["protocol_version"], value["mutation_budget"], tuple(value["seed_schedule"]), tuple(value["task_order"]), tuple(value["condition_order"]))
+        return Generation(value["generation_id"], value["base_champion_id"], _scope_from_document(value["scope"]), value["model_digest"], value["execution_profile_id"], tuple(value["compatible_execution_profile_ids"]), tuple(value["signal_ids"]), value["signal_aggregate_digest"], tuple(value["experiment_ids"]), tuple(value["candidate_ids"]), value["protocol_version"], value["mutation_budget"], tuple(value["seed_schedule"]), tuple(value["task_order"]), tuple(value["condition_order"]), tuple((item[0], tuple(item[1])) for item in value.get("protected_task_categories", ())), value.get("protocol_manifest_digest", ""))
     if record_type == "restriction":
         return Restriction(value["restriction_id"], _scope_from_document(value["scope"]), value["candidate_id"], value["model_digest"], value["execution_profile_id"], value["reason"])
     if record_type == "pin":

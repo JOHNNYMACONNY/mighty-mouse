@@ -29,6 +29,8 @@ class ConditionRun:
     paired_candidate_id: str
     candidate_id: str
     run: EvaluationRun
+    seed: int = 0
+    condition: str = ""
 
 Runner = Callable[[str, Candidate, Path, int], EvaluationRun | EvaluationOutcomeKind]
 
@@ -86,6 +88,8 @@ class DevelopmentEvaluator:
             generation, champion, baseline, candidates = self._inputs(request.generation_id)
             if self._already_nominated(generation.generation_id):
                 raise ValueError("a Generation may nominate at most one holdout contender")
+            if request.protected_task_categories != generation.protected_task_categories:
+                raise ValueError("evaluation protected task categories must match the frozen Generation")
             if not request.base_workspace.is_dir() or not request.preparation_digest or not request.budget_digest:
                 raise ValueError("evaluation requires a base workspace and frozen preparation and budget digests")
             gates = (("capability_probe", request.capability_probe_passed), ("sandbox", request.sandbox_check_passed))
@@ -98,10 +102,10 @@ class DevelopmentEvaluator:
                         if len(generation.condition_order) != 2 or set(generation.condition_order) != {"baseline", "candidate"}:
                             raise ValueError("frozen condition order is invalid")
                         for paired_candidate in candidates:
-                            order = tuple(baseline if item == "baseline" else paired_candidate for item in generation.condition_order)
                             for index, task_id in enumerate(generation.task_order):
                                 seed = generation.seed_schedule[index % len(generation.seed_schedule)]
-                                for candidate in order:
+                                for condition_name in generation.condition_order:
+                                    candidate = baseline if condition_name == "baseline" else paired_candidate
                                     with TemporaryDirectory(prefix="mighty-mouse-eval-") as condition:
                                         workspace = Path(condition) / "worktree"; copytree(snapshot, workspace)
                                         try:
@@ -109,10 +113,9 @@ class DevelopmentEvaluator:
                                             run = result if isinstance(result, EvaluationRun) else EvaluationRun(result)
                                         except Exception:
                                             run = EvaluationRun(EvaluationOutcomeKind.ERROR, reason="runner_exception")
-                                    runs.append(ConditionRun(task_id, paired_candidate.candidate_id, candidate.candidate_id, self._normalize_run(run)))
+                                    runs.append(ConditionRun(task_id, paired_candidate.candidate_id, candidate.candidate_id, self._normalize_run(run), seed, condition_name))
                 except OSError:
-                    runs = [ConditionRun(task, paired.candidate_id, candidate.candidate_id, EvaluationRun(EvaluationOutcomeKind.ERROR, reason="workspace_error")) for task in generation.task_order for paired in candidates for candidate in (baseline, paired)]
-            outcomes = tuple(EvaluationOutcome(item.task_id, item.candidate_id, item.run.kind, item.run.reason) for item in runs)
+                    runs = [ConditionRun(task, paired.candidate_id, candidate.candidate_id, EvaluationRun(EvaluationOutcomeKind.ERROR, reason="workspace_error"), generation.seed_schedule[index % len(generation.seed_schedule)], condition_name) for index, task in enumerate(generation.task_order) for paired in candidates for condition_name, candidate in (("baseline", baseline), ("candidate", paired))]
             base_failed = any(
                 item.candidate_id == baseline.candidate_id and item.run.kind is EvaluationOutcomeKind.ERROR
                 for item in runs
@@ -124,8 +127,14 @@ class DevelopmentEvaluator:
             winner = None if outcome is not ExperimentOutcome.COMPLETED else self._winner(baseline, candidates, runs, request.protected_task_categories)
             experiment_id = f"experiment-{uuid4().hex}"
             digest = self._digest({"generation": generation.generation_id, "base_digest": base_digest, "preparation_digest": request.preparation_digest, "budget_digest": request.budget_digest, "tasks": generation.task_order, "seeds": generation.seed_schedule, "condition_order": generation.condition_order, "gates": gates, "runs": [(item.task_id, item.paired_candidate_id, item.candidate_id, item.run.kind.value, item.run.duration_ms, item.run.tool_calls, item.run.retries, item.run.reason) for item in runs]})
+            if not generation.protocol_manifest_digest or not self._manifest_matches_generation(generation):
+                raise ValueError("evaluation requires the controller-frozen Protocol Manifest")
             evidence = EvidenceBundle(f"evidence-{uuid4().hex}", experiment_id, generation.model_digest, generation.execution_profile_id, digest)
-            condition_evidence = tuple(EvidenceBundle(f"evidence-{uuid4().hex}", experiment_id, generation.model_digest, generation.execution_profile_id, self._digest({"experiment": experiment_id, "task": item.task_id, "paired": item.paired_candidate_id, "candidate": item.candidate_id, "outcome": item.run.kind.value, "reason": item.run.reason})) for item in runs)
+            condition_evidence = tuple(EvidenceBundle(f"evidence-{uuid4().hex}", experiment_id, generation.model_digest, generation.execution_profile_id, self._digest({"protocol_manifest_digest": generation.protocol_manifest_digest, "protocol_version": generation.protocol_version, "model_digest": generation.model_digest, "execution_profile_id": generation.execution_profile_id, "base_workspace_digest": base_digest, "preparation_digest": request.preparation_digest, "budget_digest": request.budget_digest, "condition_order": item.condition, "task": item.task_id, "paired": item.paired_candidate_id, "candidate": item.candidate_id, "seed": item.seed, "resource_receipt": {"duration_ms": item.run.duration_ms, "tool_calls": item.run.tool_calls, "retries": item.run.retries}, "acceptance_result": item.run.kind.value, "reason": item.run.reason}), item.candidate_id) for item in runs)
+            outcomes = tuple(
+                EvaluationOutcome(item.task_id, item.candidate_id, item.run.kind, item.run.reason, condition.evidence_bundle_id)
+                for item, condition in zip(runs, condition_evidence, strict=True)
+            )
             all_evidence = (evidence, *condition_evidence)
             experiment = Experiment(experiment_id, generation.generation_id, baseline.candidate_id, generation.model_digest, generation.execution_profile_id, tuple(c.candidate_id for c in candidates), tuple(item.evidence_bundle_id for item in all_evidence), tuple(item.bundle_digest for item in all_evidence), outcomes, gates, generation.protocol_version, outcome, ExperimentDecision.NOMINATE if winner else ExperimentDecision.NO_CHANGE, winner.candidate_id if winner else None)
             for bundle in all_evidence: self.store.append(bundle)
@@ -143,6 +152,23 @@ class DevelopmentEvaluator:
         return generation, champion, baseline, selected
 
     def _already_nominated(self, generation_id): return any(isinstance(r.value, Experiment) and r.value.generation_id == generation_id and r.value.holdout_nominee_id for r in self.store.records())
+    def _manifest_matches_generation(self, generation: Generation) -> bool:
+        path = self.state_dir / "v2-background-research-manifests" / f"{generation.generation_id}.json"
+        if not path.is_file():
+            return False
+        manifest = json.loads(path.read_text())
+        manifest_digest = manifest.get("manifest_digest")
+        frozen_generation_inputs = (
+            manifest.get("generation_id") == generation.generation_id
+            and manifest.get("model_digest") == generation.model_digest
+            and manifest.get("execution_profile_id") == generation.execution_profile_id
+            and manifest.get("protocol_version") == generation.protocol_version
+            and tuple(manifest.get("seed_schedule", ())) == generation.seed_schedule
+            and tuple(manifest.get("task_order", ())) == generation.task_order
+            and tuple(manifest.get("condition_order", ())) == generation.condition_order
+            and tuple((category, tuple(task_ids)) for category, task_ids in manifest.get("protected_task_categories", ())) == generation.protected_task_categories
+        )
+        return manifest_digest == self._digest({key: value for key, value in manifest.items() if key != "manifest_digest"}) and manifest_digest == generation.protocol_manifest_digest and frozen_generation_inputs
     @staticmethod
     def _winner(baseline, candidates, runs, protected_task_categories=()):
         def score(candidate, paired_candidate_id):
@@ -222,7 +248,7 @@ class FreshHoldoutEvaluator:
                         kind = EvaluationOutcomeKind.ERROR
                     if kind is not EvaluationOutcomeKind.PASSED:
                         passed = False
-        evidence_id = next((identifier for identifier in experiment.evidence_bundle_ids), None)
+        evidence_id = next((record.value.evidence_bundle_id for record in records if isinstance(record.value, EvidenceBundle) and record.value.experiment_id == experiment.experiment_id and record.value.candidate_id == candidate.candidate_id), None)
         result = FreshHoldout(candidate.candidate_id, candidate.scope, candidate.model_digest, experiment.execution_profile_id, passed,
                               experiment.experiment_id, evidence_id, manifest_digest, request.corpus_digest,
                               request.protocol_digest, task_digests, True, request.contaminated, request.exposed)

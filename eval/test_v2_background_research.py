@@ -19,10 +19,11 @@ def _controller(tmp_path):
     return BackgroundResearch(tmp_path)
 
 
-def _start(controller):
+def _start(controller, protected_task_categories=()):
     return controller.start(
         scope=_scope(), model_identity=ModelIdentity("sha256:model"), execution_profile=ExecutionProfile("codex-local", frozenset({"tools"})),
         protocol_version="v2", limits=ResearchLimits(1, 2, 10, 2, 2), seed_schedule=(7,), task_order=("dev-001",), mutation_paths=("policy",),
+        protected_task_categories=protected_task_categories,
     )
 
 

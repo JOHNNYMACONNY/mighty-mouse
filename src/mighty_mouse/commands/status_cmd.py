@@ -58,4 +58,7 @@ def run_status(
     print(f"Effective Policy: {label} ({selection['policy_id']})")
     print(f"Reason: {selection['reason']}")
     print(f"State record: {selection['record_pointer'] or ImmutableStateStore(state_dir).path}")
+    print(f"Eligible Successors: {sum(item['eligible'] for item in document['eligible_successors'])}/{len(document['eligible_successors'])}")
+    history = ", ".join(entry["kind"] for entry in document["history"]) or "none"
+    print(f"Improvement history: {history}")
     print(f"Signal receipts: {document['signals']['receipt_count']}; aggregate buckets: {len(document['signals']['aggregates'])}")

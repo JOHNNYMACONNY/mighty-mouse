@@ -73,6 +73,25 @@ def main():
     parser_status.add_argument("--capability", action="append", default=None, help="Observed model capability (repeatable)")
     parser_status.add_argument("--json", action="store_true", help="Emit versioned JSON output")
 
+    for command, identifier, help_text in (
+        ("preview", "candidate", "Run an explicit bounded Preview without changing Champion selection"),
+        ("pin", "candidate", "Pin the current compatible Candidate for one exact Scope"),
+    ):
+        successor_parser = subparsers.add_parser(command, help=help_text)
+        successor_parser.add_argument(f"{identifier}_id")
+        if command == "preview":
+            successor_parser.add_argument("--evidence-bundle-id", required=True)
+        successor_parser.add_argument("--state-dir", default=".mighty-mouse", help="Local v2 state directory")
+        successor_parser.add_argument("--mode", choices=("coding", "agentic", "hybrid"), required=True)
+        successor_parser.add_argument("--repository", required=True, help="Repository or project Scope")
+        successor_parser.add_argument("--task-category", choices=("unknown", "maintenance", "feature", "debugging", "refactoring"), default="unknown")
+        successor_parser.add_argument("--model-class", required=True, help="Model class Scope")
+        successor_parser.add_argument("--model-digest", help="Exact model artifact digest")
+        successor_parser.add_argument("--model-artifact", help="Model artifact to fingerprint for exact identity")
+        successor_parser.add_argument("--execution-profile", default="unknown", help="Host execution profile")
+        successor_parser.add_argument("--capability", action="append", default=None, help="Observed model capability (repeatable)")
+        successor_parser.add_argument("--json", action="store_true", help="Emit versioned JSON output")
+
     # run
     parser_run = subparsers.add_parser("run", help="Route one task through the v2 Autopilot boundary")
     parser_run.add_argument("--state-dir", default=".mighty-mouse", help="Local v2 state directory")
@@ -181,6 +200,24 @@ def main():
             execution_profile=args.execution_profile,
             capabilities=args.capability,
             json_output=args.json,
+        )
+
+    elif args.command == "preview":
+        from mighty_mouse.commands.successor_cmd import run_preview
+        run_preview(
+            state_dir=args.state_dir, candidate_id=args.candidate_id, evidence_bundle_id=args.evidence_bundle_id,
+            mode=args.mode, repository=args.repository, task_category=args.task_category, model_class=args.model_class,
+            model_digest=args.model_digest, model_artifact=args.model_artifact,
+            execution_profile=args.execution_profile, capabilities=args.capability, json_output=args.json,
+        )
+
+    elif args.command == "pin":
+        from mighty_mouse.commands.successor_cmd import run_pin
+        run_pin(
+            state_dir=args.state_dir, candidate_id=args.candidate_id,
+            mode=args.mode, repository=args.repository, task_category=args.task_category, model_class=args.model_class,
+            model_digest=args.model_digest, model_artifact=args.model_artifact,
+            execution_profile=args.execution_profile, capabilities=args.capability, json_output=args.json,
         )
 
     elif args.command == "run":

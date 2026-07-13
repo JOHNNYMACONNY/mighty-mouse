@@ -16,6 +16,7 @@ from mighty_mouse.v2.foundation import (
     EvaluationOutcome,
     EvaluationOutcomeKind,
     ExecutionProfile,
+    FreshHoldout,
     Generation,
     ImmutableStateStore,
     ModelIdentity,
@@ -30,6 +31,7 @@ from mighty_mouse.v2.foundation import (
     Scope,
     TaskCategory,
     resolve_execution_profile,
+    status_document,
 )
 
 
@@ -65,6 +67,32 @@ def _promotion():
     )
 
 
+def _eligible_successor(store, *, candidate_id="candidate-002"):
+    candidate = Candidate(
+        candidate_id=candidate_id,
+        policy=Policy(policy_id="policy-002", mode=Mode.CODING, version="2"),
+        scope=_scope(),
+        model_digest="sha256:exact-model",
+        required_capabilities=frozenset({"tools"}),
+        compatible_execution_profiles=frozenset({"codex-local"}),
+    )
+    store.append_candidate(candidate)
+    store.append(EvidenceBundle("evidence-002", "experiment-002", "sha256:exact-model", "codex-local", "sha256:evidence"))
+    store.append(Experiment(
+        "experiment-002", "generation-002", "candidate-001", "sha256:exact-model", "codex-local",
+        (candidate.candidate_id,), ("evidence-002",), ("sha256:evidence",), (),
+        (("safety", True), ("freshness", True)), "v2", ExperimentOutcome.COMPLETED,
+        ExperimentDecision.NOMINATE, candidate.candidate_id,
+    ))
+    store.append(FreshHoldout(candidate.candidate_id, _scope(), "sha256:exact-model", "codex-local", True))
+    store.append_eligible_successor(
+        EligibleSuccessor(candidate, "experiment-002", "evidence-002"),
+        model_identity=ModelIdentity("sha256:exact-model"),
+        execution_profile=ExecutionProfile("codex-local", frozenset({"tools"})),
+    )
+    return candidate
+
+
 def test_immutable_store_selects_only_an_exactly_compatible_candidate(tmp_path):
     store = ImmutableStateStore(tmp_path)
     candidate = _candidate()
@@ -96,6 +124,90 @@ def test_immutable_store_uses_safe_baseline_for_incomplete_or_incompatible_ident
     assert selection.source == "safe_baseline"
     assert selection.policy.policy_id == "safe-baseline-coding"
     assert selection.reason == "model identity is incomplete"
+
+
+def test_eligibility_explains_all_required_gates_and_preview_never_activates(tmp_path):
+    store = ImmutableStateStore(tmp_path)
+    store.append_promotion(_promotion())
+    candidate = _eligible_successor(store)
+    identity = ModelIdentity("sha256:exact-model")
+    profile = ExecutionProfile("codex-local", frozenset({"tools"}))
+
+    eligibility = store.eligibility(
+        candidate_id=candidate.candidate_id, scope=_scope(), model_identity=identity, execution_profile=profile,
+    )
+    assert eligibility.is_eligible
+    assert dict(eligibility.gates) == {
+        "compatibility": True, "evidence": True, "safety": True, "freshness": True, "scope": True,
+    }
+
+    before = store.select_policy(scope=_scope(), model_identity=identity, execution_profile=profile)
+    preview = store.preview(
+        Preview("preview-002", _scope(), candidate.candidate_id, "evidence-002", "sha256:exact-model", "codex-local"),
+        model_identity=identity,
+        execution_profile=profile,
+    )
+    after = store.select_policy(scope=_scope(), model_identity=identity, execution_profile=profile)
+    document = status_document(tmp_path, _scope(), identity, profile)
+
+    assert preview.source == "preview"
+    assert preview.policy == candidate.policy
+    assert before == after
+    assert after.policy.policy_id == "policy-001"
+    assert document["eligible_successors"] == [{
+        "candidate_id": "candidate-002", "experiment_id": "experiment-002", "evidence_bundle_id": "evidence-002",
+        "eligible": True,
+        "gates": {"compatibility": True, "evidence": True, "safety": True, "freshness": True, "scope": True},
+    }]
+    assert [entry["kind"] for entry in document["history"]] == ["champion", "preview"]
+
+
+def test_pin_locks_only_the_chosen_champion_while_later_successors_remain_visible(tmp_path):
+    store = ImmutableStateStore(tmp_path)
+    store.append_promotion(_promotion())
+    identity = ModelIdentity("sha256:exact-model")
+    profile = ExecutionProfile("codex-local", frozenset({"tools"}))
+    store.pin(Pin("pin-001", _scope(), "candidate-001", "sha256:exact-model", "codex-local"), model_identity=identity, execution_profile=profile)
+    candidate = _eligible_successor(store)
+    with pytest.raises(ValueError, match="blocked by a Pin"):
+        store.append_promotion(Promotion(EligibleSuccessor(candidate, "experiment-002", "evidence-002"), "candidate-001", True))
+
+    selection = store.select_policy(scope=_scope(), model_identity=identity, execution_profile=profile)
+    document = status_document(tmp_path, _scope(), identity, profile)
+
+    assert selection.policy.policy_id == "policy-001"
+    assert selection.reason == "exact compatible pinned Champion"
+    assert document["eligible_successors"][0]["candidate_id"] == candidate.candidate_id
+    assert [entry["kind"] for entry in document["history"]] == ["champion", "pin"]
+
+
+def test_preview_and_pin_cli_never_silently_activate_a_candidate(monkeypatch, tmp_path, capsys):
+    store = ImmutableStateStore(tmp_path)
+    store.append_promotion(_promotion())
+    candidate = _eligible_successor(store)
+    common = [
+        "--state-dir", str(tmp_path), "--mode", "coding", "--repository", "JOHNNYMACONNY/mighty-mouse",
+        "--task-category", "maintenance", "--model-class", "local-small", "--model-digest", "sha256:exact-model",
+        "--execution-profile", "codex-local", "--capability", "tools", "--json",
+    ]
+
+    monkeypatch.setattr(sys, "argv", ["mighty-mouse", "pin", "candidate-001", *common])
+    cli.main()
+    assert json.loads(capsys.readouterr().out)["interface"] == "pin"
+
+    monkeypatch.setattr(sys, "argv", ["mighty-mouse", "preview", candidate.candidate_id, "--evidence-bundle-id", "evidence-002", *common])
+    cli.main()
+    assert json.loads(capsys.readouterr().out) == {
+        "candidate_id": "candidate-002", "interface": "preview", "policy_id": "policy-002", "selection_changed": False,
+    }
+
+    with pytest.raises(ValueError, match="blocked by a Pin"):
+        store.append_promotion(Promotion(EligibleSuccessor(candidate, "experiment-002", "evidence-002"), "candidate-001", True))
+    selection = store.select_policy(
+        scope=_scope(), model_identity=ModelIdentity("sha256:exact-model"),
+        execution_profile=ExecutionProfile("codex-local", frozenset({"tools"})),
+    )
+    assert selection.policy.policy_id == "policy-001"
 
 
 def test_immutable_store_records_are_frozen_and_traceable(tmp_path):

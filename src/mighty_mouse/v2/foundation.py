@@ -109,6 +109,20 @@ class EligibleSuccessor:
 
 
 @dataclass(frozen=True)
+class Eligibility:
+    """An explainable, non-mutating decision about a nominated Candidate."""
+
+    candidate_id: str
+    experiment_id: str | None
+    evidence_bundle_id: str | None
+    gates: tuple[tuple[str, bool], ...]
+
+    @property
+    def is_eligible(self) -> bool:
+        return bool(self.experiment_id and self.evidence_bundle_id) and all(passed for _, passed in self.gates)
+
+
+@dataclass(frozen=True)
 class Promotion:
     eligible_successor: EligibleSuccessor
     prior_champion_id: str | None
@@ -223,6 +237,17 @@ class EvidenceBundle:
 
 
 @dataclass(frozen=True)
+class FreshHoldout:
+    """Independent fresh-holdout result for one Holdout Contender."""
+
+    candidate_id: str
+    scope: Scope
+    model_digest: str
+    execution_profile_id: str
+    passed: bool
+
+
+@dataclass(frozen=True)
 class Experiment:
     """A frozen comparison under one versioned protocol."""
 
@@ -294,7 +319,7 @@ class Restriction:
 class Pin:
     pin_id: str
     scope: Scope
-    champion_id: str
+    candidate_id: str
     model_digest: str
     execution_profile_id: str
 
@@ -341,7 +366,7 @@ class EvaluationOutcome:
     reason: str | None = None
 
 
-RecordValue = Champion | Candidate | Promotion | Signal | HybridHandoff | EvidenceBundle | Experiment | Generation | Restriction | Pin | Preview | Rollback | RoutingDecision
+RecordValue = Champion | Candidate | Promotion | Signal | HybridHandoff | EvidenceBundle | FreshHoldout | EligibleSuccessor | Experiment | Generation | Restriction | Pin | Preview | Rollback | RoutingDecision
 
 
 @dataclass(frozen=True)
@@ -374,6 +399,8 @@ class ImmutableStateStore:
     def append(self, value: RecordValue) -> StoredRecord:
         if isinstance(value, Promotion):
             self._validate_promotion(value)
+        if isinstance(value, EligibleSuccessor):
+            self._validate_eligible_successor(value)
         return self._append(_record_type(value), value)
 
     def append_candidate(self, value: Candidate) -> StoredRecord:
@@ -390,7 +417,136 @@ class ImmutableStateStore:
 
     def append_promotion(self, value: Promotion) -> StoredRecord:
         self._validate_promotion(value)
+        candidate = value.eligible_successor.candidate
+        if any(
+            isinstance(record.value, Pin)
+            and record.value.scope == candidate.scope
+            and record.value.model_digest == candidate.model_digest
+            and record.value.execution_profile_id in candidate.compatible_execution_profiles
+            for record in self.records()
+        ):
+            raise ValueError("Promotion is blocked by a Pin for this Scope")
         return self._append(_record_type(value), value)
+
+    def append_eligible_successor(self, value: EligibleSuccessor, *, model_identity: ModelIdentity, execution_profile: ExecutionProfile) -> StoredRecord:
+        eligibility = self.eligibility(candidate_id=value.candidate.candidate_id, scope=value.candidate.scope, model_identity=model_identity, execution_profile=execution_profile)
+        if not eligibility.is_eligible or (eligibility.experiment_id, eligibility.evidence_bundle_id) != (value.experiment_id, value.evidence_bundle_id):
+            raise ValueError("Eligible Successor requires independent fresh-holdout evidence and all gates")
+        return self.append(value)
+
+    def _validate_eligible_successor(self, value: EligibleSuccessor) -> None:
+        evidence = next(
+            (record.value for record in reversed(self.records())
+             if isinstance(record.value, EvidenceBundle)
+             and record.value.evidence_bundle_id == value.evidence_bundle_id
+             and record.value.experiment_id == value.experiment_id),
+            None,
+        )
+        if evidence is None:
+            raise ValueError("Eligible Successor requires matching Evidence Bundle")
+        eligibility = self.eligibility(
+            candidate_id=value.candidate.candidate_id,
+            scope=value.candidate.scope,
+            model_identity=ModelIdentity(value.candidate.model_digest),
+            execution_profile=ExecutionProfile(evidence.execution_profile_id, value.candidate.required_capabilities),
+        )
+        if not eligibility.is_eligible:
+            raise ValueError("Eligible Successor requires independent fresh-holdout evidence and all gates")
+
+    def eligibility(
+        self,
+        *,
+        candidate_id: str,
+        scope: Scope,
+        model_identity: ModelIdentity,
+        execution_profile: ExecutionProfile,
+    ) -> Eligibility:
+        """Explain the immutable gates required before a Candidate may be used."""
+        records = self.records()
+        candidate = next(
+            (record.value for record in reversed(records)
+             if isinstance(record.value, Candidate) and record.value.candidate_id == candidate_id),
+            None,
+        )
+        experiment = next(
+            (record.value for record in reversed(records)
+             if isinstance(record.value, Experiment)
+             and record.value.holdout_nominee_id == candidate_id
+             and record.value.outcome is ExperimentOutcome.COMPLETED
+             and record.value.decision is ExperimentDecision.NOMINATE),
+            None,
+        )
+        evidence = next(
+            (record.value for record in reversed(records)
+             if isinstance(record.value, EvidenceBundle)
+             and experiment is not None
+             and record.value.experiment_id == experiment.experiment_id
+             and record.value.evidence_bundle_id in experiment.evidence_bundle_ids),
+            None,
+        )
+        compatibility = bool(
+            candidate is not None
+            and model_identity.is_complete
+            and execution_profile.is_complete
+            and candidate.model_digest == model_identity.artifact_digest
+            and candidate.required_capabilities.issubset(execution_profile.capabilities)
+            and execution_profile.profile_id in candidate.compatible_execution_profiles
+        )
+        evidence_matches = bool(
+            evidence is not None
+            and candidate is not None
+            and evidence.model_digest == candidate.model_digest
+            and evidence.execution_profile_id == execution_profile.profile_id
+        )
+        experiment_gates = dict(experiment.gate_results) if experiment is not None else {}
+        fresh_holdout = next(
+            (record.value for record in reversed(records)
+             if isinstance(record.value, FreshHoldout)
+             and record.value.candidate_id == candidate_id
+             and record.value.scope == scope
+             and record.value.model_digest == model_identity.artifact_digest
+             and record.value.execution_profile_id == execution_profile.profile_id
+             and record.value.passed),
+            None,
+        )
+        gates = (
+            ("compatibility", compatibility),
+            ("evidence", evidence_matches),
+            ("safety", experiment_gates.get("safety", False)),
+            ("freshness", fresh_holdout is not None),
+            ("scope", candidate is not None and candidate.scope == scope),
+        )
+        return Eligibility(
+            candidate_id=candidate_id,
+            experiment_id=experiment.experiment_id if experiment else None,
+            evidence_bundle_id=evidence.evidence_bundle_id if evidence else None,
+            gates=gates,
+        )
+
+    def preview(self, value: Preview, *, model_identity: ModelIdentity, execution_profile: ExecutionProfile) -> PolicySelection:
+        """Record a bounded Preview without changing durable policy selection."""
+        eligibility = self.eligibility(
+            candidate_id=value.candidate_id, scope=value.scope,
+            model_identity=model_identity, execution_profile=execution_profile,
+        )
+        if not eligibility.is_eligible or eligibility.evidence_bundle_id != value.evidence_bundle_id:
+            raise ValueError("Preview requires an Eligible Successor with matching evidence")
+        if not any(isinstance(record.value, EligibleSuccessor) and record.value.candidate.candidate_id == value.candidate_id for record in self.records()):
+            raise ValueError("Preview requires a recorded Eligible Successor")
+        if value.model_digest != model_identity.artifact_digest or value.execution_profile_id != execution_profile.profile_id:
+            raise ValueError("Preview requires the declared Model Identity and Execution Profile")
+        candidate = next(record.value for record in reversed(self.records()) if isinstance(record.value, Candidate) and record.value.candidate_id == value.candidate_id)
+        self.append(value)
+        return PolicySelection(candidate.policy, "preview", "explicit bounded Preview", None)
+
+    def pin(self, value: Pin, *, model_identity: ModelIdentity, execution_profile: ExecutionProfile) -> StoredRecord:
+        """Freeze selection to the current compatible Champion for one exact Scope."""
+        if value.model_digest != model_identity.artifact_digest or value.execution_profile_id != execution_profile.profile_id:
+            raise ValueError("Pin requires the declared Model Identity and Execution Profile")
+        selected = self._promotion_candidate(value.candidate_id, value.scope, model_identity, execution_profile)
+        if selected is None:
+            raise ValueError("Pin requires a current exact compatible Champion")
+        return self.append(value)
 
     @staticmethod
     def _validate_promotion(value: Promotion) -> None:
@@ -405,7 +561,21 @@ class ImmutableStateStore:
         if not execution_profile.is_complete:
             return self._safe_baseline(scope.mode, "execution profile is incomplete")
 
-        for record in reversed(self.records()):
+        records = self.records()
+        pin = next((
+            record.value for record in reversed(records)
+            if isinstance(record.value, Pin)
+            and record.value.scope == scope
+            and record.value.model_digest == model_identity.artifact_digest
+            and record.value.execution_profile_id == execution_profile.profile_id
+        ), None)
+        if pin is not None:
+            pinned = self._promotion_candidate(pin.candidate_id, scope, model_identity, execution_profile, records)
+            if pinned is not None:
+                candidate, record_hash = pinned
+                return PolicySelection(candidate.policy, "project_improvement", "exact compatible pinned Champion", record_hash)
+            return self._safe_baseline(scope.mode, "pinned Champion is unavailable")
+        for record in reversed(records):
             if not isinstance(record.value, Promotion):
                 continue
             candidate = record.value.eligible_successor.candidate
@@ -417,6 +587,27 @@ class ImmutableStateStore:
                 continue
             return PolicySelection(candidate.policy, "project_improvement", "exact compatible Champion", record.record_hash)
         return self._safe_baseline(scope.mode, "no exact compatible Champion")
+
+    def _promotion_candidate(
+        self,
+        candidate_id: str,
+        scope: Scope,
+        model_identity: ModelIdentity,
+        execution_profile: ExecutionProfile,
+        records: tuple[StoredRecord, ...] | None = None,
+    ) -> tuple[Candidate, str] | None:
+        for record in reversed(records if records is not None else self.records()):
+            if not isinstance(record.value, Promotion):
+                continue
+            candidate = record.value.eligible_successor.candidate
+            if candidate.candidate_id != candidate_id or candidate.scope != scope or candidate.model_digest != model_identity.artifact_digest:
+                continue
+            if not candidate.required_capabilities.issubset(execution_profile.capabilities):
+                continue
+            if execution_profile.profile_id not in candidate.compatible_execution_profiles:
+                continue
+            return candidate, record.record_hash
+        return None
 
     def records(self) -> tuple[StoredRecord, ...]:
         if not self.path.exists():
@@ -491,7 +682,7 @@ class ImmutableStateStore:
 
 def _record_type(value: RecordValue) -> str:
     return {
-        Champion: "champion", Candidate: "candidate", Promotion: "promotion", Signal: "signal", HybridHandoff: "hybrid_handoff", EvidenceBundle: "evidence_bundle",
+        Champion: "champion", Candidate: "candidate", Promotion: "promotion", Signal: "signal", HybridHandoff: "hybrid_handoff", EvidenceBundle: "evidence_bundle", FreshHoldout: "fresh_holdout", EligibleSuccessor: "eligible_successor",
         Experiment: "experiment", Generation: "generation", Restriction: "restriction", Pin: "pin",
         Preview: "preview", Rollback: "rollback", RoutingDecision: "routing_decision",
     }[type(value)]
@@ -549,6 +740,10 @@ def _record_from_value(record_type: str, value: dict[str, Any]) -> RecordValue:
         return HybridHandoff(value["handoff_id"], _scope_from_document(value["scope"]), value["summary"], tuple(value["constraints"]), tuple(value["acceptance_checks"]), tuple(value["file_scope"]), tuple(value["risks"]))
     if record_type == "evidence_bundle":
         return EvidenceBundle(value["evidence_bundle_id"], value["experiment_id"], value["model_digest"], value["execution_profile_id"], value["bundle_digest"])
+    if record_type == "fresh_holdout":
+        return FreshHoldout(value["candidate_id"], _scope_from_document(value["scope"]), value["model_digest"], value["execution_profile_id"], value["passed"])
+    if record_type == "eligible_successor":
+        return EligibleSuccessor(_candidate(value["candidate"]), value["experiment_id"], value["evidence_bundle_id"])
     if record_type == "experiment":
         return Experiment(value["experiment_id"], value["generation_id"], value["baseline_candidate_id"], value["model_digest"], value["execution_profile_id"], tuple(value["candidate_ids"]), tuple(value["evidence_bundle_ids"]), tuple(value["evidence_bundle_digests"]), tuple(EvaluationOutcome(item["task_id"], item["candidate_id"], EvaluationOutcomeKind(item["kind"]), item.get("reason")) for item in value["evaluation_outcomes"]), tuple((item[0], item[1]) for item in value["gate_results"]), value["protocol_version"], ExperimentOutcome(value["outcome"]), ExperimentDecision(value["decision"]), value["holdout_nominee_id"])
     if record_type == "generation":
@@ -556,7 +751,7 @@ def _record_from_value(record_type: str, value: dict[str, Any]) -> RecordValue:
     if record_type == "restriction":
         return Restriction(value["restriction_id"], _scope_from_document(value["scope"]), value["candidate_id"], value["model_digest"], value["execution_profile_id"], value["reason"])
     if record_type == "pin":
-        return Pin(value["pin_id"], _scope_from_document(value["scope"]), value["champion_id"], value["model_digest"], value["execution_profile_id"])
+        return Pin(value["pin_id"], _scope_from_document(value["scope"]), value["candidate_id"] if "candidate_id" in value else value["champion_id"], value["model_digest"], value["execution_profile_id"])
     if record_type == "preview":
         return Preview(value["preview_id"], _scope_from_document(value["scope"]), value["candidate_id"], value["evidence_bundle_id"], value["model_digest"], value["execution_profile_id"])
     if record_type == "rollback":
@@ -590,12 +785,42 @@ def status_document(state_dir: str | Path, scope: Scope, model_identity: ModelId
     ), None)
     selected_scope = routing.value.scope if routing is not None else scope
     selection = store.select_policy(scope=selected_scope, model_identity=model_identity, execution_profile=execution_profile)
+    records = store.records()
+    successors = []
+    for record in records:
+        if not isinstance(record.value, EligibleSuccessor):
+            continue
+        eligibility = store.eligibility(
+            candidate_id=record.value.candidate.candidate_id,
+            scope=selected_scope,
+            model_identity=model_identity,
+            execution_profile=execution_profile,
+        )
+        successors.append({
+            "candidate_id": eligibility.candidate_id,
+            "experiment_id": eligibility.experiment_id,
+            "evidence_bundle_id": eligibility.evidence_bundle_id,
+            "eligible": eligibility.is_eligible,
+            "gates": dict(eligibility.gates),
+        })
+    history = [
+        {"kind": "champion" if isinstance(record.value, Promotion) else _record_type(record.value), "record_pointer": record.record_hash}
+        for record in records
+        if isinstance(record.value, (Champion, Promotion, Pin, Preview))
+    ]
     return {
         "schema_version": ImmutableStateStore.schema_version, "interface": "status",
         "scope": _to_json_value(selected_scope), "model_identity": {"artifact_digest": model_identity.artifact_digest},
         "execution_profile": _to_json_value(execution_profile),
         "selection": {"policy_id": selection.policy.policy_id, "policy_version": selection.policy.version, "source": selection.source, "reason": selection.reason, "record_pointer": f"{ImmutableStateStore(state_dir).path}#{selection.record_hash}" if selection.record_hash else None},
         "routing": None if routing is None else {"selected_mode": routing.value.selected_mode.value, "reason": routing.value.reason, "record_pointer": f"{store.path}#{routing.record_hash}"},
+        "champion": next((
+            {"candidate_id": record.value.eligible_successor.candidate.candidate_id, "record_pointer": record.record_hash}
+            for record in reversed(records)
+            if isinstance(record.value, Promotion) and record.value.eligible_successor.candidate.policy == selection.policy
+        ), None),
+        "eligible_successors": successors,
+        "history": history,
     }
 
 

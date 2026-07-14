@@ -77,10 +77,27 @@ class SignalLifecycle:
         self._append_control("purged")
         return len(eligible_receipts) + sum(aggregate["aggregate"]["count"] for aggregate in eligible_aggregates)
 
-    def history(self, *, scope: Scope | None = None, now: datetime | None = None) -> dict[str, Any]:
+    def history(
+        self,
+        *,
+        scope: Scope | None = None,
+        model_digest: str | None = None,
+        execution_profile_id: str | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
         """Return safe aggregate facts only, never individual Signal fields or identifiers."""
-        receipts = [receipt for receipt in self._receipts() if scope is None or self._scope(receipt["signal"]) == scope]
-        aggregates = [aggregate["aggregate"] for aggregate in self._aggregates() if scope is None or self._aggregate_matches_scope(aggregate, scope)]
+        receipts = [
+            receipt for receipt in self._receipts()
+            if (scope is None or self._scope(receipt["signal"]) == scope)
+            and (model_digest is None or receipt["signal"]["model_digest"] == model_digest)
+            and (execution_profile_id is None or receipt["signal"]["execution_profile_id"] == execution_profile_id)
+        ]
+        aggregates = [
+            aggregate["aggregate"] for aggregate in self._aggregates()
+            if (scope is None or self._aggregate_matches_scope(aggregate, scope))
+            and (model_digest is None or aggregate["aggregate"].get("model_digest") == model_digest)
+            and (execution_profile_id is None or aggregate["aggregate"].get("execution_profile_id") == execution_profile_id)
+        ]
         return {"collection_paused": self.collection_paused, "receipt_count": len(receipts), "aggregates": self._combine_aggregates([*aggregates, *self._aggregate(receipts)])}
 
     def _receipts(self) -> list[dict[str, Any]]:
@@ -120,11 +137,11 @@ class SignalLifecycle:
 
     @staticmethod
     def _dimension_names() -> tuple[str, ...]:
-        return ("repository", "mode", "task_category", "model_class", "outcome", "verifier_category", "verifier_result", "rating")
+        return ("repository", "mode", "task_category", "model_class", "model_digest", "execution_profile_id", "outcome", "verifier_category", "verifier_result", "rating")
 
     @staticmethod
     def _dimensions(signal: Signal) -> tuple[Any, ...]:
-        return (signal.scope.repository, signal.scope.mode.value, signal.scope.task_category.value, signal.scope.model_class, signal.outcome, signal.verifier_category, signal.verifier_result, signal.rating)
+        return (signal.scope.repository, signal.scope.mode.value, signal.scope.task_category.value, signal.scope.model_class, signal.model_digest, signal.execution_profile_id, signal.outcome, signal.verifier_category, signal.verifier_result, signal.rating)
 
     @staticmethod
     def _scope(value: dict[str, Any]) -> Scope:

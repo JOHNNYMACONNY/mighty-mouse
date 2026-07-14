@@ -87,7 +87,7 @@ class BackgroundResearch:
             "model_digest": model_identity.artifact_digest,
             "execution_profile_id": execution_profile.profile_id,
             "compatible_execution_profile_ids": sorted(candidate.compatible_execution_profiles),
-            "signal_aggregate_digest": self._signal_aggregate_digest(scope),
+            "signal_aggregate_digest": self._signal_aggregate_digest(scope, model_identity, execution_profile),
             "protocol_version": protocol_version,
             "limits": {"candidate_cap": limits.candidate_cap, "max_tool_calls": limits.max_tool_calls, "max_duration_ms": limits.max_duration_ms, "max_cost_units": limits.max_cost_units, "max_calls_per_minute": limits.max_calls_per_minute, "max_concurrency": limits.max_concurrency},
             "seed_schedule": list(seed_schedule),
@@ -237,8 +237,12 @@ class BackgroundResearch:
         value = manifest["scope"]
         return Scope(Mode(value["mode"]), value["repository"], TaskCategory(value["task_category"]), value["model_class"])
 
-    def _signal_aggregate_digest(self, scope: Scope) -> str:
-        history = SignalLifecycle(self.state_dir).history(scope=scope)
+    def _signal_aggregate_digest(self, scope: Scope, model_identity: ModelIdentity, execution_profile: ExecutionProfile) -> str:
+        history = SignalLifecycle(self.state_dir).history(
+            scope=scope,
+            model_digest=model_identity.artifact_digest,
+            execution_profile_id=execution_profile.profile_id,
+        )
         return "sha256:" + sha256(json.dumps(history, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
     @staticmethod

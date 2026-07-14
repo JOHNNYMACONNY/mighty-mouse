@@ -14,4 +14,4 @@ Make the smallest complete change. Preserve unrelated behavior and user work.
 Run the narrowest meaningful test or check, inspect the diff, and report any unverified risk.
 </verify>
 
-After editing, call `mighty-mouse/verify` for the project workspace. Fix failures and retry, for no more than three verification rounds.
+After editing, call `mighty-mouse/verify_and_record` for the project workspace. Fix failures and retry, for no more than three verification rounds.

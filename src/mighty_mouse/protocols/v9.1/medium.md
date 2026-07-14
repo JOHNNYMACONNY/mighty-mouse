@@ -26,4 +26,4 @@ Apply focused changes while preserving unrelated user work.
 Run tests, lint or build checks as applicable; inspect Git scope; exercise one failure path; report remaining uncertainty.
 </verify>
 
-After editing, call `mighty-mouse/verify` for the project workspace. Fix failures and retry, for no more than three verification rounds.
+After editing, call `mighty-mouse/verify_and_record` for the project workspace. Fix failures and retry, for no more than three verification rounds.

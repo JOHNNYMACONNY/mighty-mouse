@@ -37,4 +37,4 @@ Apply surgical changes. Preserve unrelated state and record deviations from the 
 Compare producer/consumer contracts, run downstream tests and builds, validate live-shaped data, exercise failure and recovery paths, inspect scope, and report any item that remains unproven.
 </verify>
 
-After editing, call `mighty-mouse/verify` for the project workspace. Fix failures and retry, for no more than three verification rounds.
+After editing, call `mighty-mouse/verify_and_record` for the project workspace. Fix failures and retry, for no more than three verification rounds.

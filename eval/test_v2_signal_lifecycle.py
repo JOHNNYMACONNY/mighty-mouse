@@ -78,6 +78,26 @@ def test_history_only_exposes_safe_aggregates(tmp_path):
     assert set(history) == {"collection_paused", "receipt_count", "aggregates"}
 
 
+def test_history_does_not_mix_model_or_execution_profile_evidence(tmp_path):
+    lifecycle = SignalLifecycle(tmp_path)
+    lifecycle.collect(_signal(signal_id="signal-001"))
+    lifecycle.collect(_signal(
+        signal_id="signal-002",
+        model_digest="sha256:" + "b" * 64,
+        execution_profile_id="sha256:" + "c" * 64,
+    ))
+
+    history = lifecycle.history()
+
+    assert len(history["aggregates"]) == 2
+    assert {bucket["model_digest"] for bucket in history["aggregates"]} == {
+        "sha256:" + "a" * 64,
+        "sha256:" + "b" * 64,
+    }
+    selected = lifecycle.history(model_digest="sha256:" + "a" * 64, execution_profile_id="codex-local")
+    assert selected["aggregates"][0]["count"] == 1
+
+
 def test_history_is_read_only_even_when_receipts_are_expired(tmp_path):
     lifecycle = SignalLifecycle(tmp_path)
     lifecycle.collect(_signal(), now=datetime(2026, 1, 1, tzinfo=timezone.utc))
@@ -101,6 +121,7 @@ def test_compaction_moves_expired_receipts_to_durable_aggregates(tmp_path):
     assert history["receipt_count"] == 0
     assert history["aggregates"] == [{
         "repository": "JOHNNYMACONNY/mighty-mouse", "mode": "coding", "task_category": "feature", "model_class": "local-small",
+        "model_digest": "sha256:" + "a" * 64, "execution_profile_id": "codex-local",
         "outcome": "passed", "verifier_category": "tests", "verifier_result": "passed",
         "rating": 5, "count": 1, "total_duration_ms": 120, "total_retry_count": 1,
     }]

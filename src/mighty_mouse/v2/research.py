@@ -14,11 +14,7 @@ from uuid import uuid4
 from mighty_mouse.v2.foundation import (
     Candidate,
     Champion,
-    EvidenceBundle,
     ExecutionProfile,
-    Experiment,
-    ExperimentDecision,
-    ExperimentOutcome,
     Generation,
     ImmutableStateStore,
     ModelIdentity,
@@ -133,21 +129,6 @@ class BackgroundResearch:
             compatible_execution_profiles=frozenset(manifest["compatible_execution_profile_ids"]),
         )
         experiment_id = f"experiment-{generation_id.rsplit('-', 1)[-1]}-001"
-        evidence = EvidenceBundle(
-            evidence_bundle_id=f"evidence-{generation_id.rsplit('-', 1)[-1]}-001",
-            experiment_id=experiment_id,
-            model_digest=manifest["model_digest"],
-            execution_profile_id=manifest["execution_profile_id"],
-            bundle_digest=manifest["manifest_digest"],
-        )
-        experiment = Experiment(
-            experiment_id=experiment_id, generation_id=generation_id, baseline_candidate_id=manifest["base_candidate_id"],
-            model_digest=manifest["model_digest"], execution_profile_id=manifest["execution_profile_id"],
-            candidate_ids=(candidate.candidate_id,), evidence_bundle_ids=(evidence.evidence_bundle_id,),
-            evidence_bundle_digests=(evidence.bundle_digest,), evaluation_outcomes=(), gate_results=(("mutation_surface", True), ("resource_limits", True), ("frozen_tasks", True)),
-            protocol_version=manifest["protocol_version"], outcome=ExperimentOutcome.COMPLETED,
-            decision=ExperimentDecision.NO_CHANGE, holdout_nominee_id=None,
-        )
         generation = Generation(
             generation_id=generation_id, base_champion_id=manifest["base_champion_id"], scope=self._scope(manifest),
             model_digest=manifest["model_digest"], execution_profile_id=manifest["execution_profile_id"],
@@ -159,8 +140,6 @@ class BackgroundResearch:
             protocol_manifest_digest=manifest["manifest_digest"],
         )
         self.store.append_candidate(candidate)
-        self.store.append(evidence)
-        self.store.append(experiment)
         self.store.append(generation)
         self._append_control("completed", generation_id, manifest["manifest_digest"])
         return self.status(generation_id)

@@ -86,8 +86,10 @@ class DevelopmentEvaluator:
     def evaluate(self, request: EvaluationRequest, runner: Runner) -> EvaluationResult:
         with self._lock():
             generation, champion, baseline, candidates = self._inputs(request.generation_id)
-            if self._already_nominated(generation.generation_id):
-                raise ValueError("a Generation may nominate at most one holdout contender")
+            if len(generation.experiment_ids) != 1:
+                raise ValueError("Generation requires exactly one precommitted Experiment")
+            if self._already_evaluated(generation.generation_id):
+                raise ValueError("a Generation has already been evaluated")
             if request.protected_task_categories != generation.protected_task_categories:
                 raise ValueError("evaluation protected task categories must match the frozen Generation")
             if not request.base_workspace.is_dir() or not request.preparation_digest or not request.budget_digest:
@@ -125,7 +127,7 @@ class DevelopmentEvaluator:
             )
             outcome = ExperimentOutcome.INVALID if invalid else ExperimentOutcome.FAILED if base_failed else ExperimentOutcome.COMPLETED
             winner = None if outcome is not ExperimentOutcome.COMPLETED else self._winner(baseline, candidates, runs, request.protected_task_categories)
-            experiment_id = f"experiment-{uuid4().hex}"
+            experiment_id = generation.experiment_ids[0]
             digest = self._digest({"generation": generation.generation_id, "base_digest": base_digest, "preparation_digest": request.preparation_digest, "budget_digest": request.budget_digest, "tasks": generation.task_order, "seeds": generation.seed_schedule, "condition_order": generation.condition_order, "gates": gates, "runs": [(item.task_id, item.paired_candidate_id, item.candidate_id, item.run.kind.value, item.run.duration_ms, item.run.tool_calls, item.run.retries, item.run.reason) for item in runs]})
             if not generation.protocol_manifest_digest or not self._manifest_matches_generation(generation):
                 raise ValueError("evaluation requires the controller-frozen Protocol Manifest")
@@ -151,7 +153,7 @@ class DevelopmentEvaluator:
         if any(c.scope != generation.scope or c.model_digest != generation.model_digest or generation.execution_profile_id not in c.compatible_execution_profiles for c in selected): raise ValueError("Candidate is incompatible with frozen Generation")
         return generation, champion, baseline, selected
 
-    def _already_nominated(self, generation_id): return any(isinstance(r.value, Experiment) and r.value.generation_id == generation_id and r.value.holdout_nominee_id for r in self.store.records())
+    def _already_evaluated(self, generation_id): return any(isinstance(r.value, Experiment) and r.value.generation_id == generation_id for r in self.store.records())
     def _manifest_matches_generation(self, generation: Generation) -> bool:
         path = self.state_dir / "v2-background-research-manifests" / f"{generation.generation_id}.json"
         if not path.is_file():

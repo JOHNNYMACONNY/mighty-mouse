@@ -35,6 +35,8 @@ def test_development_evaluation_nominates_a_valid_paired_winner(tmp_path):
 
     assert result.decision.value == "nominate"
     assert result.holdout_nominee_id
+    generation = next(record.value for record in ImmutableStateStore(tmp_path).records() if isinstance(record.value, Generation))
+    assert result.experiment_id == generation.experiment_ids[0]
 
 
 def test_fresh_holdout_is_quarantined_and_persists_only_its_gate(tmp_path):
@@ -115,13 +117,13 @@ def test_development_evaluation_is_invalid_when_a_gate_or_task_is_invalid(tmp_pa
     assert result.decision.value == "no_change"
 
 
-def test_development_evaluation_rejects_a_second_nomination(tmp_path):
+def test_development_evaluation_rejects_any_second_evaluation_for_a_generation(tmp_path):
     generation_id = _generation(tmp_path)
     evaluator = DevelopmentEvaluator(tmp_path)
-    runner = lambda task_id, candidate, workspace, seed: EvaluationOutcomeKind.PASSED if candidate.policy.version == "generated-1" else EvaluationOutcomeKind.FAILED
+    runner = lambda *_: EvaluationOutcomeKind.PASSED
     evaluator.evaluate(_request(tmp_path, generation_id), runner)
 
-    with pytest.raises(ValueError, match="at most one"):
+    with pytest.raises(ValueError, match="already been evaluated"):
         evaluator.evaluate(_request(tmp_path, generation_id), runner)
 
 
@@ -177,21 +179,27 @@ def test_evaluation_runs_every_candidate_and_does_not_break_a_tie_by_identifier(
     first_candidate = next(record.value for record in records if isinstance(record.value, Candidate) and record.value.candidate_id == generation.candidate_ids[0])
     second_candidate = replace(first_candidate, candidate_id="candidate-second", policy=Policy("policy-second", first_candidate.policy.mode, "generated-2"))
     store.append_candidate(second_candidate)
-    store.append(replace(generation, candidate_ids=(first_candidate.candidate_id, second_candidate.candidate_id)))
-    seen = []
+    with pytest.raises(ValueError, match="duplicate immutable record identity"):
+        store.append(replace(generation, candidate_ids=(first_candidate.candidate_id, second_candidate.candidate_id)))
 
-    def tied_runner(task_id, candidate, workspace, seed):
-        seen.append(candidate.candidate_id)
-        return EvaluationOutcomeKind.FAILED if candidate.policy.version == "1" else EvaluationOutcomeKind.PASSED
 
-    result = DevelopmentEvaluator(tmp_path).evaluate(_request(tmp_path, generation_id), tied_runner)
+def test_immutable_store_rejects_a_duplicate_candidate_identity(tmp_path):
+    generation_id = _generation(tmp_path)
+    candidate = next(record.value for record in ImmutableStateStore(tmp_path).records() if isinstance(record.value, Candidate) and record.value.candidate_id != "candidate-base")
 
-    assert seen.count("candidate-base") == 2
-    assert seen.count(first_candidate.candidate_id) == 1
-    assert seen.count(second_candidate.candidate_id) == 1
-    assert result.decision.value == "no_change"
-    experiment = next(record.value for record in reversed(store.records()) if record.value.experiment_id == result.experiment_id)
-    assert {outcome.kind for outcome in experiment.evaluation_outcomes} == {EvaluationOutcomeKind.PASSED, EvaluationOutcomeKind.FAILED}
+    with pytest.raises(ValueError, match="duplicate immutable record identity"):
+        ImmutableStateStore(tmp_path).append_candidate(candidate)
+
+
+def test_evaluation_requires_exactly_one_precommitted_experiment(tmp_path):
+    generation_id = _generation(tmp_path)
+    store = ImmutableStateStore(tmp_path)
+    generation = next(record.value for record in store.records() if isinstance(record.value, Generation))
+    malformed = replace(generation, generation_id="generation-without-experiment", experiment_ids=())
+    store.append(malformed)
+
+    with pytest.raises(ValueError, match="exactly one precommitted Experiment"):
+        DevelopmentEvaluator(tmp_path).evaluate(_request(tmp_path, malformed.generation_id), lambda *_: EvaluationOutcomeKind.PASSED)
 
 
 def test_timeout_is_recorded_as_an_error_with_a_machine_readable_reason(tmp_path):

@@ -778,6 +778,9 @@ class ImmutableStateStore:
                 self._unlock(lock_file)
 
     def _append_locked(self, record_type: str, value: RecordValue, existing: tuple[StoredRecord, ...]) -> StoredRecord:
+        identity = _immutable_record_identity(value)
+        if identity is not None and any(_immutable_record_identity(record.value) == identity for record in existing):
+            raise ValueError("duplicate immutable record identity")
         document = {
             "schema_version": self.schema_version,
             "record_type": record_type,
@@ -887,6 +890,14 @@ def _record_type(value: RecordValue) -> str:
         Experiment: "experiment", Generation: "generation", Restriction: "restriction", Pin: "pin",
         Preview: "preview", Rollback: "rollback", RoutingDecision: "routing_decision",
     }[type(value)]
+
+
+def _immutable_record_identity(value: RecordValue) -> tuple[str, str] | None:
+    if isinstance(value, Candidate):
+        return ("candidate", value.candidate_id)
+    if isinstance(value, Generation):
+        return ("generation", value.generation_id)
+    return None
 
 
 def _to_json_value(value: Any) -> Any:

@@ -58,7 +58,7 @@ def test_background_research_denies_resources_and_invalid_mutations_fail_closed(
     assert controller.run(thermal_state="normal")["state"] == "completed"
 
 
-def test_background_research_completion_records_candidate_experiment_and_generation(tmp_path):
+def test_background_research_completion_records_a_candidate_and_generation_without_a_completed_experiment(tmp_path):
     controller = _controller(tmp_path)
     generation_id = _start(controller)["generation_id"]
 
@@ -67,10 +67,13 @@ def test_background_research_completion_records_candidate_experiment_and_generat
     record_types = {type(record.value).__name__ for record in records}
 
     assert completed["state"] == "completed"
-    assert {"Candidate", "Experiment", "Generation", "EvidenceBundle"}.issubset(record_types)
+    assert {"Candidate", "Generation"}.issubset(record_types)
+    assert "Experiment" not in record_types
+    assert "EvidenceBundle" not in record_types
     generation = next(record.value for record in records if type(record.value).__name__ == "Generation")
     assert generation.generation_id == generation_id
     assert generation.base_champion_id == "champion-base"
+    assert len(generation.experiment_ids) == 1
 
 
 def test_research_cli_reports_status_and_keeps_manifest_json(monkeypatch, tmp_path, capsys):

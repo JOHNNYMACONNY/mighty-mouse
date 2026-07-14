@@ -38,7 +38,7 @@ mighty_mouse = ["resources/**/*", "protocols/**/*.md"]
 "*" = ["._*", "*/._*", "*/*/._*", "*/*/*/._*"]
 
 [project.scripts]
-mighty-mouse = "mighty_mouse.cli:main"
+mighty-mouse = "mighty_mouse.cli:cli_entrypoint"
 
 [tool.pytest.ini_options]
 norecursedirs = [

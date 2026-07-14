@@ -1,4 +1,5 @@
 import argparse
+import sys
 
 
 def _positive_int(value):
@@ -11,6 +12,18 @@ def _positive_int(value):
     return parsed
 
 def main():
+    _main()
+
+
+def cli_entrypoint():
+    try:
+        main()
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
+
+
+def _main():
     parser = argparse.ArgumentParser(description="Mighty Mouse CLI - High-reliability coding protocol for small models")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -125,13 +138,17 @@ def main():
     parser_signals = subparsers.add_parser("signals", help="Collect privacy-safe v2 Signals or view aggregate history")
     parser_signals.add_argument("action", choices=("collect", "pause", "resume", "compact", "purge", "history"))
     parser_signals.add_argument("--state-dir", default=".mighty-mouse", help="Local v2 state directory")
-    parser_signals.add_argument("--signal-id", help="Controlled Signal identifier")
-    parser_signals.add_argument("--repository", help="Repository Scope for collection")
+    parser_signals.add_argument("--signal-id", help="Controlled receipt ID: signal-001 (no task text)")
+    parser_signals.add_argument("--repository", help="Owner/repository Scope, not a filesystem path")
     parser_signals.add_argument("--mode", choices=("coding", "agentic", "hybrid"), help="Mode Scope for collection")
     parser_signals.add_argument("--task-category", choices=("unknown", "maintenance", "feature", "debugging", "refactoring"), help="Controlled Task Category")
-    parser_signals.add_argument("--model-class", help="Model class Scope for collection")
-    parser_signals.add_argument("--model-digest", help="Exact model identity digest")
-    parser_signals.add_argument("--execution-profile", help="Host execution profile")
+    parser_signals.add_argument(
+        "--model-class",
+        choices=("local-small", "local-medium", "local-large", "unknown"),
+        help="Model class Scope for collection",
+    )
+    parser_signals.add_argument("--model-digest", help="Exact model SHA-256 digest: sha256:<64 lowercase hex>")
+    parser_signals.add_argument("--execution-profile", help="codex-local, unknown, or SHA-256 execution-profile digest")
     parser_signals.add_argument("--outcome", choices=("passed", "failed", "cancelled", "error"), help="Controlled task outcome")
     parser_signals.add_argument("--duration-ms", type=int, help="Task duration in milliseconds")
     parser_signals.add_argument("--retry-count", type=int, help="Retry count")
@@ -287,4 +304,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    cli_entrypoint()

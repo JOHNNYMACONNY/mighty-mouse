@@ -203,6 +203,38 @@ def test_signal_cli_collects_and_renders_only_aggregate_history(monkeypatch, tmp
     assert "signal-001" not in str(history)
 
 
+def test_signal_cli_rejects_invalid_receipt_as_a_clean_cli_error(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(sys, "argv", [
+        "mighty-mouse", "signals", "collect", "--state-dir", str(tmp_path),
+        "--signal-id", "receipt-from-a-task", "--repository", "JOHNNYMACONNY/mighty-mouse",
+        "--mode", "coding", "--task-category", "feature", "--model-class", "local-small",
+        "--model-digest", "sha256:" + "a" * 64, "--execution-profile", "codex-local",
+        "--outcome", "passed", "--duration-ms", "10", "--retry-count", "0",
+        "--verifier-category", "tests", "--verifier-result", "passed",
+    ])
+
+    with pytest.raises(SystemExit) as exc:
+        cli.cli_entrypoint()
+
+    captured = capsys.readouterr()
+    assert exc.value.code == 2
+    assert "Signal identifier must be controlled and content-free" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_signal_cli_help_documents_controlled_values(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["mighty-mouse", "signals", "collect", "--help"])
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+
+    assert exc.value.code == 0
+    help_text = capsys.readouterr().out
+    assert "signal-001" in help_text
+    assert "local-small" in help_text
+    assert "codex-local" in help_text
+
+
 def test_status_cli_exposes_safe_scoped_signal_history_without_mutation(monkeypatch, tmp_path, capsys):
     lifecycle = SignalLifecycle(tmp_path)
     lifecycle.collect(_signal())

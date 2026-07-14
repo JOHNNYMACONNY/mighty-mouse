@@ -45,6 +45,7 @@ norecursedirs = [
     "scratch",
     ".archive",
     "data",
+    "eval/local_model_pilot",
     "test_ws_*",
     ".gsd",
     ".agents",

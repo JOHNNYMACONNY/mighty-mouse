@@ -1,0 +1,12 @@
+{
+  "id": "pilot-high-idempotent-worker",
+  "description": "Investigate incident.txt and fix duplicate job delivery after a worker restart. A job already recorded as completed must not invoke the handler again and should return 'skipped'. A new job should invoke the handler once, record completion only after success, and return 'processed'. Handler failures must propagate without recording completion. Keep the JSON store format compatible and run the tests.",
+  "complexity": "high",
+  "workspace_template": "workspace",
+  "allowed_paths": ["worker.py", "store.py"],
+  "ignored_paths": [".pytest_cache", "__pycache__"],
+  "checks": {
+    "tests": ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test_worker.py"]
+  },
+  "check_timeout_seconds": 30
+}

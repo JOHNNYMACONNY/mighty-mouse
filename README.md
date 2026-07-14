@@ -1,6 +1,6 @@
 # Mighty Mouse
 
-Mighty Mouse is a provider-agnostic coding protocol and verification harness for AI agents. It can be imported as a Python library, exposed to any MCP-compatible client, or used through platform rules for Antigravity, Claude Code, Cursor, Codex, Hermes, and Windsurf.
+Mighty Mouse is a provider-agnostic coding protocol and verification harness for AI agents. Its primary research goal is to make small, locally operated models more viable for coding and agentic work through explicit protocols, project-native verification, and bounded recovery. It can be imported as a Python library, exposed to any MCP-compatible client, or used through platform rules for Antigravity, Claude Code, Cursor, Codex, Hermes, and Windsurf.
 
 The harness does not replace an agent's model provider. It supplies:
 
@@ -23,6 +23,10 @@ A new bare control sent the same 15 frozen tasks to `gemma4:e4b` with one raw re
 See [`data/evidence/results/baseline_comparison.md`](data/evidence/results/baseline_comparison.md) and the raw [`bare_baseline_results.json`](data/evidence/results/bare_baseline_results.json).
 
 The prospective real-project study is complete at 10 paired tasks. Both conditions passed 6/10 tasks on the first attempt, with no scope violations. Mighty Mouse used 4 retry rounds versus 6 for the control and received a higher mean blind-review quality score (4.60 versus 4.30), but it was slower by both mean and median duration. **No generalized improvement was demonstrated.** The result is mixed: fewer retries and higher review quality, without better first-pass reliability or speed. See the [`real-project study report`](data/evidence/real_project_report.md) and its paired raw evidence.
+
+That real-project study used GPT-5.5 through Codex CLI, so it does not test the primary small-local-model thesis. The scored three-condition study is now complete: raw Gemma passed 6/30 tasks, Gemma with Mighty Mouse passed 8/30, and the reference passed 13/30. This is a +6.7 percentage-point paired lift and 28.6% reference-gap closure, with exact McNemar p = 0.50. The result is exploratory and scoped to this corpus and model configuration; it does not support an unqualified claim that Mighty Mouse closes the general small/large-model capability gap. See the [`scored results report`](docs/local-model-capability-results.md) and the frozen [`study protocol`](docs/local-model-capability-study.md).
+
+The experimental runner and its permanently unscored low/medium/high pilot tasks live under [`eval/local_model_pilot/`](eval/local_model_pilot/). They use a genuine bounded tool loop, pristine workspaces, randomized condition order, held-out acceptance support, model-digest capture, and paired analysis. Pilot results validate the experiment machinery only; they are not performance evidence.
 
 ## Install
 

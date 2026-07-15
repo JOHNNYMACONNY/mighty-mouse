@@ -131,7 +131,7 @@ def _current_execution_profile(*, runtime_kind: str, runtime_version: str, effec
 
 def _adapter_config(
     *, repository: str, model_digest: str, model_class: str, effective_context_limit: int,
-    runtime_kind: str, runtime_version: str,
+    runtime_kind: str, runtime_version: str, ollama_model: str | None,
 ) -> dict[str, str | int]:
     profile, tool_contract_digest, prompt_template_digest = _current_execution_profile(
         runtime_kind=runtime_kind, runtime_version=runtime_version,
@@ -140,6 +140,7 @@ def _adapter_config(
     config = {
         "schema_version": MCP_ADAPTER_CONFIG_SCHEMA_VERSION,
         "repository": repository, "model_digest": model_digest, "model_class": model_class,
+        "model_source": "ollama" if ollama_model else "host", "ollama_model": ollama_model,
         "execution_profile_id": profile.profile_id, "runtime_kind": runtime_kind,
         "runtime_version": runtime_version, "effective_context_limit": effective_context_limit,
         "tool_contract_digest": tool_contract_digest, "prompt_template_digest": prompt_template_digest,
@@ -151,13 +152,21 @@ def _adapter_config(
 def _adapter_scope_from_config(config: dict[str, str | int]) -> Scope:
     required = {
         "schema_version", "repository", "model_digest", "model_class", "execution_profile_id",
-        "runtime_kind", "runtime_version", "effective_context_limit", "tool_contract_digest",
+        "model_source", "ollama_model", "runtime_kind", "runtime_version", "effective_context_limit", "tool_contract_digest",
         "prompt_template_digest",
     }
     if set(config) != required:
         raise ValueError("MCP adapter identity configuration is stale or invalid; run setup_workspace")
     if config["schema_version"] != MCP_ADAPTER_CONFIG_SCHEMA_VERSION:
         raise ValueError("MCP adapter identity configuration is stale; run setup_workspace")
+    if config["model_source"] not in {"ollama", "host"}:
+        raise ValueError("MCP adapter identity configuration is stale or invalid; run setup_workspace")
+    if config["model_source"] == "ollama":
+        ollama_model = config["ollama_model"]
+        if not isinstance(ollama_model, str) or _ollama_model_digest(ollama_model) != config["model_digest"]:
+            raise ValueError("MCP adapter model identity changed; run setup_workspace")
+    elif config["ollama_model"] is not None:
+        raise ValueError("MCP adapter identity configuration is stale or invalid; run setup_workspace")
     profile, tool_contract_digest, prompt_template_digest = _current_execution_profile(
         runtime_kind=str(config["runtime_kind"]), runtime_version=str(config["runtime_version"]),
         effective_context_limit=int(config["effective_context_limit"]),
@@ -192,6 +201,7 @@ def run_setup_workspace(
         repository=repository, model_digest=_ollama_model_digest(ollama_model) if ollama_model else model_digest,
         model_class=model_class,
         effective_context_limit=effective_context_limit, runtime_kind=runtime_kind, runtime_version=runtime_version,
+        ollama_model=ollama_model,
     )
     path = workspace_path / ".mighty-mouse" / ADAPTER_CONFIG_FILENAME
     if path.exists():

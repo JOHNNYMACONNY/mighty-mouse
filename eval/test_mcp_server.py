@@ -30,7 +30,7 @@ def configure_cline_adapter(workspace: Path, *, model_digest: str, model_class: 
     config = _adapter_config(
         repository="JOHNNYMACONNY/mighty-mouse", model_digest=model_digest,
         model_class=model_class, effective_context_limit=8192,
-        runtime_kind="cline", runtime_version="3.54.0",
+        runtime_kind="cline", runtime_version="3.54.0", ollama_model=None,
     )
     (state_dir / "mcp-adapter.json").write_text(json.dumps(config), encoding="utf-8")
 
@@ -38,7 +38,7 @@ def configure_cline_adapter(workspace: Path, *, model_digest: str, model_class: 
 def write_ollama_manifest(home: Path, model: str, digest: str) -> None:
     name, tag = model.rsplit(":", 1)
     path = home / ".ollama" / "models" / "manifests" / "registry.ollama.ai" / "library" / name / tag
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"layers": [
         {"mediaType": "application/vnd.ollama.image.model", "digest": digest},
     ]}), encoding="utf-8")
@@ -178,6 +178,11 @@ def test_setup_workspace_pins_ollama_identity_without_manual_json(tmp_path, monk
             str(workspace), repository="JOHNNYMACONNY/mighty-mouse", ollama_model="gpt-oss:20b",
             model_class="local-large", runtime_kind="unknown", runtime_version="unknown",
         )
+
+    write_ollama_manifest(home, "gpt-oss:20b", "sha256:" + "b" * 64)
+    from mighty_mouse_mcp.server import run_verify_and_record
+    with pytest.raises(ValueError, match="model identity changed"):
+        run_verify_and_record(str(workspace))
 
 
 @pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")

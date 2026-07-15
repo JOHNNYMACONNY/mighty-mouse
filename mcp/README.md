@@ -55,7 +55,10 @@ its own model-identity resolver. Cline is just the reference integration:
 provide `runtime_kind="cline"` and its exact runtime version; Claude Code,
 Codex, Cursor, and other hosts use their own controlled runtime facts. The
 adapter refuses routine collection until this exact identity exists, and task
-calls cannot override it.
+calls cannot override it. For Ollama-backed identities it rechecks the pinned
+model alias before every recorded task and requires re-onboarding if the model
+digest changes; non-Ollama host adapters must re-run setup whenever their active
+model changes.
 
 The durable receipt contains only controlled metadata: scope, model digest,
 verification category/result, duration, and retry count. It never persists

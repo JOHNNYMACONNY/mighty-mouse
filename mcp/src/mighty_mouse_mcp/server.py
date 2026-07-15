@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from hashlib import sha256
+import inspect
 from pathlib import Path
 import secrets
 
@@ -18,6 +19,8 @@ from mighty_mouse.v2.signals import SignalLifecycle
 mcp = FastMCP("mighty-mouse")
 ADAPTER_CONFIG_FILENAME = "mcp-adapter.json"
 LEGACY_ADAPTER_CONFIG_FILENAME = "cline-adapter.json"
+SUPPORTED_RUNTIME_KINDS = frozenset({"cline", "claude-code", "codex", "cursor", "antigravity", "hermes", "windsurf"})
+MCP_TOOL_CONTRACT_VERSION = 1
 
 
 def run_verify(
@@ -109,12 +112,27 @@ def _ollama_model_digest(model: str) -> str:
     return digest
 
 
+def _mcp_tool_contract() -> dict[str, str]:
+    return {
+        "contract_version": str(MCP_TOOL_CONTRACT_VERSION),
+        "protocol": str(inspect.signature(run_protocol)),
+        "verify": str(inspect.signature(run_verify)),
+        "setup_workspace": str(inspect.signature(run_setup_workspace)),
+        "verify_and_record": str(inspect.signature(run_verify_and_record)),
+        "recording_audit": str(inspect.signature(run_recording_audit)),
+    }
+
+
 def _adapter_config(
-    *, repository: str, ollama_model: str, model_class: str, effective_context_limit: int,
+    *, repository: str, model_digest: str, model_class: str, effective_context_limit: int,
     runtime_kind: str, runtime_version: str,
 ) -> dict[str, str]:
-    model_digest = _ollama_model_digest(ollama_model)
-    tool_contract_digest = "sha256:" + sha256(f"mighty-mouse-mcp:{PROTOCOL_VERSION}".encode()).hexdigest()
+    if runtime_kind not in SUPPORTED_RUNTIME_KINDS or not runtime_version or runtime_version == "unknown":
+        raise ValueError("Workspace setup requires a supported runtime kind and exact runtime version")
+    tool_contract = _mcp_tool_contract()
+    tool_contract_digest = "sha256:" + sha256(
+        json.dumps(tool_contract, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
     prompt_template_digest = "sha256:" + sha256(
         "\n".join(get_protocol(complexity) for complexity in ("low", "medium", "high")).encode()
     ).hexdigest()
@@ -122,7 +140,7 @@ def _adapter_config(
         runtime_kind=runtime_kind, runtime_version=runtime_version,
         effective_context_limit=effective_context_limit,
         tool_contract_digest=tool_contract_digest, prompt_template_digest=prompt_template_digest,
-        sampling_settings={}, resource_limits={}, capabilities={"mcp", "protocol", "verify"},
+        sampling_settings={}, resource_limits={}, capabilities=frozenset({"mcp", *tool_contract}),
     )
     config = {
         "repository": repository, "model_digest": model_digest, "model_class": model_class,
@@ -146,16 +164,19 @@ def _adapter_scope_from_config(config: dict[str, str]) -> Scope:
 
 
 def run_setup_workspace(
-    workspace: str, repository: str, ollama_model: str, model_class: str = "unknown",
-    effective_context_limit: int = 8192, runtime_kind: str = "unknown", runtime_version: str = "unknown",
-    replace: bool = False,
+    workspace: str, repository: str, *, ollama_model: str | None = None,
+    model_digest: str | None = None, model_class: str = "unknown", effective_context_limit: int = 8192,
+    runtime_kind: str, runtime_version: str, replace: bool = False,
 ) -> dict[str, str | bool]:
-    """Pin the local Ollama and Cline identity needed for automatic Signal collection."""
+    """Pin a host's exact identity needed for automatic Signal collection."""
     workspace_path = Path(workspace)
     if not workspace_path.is_dir():
         raise ValueError(f"Workspace is not a directory: {workspace}")
+    if (ollama_model is None) == (model_digest is None):
+        raise ValueError("Workspace setup requires exactly one of ollama_model or model_digest")
     config = _adapter_config(
-        repository=repository, ollama_model=ollama_model, model_class=model_class,
+        repository=repository, model_digest=_ollama_model_digest(ollama_model) if ollama_model else model_digest,
+        model_class=model_class,
         effective_context_limit=effective_context_limit, runtime_kind=runtime_kind, runtime_version=runtime_version,
     )
     path = workspace_path / ".mighty-mouse" / ADAPTER_CONFIG_FILENAME
@@ -172,15 +193,16 @@ def run_setup_workspace(
     return {"configured": True, "model_digest": config["model_digest"], "execution_profile_id": config["execution_profile_id"]}
 
 
-def run_recording_audit(workspace: str, after: str | None = None) -> dict[str, bool | int]:
-    """Return whether a content-free Signal was recorded after a host task began."""
-    threshold = datetime.fromisoformat(after) if after else None
-    if threshold is not None:
-        threshold = threshold.astimezone(timezone.utc) if threshold.tzinfo else threshold.replace(tzinfo=timezone.utc)
+def run_recording_audit(workspace: str, receipt_hash: str, after: str) -> dict[str, bool | int]:
+    """Confirm that the exact receipt returned by one task was recorded after it began."""
+    normalized_after = after[:-1] + "+00:00" if after.endswith("Z") else after
+    threshold = datetime.fromisoformat(normalized_after)
+    threshold = threshold.astimezone(timezone.utc) if threshold.tzinfo else threshold.replace(tzinfo=timezone.utc)
     lifecycle = SignalLifecycle(Path(workspace) / ".mighty-mouse")
     count = sum(
         1 for receipt in lifecycle._receipts()
-        if threshold is None or datetime.fromisoformat(receipt["recorded_at"]).astimezone(timezone.utc) >= threshold
+        if receipt["receipt_hash"] == receipt_hash
+        and datetime.fromisoformat(receipt["recorded_at"]).astimezone(timezone.utc) >= threshold
     )
     return {"recorded": count > 0, "recent_receipt_count": count}
 
@@ -249,23 +271,26 @@ def verify_tool(
 def setup_workspace_tool(
     workspace: str,
     repository: str,
-    ollama_model: str,
+    ollama_model: str | None = None,
+    model_digest: str | None = None,
     model_class: str = "unknown",
     effective_context_limit: int = 8192,
-    runtime_kind: str = "unknown",
-    runtime_version: str = "unknown",
+    runtime_kind: str = "",
+    runtime_version: str = "",
     replace: bool = False,
 ) -> dict[str, str | bool]:
-    """Pin the local Ollama/Cline identity for automatic content-free Signal collection."""
+    """Pin an exact Ollama or host-supplied model identity for automatic Signal collection."""
     return run_setup_workspace(
-        workspace, repository, ollama_model, model_class, effective_context_limit, runtime_kind, runtime_version, replace,
+        workspace, repository, ollama_model=ollama_model, model_digest=model_digest,
+        model_class=model_class, effective_context_limit=effective_context_limit,
+        runtime_kind=runtime_kind, runtime_version=runtime_version, replace=replace,
     )
 
 
 @mcp.tool(name="recording_audit")
-def recording_audit_tool(workspace: str, after: str | None = None) -> dict[str, bool | int]:
-    """Check whether a host task recorded a Signal after its start time."""
-    return run_recording_audit(workspace, after)
+def recording_audit_tool(workspace: str, receipt_hash: str, after: str) -> dict[str, bool | int]:
+    """Check whether the exact receipt returned by a host task was recorded after its start time."""
+    return run_recording_audit(workspace, receipt_hash, after)
 
 
 @mcp.tool(name="verify_and_record")

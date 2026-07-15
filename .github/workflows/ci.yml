@@ -54,4 +54,4 @@ jobs:
           "$CLI" protocol "CI packaging smoke" --json | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d['interface']=='protocol' and d['schema_version']==1"
           mkdir -p /tmp/mighty-mouse-verify-smoke
           "$CLI" verify /tmp/mighty-mouse-verify-smoke --test-command "$PY -c 'print(\"wheel smoke passed\")'" --json | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d['interface']=='verify' and d['passed'] is True"
-          "$AUDIT" /tmp/mighty-mouse-verify-smoke --after 2026-01-01T00:00:00+00:00 >/dev/null || test $? -eq 1
+          "$AUDIT" /tmp/mighty-mouse-verify-smoke --receipt-hash deadbeef --after 2026-01-01T00:00:00+00:00 >/dev/null || test $? -eq 1

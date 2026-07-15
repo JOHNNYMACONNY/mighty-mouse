@@ -13,9 +13,10 @@ def main() -> None:
         description="Exit nonzero unless Mighty Mouse recorded a Signal after a host task began."
     )
     parser.add_argument("workspace", help="Workspace whose .mighty-mouse state should be checked")
-    parser.add_argument("--after", help="ISO-8601 UTC task start time")
+    parser.add_argument("--receipt-hash", required=True, help="Receipt hash returned by verify_and_record")
+    parser.add_argument("--after", required=True, help="ISO-8601 UTC task start time")
     args = parser.parse_args()
-    result = run_recording_audit(args.workspace, args.after)
+    result = run_recording_audit(args.workspace, args.receipt_hash, args.after)
     print(json.dumps(result, sort_keys=True))
     if not result["recorded"]:
         raise SystemExit(1)

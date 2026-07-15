@@ -5,8 +5,8 @@ The MCP server exposes five tools through the `mighty-mouse` server namespace:
 - `verify`: run tests, lint, build, and optional Git scope checks.
 - `protocol`: return the versioned low, medium, or high Mighty Mouse protocol.
 - `verify_and_record`: run verification and persist a content-free v2 Signal receipt.
-- `setup_workspace`: pin a local Ollama model and MCP execution profile without hand-writing config.
-- `recording_audit`: check that a host task recorded a Signal after it began.
+- `setup_workspace`: pin an exact local Ollama or host-supplied model identity and MCP execution profile without hand-writing config.
+- `recording_audit`: check that one exact host task receipt was recorded after it began.
 
 Install both packages from a repository checkout:
 
@@ -45,14 +45,17 @@ its manifest and derives a profile from the host, context limit, and Mighty
 Mouse tool contract. It writes `.mighty-mouse/mcp-adapter.json` locally.
 
 ```text
-setup_workspace(workspace, repository, ollama_model, model_class,
+setup_workspace(workspace, repository, ollama_model | model_digest, model_class,
                 effective_context_limit, runtime_kind, runtime_version)
 ```
 
-The setup call is shared by every MCP-capable host. Cline is just the reference
-integration: provide `runtime_kind="cline"`; Claude Code, Codex, Cursor, and
-other hosts use their own controlled runtime name. The adapter refuses routine
-collection until this exact identity exists, and task calls cannot override it.
+The setup call is shared by every MCP-capable host. Use `ollama_model` for a
+local Ollama resolver, or pass exactly one exact `model_digest` when a host has
+its own model-identity resolver. Cline is just the reference integration:
+provide `runtime_kind="cline"` and its exact runtime version; Claude Code,
+Codex, Cursor, and other hosts use their own controlled runtime facts. The
+adapter refuses routine collection until this exact identity exists, and task
+calls cannot override it.
 
 The durable receipt contains only controlled metadata: scope, model digest,
 verification category/result, duration, and retry count. It never persists
@@ -71,12 +74,14 @@ MCP is the primary task-completion path. A host that supports completion hooks
 can add a fail-closed guard without duplicating collection logic:
 
 ```bash
-mighty-mouse-signal-audit /path/to/workspace --after 2026-07-15T00:00:00+00:00
+mighty-mouse-signal-audit /path/to/workspace \
+  --receipt-hash <hash-returned-by-verify_and_record> \
+  --after 2026-07-15T00:00:00+00:00
 ```
 
-It exits `0` only when a Signal receipt was recorded after the supplied task
-start time; otherwise it exits `1`. It stores nothing and is appropriate as a
-post-task check, not a replacement for `verify_and_record`.
+It exits `0` only when that exact returned Signal receipt was recorded after the
+supplied task start time; otherwise it exits `1`. It stores nothing and is
+appropriate as a post-task check, not a replacement for `verify_and_record`.
 
 ## Trust boundary
 

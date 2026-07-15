@@ -153,6 +153,8 @@ def test_setup_workspace_pins_ollama_identity_without_manual_json(tmp_path, monk
         ollama_model="gpt-oss:20b",
         model_class="local-large",
         effective_context_limit=8192,
+        runtime_kind="cline",
+        runtime_version="3.32.2",
     )
 
     assert result["configured"] is True
@@ -165,7 +167,48 @@ def test_setup_workspace_pins_ollama_identity_without_manual_json(tmp_path, monk
         ollama_model="gpt-oss:20b",
         model_class="local-large",
         effective_context_limit=8192,
+        runtime_kind="cline",
+        runtime_version="3.32.2",
     )["configured"] is False
+
+    with pytest.raises(ValueError, match="runtime kind"):
+        run_setup_workspace(
+            str(workspace), repository="JOHNNYMACONNY/mighty-mouse", ollama_model="gpt-oss:20b",
+            model_class="local-large", runtime_kind="unknown", runtime_version="unknown",
+        )
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_setup_workspace_accepts_a_pinned_non_ollama_host_identity(tmp_path):
+    from mighty_mouse_mcp.server import run_setup_workspace
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    result = run_setup_workspace(
+        str(workspace), repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "9" * 64, model_class="local-large",
+        runtime_kind="codex", runtime_version="1.2.3",
+    )
+
+    assert result["configured"] is True
+    assert json.loads((workspace / ".mighty-mouse" / "mcp-adapter.json").read_text())["model_digest"] == "sha256:" + "9" * 64
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_setup_partitions_profiles_by_exact_host_facts_and_full_tool_contract(tmp_path):
+    from mighty_mouse_mcp.server import _mcp_tool_contract, run_setup_workspace
+
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    shared = {"repository": "JOHNNYMACONNY/mighty-mouse", "model_digest": "sha256:" + "8" * 64, "model_class": "local-large"}
+    first_result = run_setup_workspace(str(first), runtime_kind="cline", runtime_version="3.54.0", **shared)
+    second_result = run_setup_workspace(str(second), runtime_kind="codex", runtime_version="1.2.3", **shared)
+
+    assert first_result["execution_profile_id"] != second_result["execution_profile_id"]
+    assert set(_mcp_tool_contract()) == {
+        "contract_version", "protocol", "verify", "setup_workspace", "verify_and_record", "recording_audit",
+    }
 
 
 @pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
@@ -174,9 +217,9 @@ def test_recording_audit_reports_a_signal_after_the_task_started(tmp_path):
 
     configure_cline_adapter(tmp_path, model_digest="sha256:" + "a" * 64)
     started_at = datetime.now(timezone.utc) - timedelta(seconds=1)
-    assert run_recording_audit(str(tmp_path), after=started_at.isoformat())["recorded"] is False
-    run_verify_and_record(str(tmp_path), test_command=[sys.executable, "-c", "print('ok')"])
-    audit = run_recording_audit(str(tmp_path), after=started_at.isoformat())
+    result = run_verify_and_record(str(tmp_path), test_command=[sys.executable, "-c", "print('ok')"])
+    assert run_recording_audit(str(tmp_path), "0" * 64, started_at.isoformat())["recorded"] is False
+    audit = run_recording_audit(str(tmp_path), result["receipt_hash"], started_at.isoformat().replace("+00:00", "Z"))
     assert audit == {"recorded": True, "recent_receipt_count": 1}
 
 
@@ -187,9 +230,13 @@ def test_optional_hook_command_fails_closed_when_no_signal_was_recorded(tmp_path
     configure_cline_adapter(tmp_path, model_digest="sha256:" + "a" * 64)
     started_at = datetime.now(timezone.utc) - timedelta(seconds=1)
     environment = {**os.environ, "PYTHONPATH": os.pathsep.join([os.path.abspath("src"), MCP_SRC])}
-    command = [sys.executable, "-m", "mighty_mouse_mcp.hooks", str(tmp_path), "--after", started_at.isoformat()]
+    command = [
+        sys.executable, "-m", "mighty_mouse_mcp.hooks", str(tmp_path), "--receipt-hash", "0" * 64,
+        "--after", started_at.isoformat(),
+    ]
     assert subprocess.run(command, env=environment, capture_output=True, text=True).returncode == 1
-    run_verify_and_record(str(tmp_path), test_command=[sys.executable, "-c", "print('ok')"])
+    result = run_verify_and_record(str(tmp_path), test_command=[sys.executable, "-c", "print('ok')"])
+    command[5] = result["receipt_hash"]
     assert subprocess.run(command, env=environment, capture_output=True, text=True).returncode == 0
 
 
@@ -238,6 +285,8 @@ def test_stdio_server_lists_and_calls_tools():
                             "ollama_model": "gpt-oss:20b",
                             "model_class": "local-large",
                             "effective_context_limit": 8192,
+                            "runtime_kind": "cline",
+                            "runtime_version": "3.32.2",
                         },
                     )
                     assert not setup.isError

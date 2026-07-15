@@ -153,9 +153,9 @@ The `mighty-mouse` server exposes:
 
 - `protocol(task_description, complexity)`: returns the pinned v9.1 low, medium, or high protocol.
 - `verify(workspace, ...)`: returns structured tests, lint, build, and scope results.
-- `setup_workspace(workspace, repository, ollama_model, ...)`: creates a pinned local MCP identity from the Ollama manifest; no hand-written JSON is needed.
+- `setup_workspace(workspace, repository, ...)`: creates a pinned local MCP identity from either an Ollama manifest or an exact host-supplied model digest; no hand-written JSON is needed.
 - `verify_and_record(workspace, ...)`: verifies a task and writes a content-free v2 Signal receipt for learning aggregates using the pinned `.mighty-mouse/mcp-adapter.json` identity. It records no prompt, source, path, command, or verifier output.
-- `recording_audit(workspace, after)`: supports optional host hooks that fail closed when a completed task did not record a Signal.
+- `recording_audit(workspace, receipt_hash, after)`: supports optional host hooks that fail closed unless that task's returned receipt was recorded.
 
 Generic stdio configuration:
 

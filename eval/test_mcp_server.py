@@ -1,7 +1,9 @@
 import os
 import sys
 import json
+import subprocess
 import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -29,6 +31,15 @@ def configure_cline_adapter(workspace: Path, *, model_digest: str, model_class: 
         "model_class": model_class,
         "execution_profile_id": "sha256:" + "d" * 64,
     }), encoding="utf-8")
+
+
+def write_ollama_manifest(home: Path, model: str, digest: str) -> None:
+    name, tag = model.rsplit(":", 1)
+    path = home / ".ollama" / "models" / "manifests" / "registry.ollama.ai" / "library" / name / tag
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"layers": [
+        {"mediaType": "application/vnd.ollama.image.model", "digest": digest},
+    ]}), encoding="utf-8")
 
 
 @pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
@@ -125,6 +136,63 @@ def test_verify_and_record_refuses_unconfigured_or_unknown_provenance(tmp_path):
         run_verify_and_record(str(tmp_path))
 
 
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_setup_workspace_pins_ollama_identity_without_manual_json(tmp_path, monkeypatch):
+    from mighty_mouse_mcp.server import run_setup_workspace
+
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    digest = "sha256:" + "f" * 64
+    write_ollama_manifest(home, "gpt-oss:20b", digest)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    result = run_setup_workspace(
+        str(workspace),
+        repository="JOHNNYMACONNY/mighty-mouse",
+        ollama_model="gpt-oss:20b",
+        model_class="local-large",
+        effective_context_limit=8192,
+    )
+
+    assert result["configured"] is True
+    config = json.loads((workspace / ".mighty-mouse" / "mcp-adapter.json").read_text())
+    assert config["model_digest"] == digest
+    assert config["execution_profile_id"].startswith("sha256:")
+    assert run_setup_workspace(
+        str(workspace),
+        repository="JOHNNYMACONNY/mighty-mouse",
+        ollama_model="gpt-oss:20b",
+        model_class="local-large",
+        effective_context_limit=8192,
+    )["configured"] is False
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_recording_audit_reports_a_signal_after_the_task_started(tmp_path):
+    from mighty_mouse_mcp.server import run_recording_audit, run_verify_and_record
+
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "a" * 64)
+    started_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    assert run_recording_audit(str(tmp_path), after=started_at.isoformat())["recorded"] is False
+    run_verify_and_record(str(tmp_path), test_command=[sys.executable, "-c", "print('ok')"])
+    audit = run_recording_audit(str(tmp_path), after=started_at.isoformat())
+    assert audit == {"recorded": True, "recent_receipt_count": 1}
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_optional_hook_command_fails_closed_when_no_signal_was_recorded(tmp_path):
+    from mighty_mouse_mcp.server import run_verify_and_record
+
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "a" * 64)
+    started_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    environment = {**os.environ, "PYTHONPATH": os.pathsep.join([os.path.abspath("src"), MCP_SRC])}
+    command = [sys.executable, "-m", "mighty_mouse_mcp.hooks", str(tmp_path), "--after", started_at.isoformat()]
+    assert subprocess.run(command, env=environment, capture_output=True, text=True).returncode == 1
+    run_verify_and_record(str(tmp_path), test_command=[sys.executable, "-c", "print('ok')"])
+    assert subprocess.run(command, env=environment, capture_output=True, text=True).returncode == 0
+
+
 def test_unknown_protocol_complexity_is_rejected():
     with pytest.raises(ValueError):
         get_protocol("extreme")
@@ -151,7 +219,9 @@ def test_stdio_server_lists_and_calls_tools():
             async with ClientSession(*streams) as session:
                 await session.initialize()
                 listed = await session.list_tools()
-                assert {tool.name for tool in listed.tools} == {"protocol", "verify", "verify_and_record"}
+                assert {tool.name for tool in listed.tools} == {
+                    "protocol", "verify", "verify_and_record", "setup_workspace", "recording_audit",
+                }
                 response = await session.call_tool(
                     "protocol",
                     {"task_description": "Change one label", "complexity": "low"},
@@ -160,7 +230,17 @@ def test_stdio_server_lists_and_calls_tools():
                 payload = json.loads(response.content[0].text)
                 assert payload["protocol_version"] == "v9.1"
                 with tempfile.TemporaryDirectory() as workspace:
-                    configure_cline_adapter(Path(workspace), model_digest="sha256:" + "c" * 64)
+                    setup = await session.call_tool(
+                        "setup_workspace",
+                        {
+                            "workspace": workspace,
+                            "repository": "JOHNNYMACONNY/mighty-mouse",
+                            "ollama_model": "gpt-oss:20b",
+                            "model_class": "local-large",
+                            "effective_context_limit": 8192,
+                        },
+                    )
+                    assert not setup.isError
                     recorded = await session.call_tool(
                         "verify_and_record",
                         {

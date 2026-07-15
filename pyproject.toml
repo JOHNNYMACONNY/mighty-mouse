@@ -5,7 +5,7 @@ backend-path = ["."]
 
 [project]
 name = "mighty-mouse"
-version = "0.2.2"
+version = "0.2.3"
 description = "Provider-agnostic coding protocols and project verification for AI agents"
 readme = "README.md"
 license = "MIT"

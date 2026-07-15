@@ -7,7 +7,7 @@ description: Applies a verification-driven coding protocol to complex code chang
 
 1. Call `mighty-mouse/protocol` with the task description and `low`, `medium`, or `high` complexity.
 2. Follow the returned protocol while inspecting and changing the workspace.
-3. Call `mighty-mouse/verify` after editing. Pass explicit test, lint, or build commands when auto-detection is insufficient, and pass `allowed_paths` when scope is constrained.
+3. If workspace identity is not configured, call `mighty-mouse/setup_workspace` once with the active local model and host profile. After editing, call `mighty-mouse/verify_and_record`. Pass explicit test, lint, or build commands when auto-detection is insufficient, and pass `allowed_paths` when scope is constrained.
 4. If verification fails, use its output and suggestions to fix the root cause, then verify again. Stop after three failed rounds and report the remaining blocker.
 5. Never convert an unverified result into a completion claim.
 

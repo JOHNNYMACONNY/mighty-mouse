@@ -45,7 +45,12 @@ Copy `skills/windsurf/.windsurfrules` into the project. Merge `skills/mcp-config
 
 ## Activation
 
-Invoke `/mighty` or say “use the Mighty Mouse protocol.” The agent should request a complexity-scaled protocol, make the change, and call verification for no more than three rounds.
+Invoke `/mighty` or say “use the Mighty Mouse protocol.” On first use in a
+workspace, the agent should call `setup_workspace` with the active local model
+and host profile. It should then request a complexity-scaled protocol, make the
+change, and call `verify_and_record` for no more than three rounds. This is the
+same MCP path for every MCP-capable host; only the thin rule/config adapter is
+host-specific.
 
 ## Platform references
 

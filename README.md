@@ -7,7 +7,7 @@ The harness does not replace an agent's model provider. It supplies:
 - versioned low, medium, and high-complexity coding protocols;
 - project-native verification for tests, lint, builds, and Git scope;
 - structured pass/fail results with retry suggestions;
-- a local MCP server with `protocol`, `verify`, and privacy-safe `verify_and_record` tools;
+- a local MCP server with `protocol`, `verify`, automatic workspace onboarding, and privacy-safe `verify_and_record` tools;
 - the original Ollama benchmark CLI and frozen evaluation evidence.
 
 ## Evidence and limitations
@@ -153,7 +153,9 @@ The `mighty-mouse` server exposes:
 
 - `protocol(task_description, complexity)`: returns the pinned v9.1 low, medium, or high protocol.
 - `verify(workspace, ...)`: returns structured tests, lint, build, and scope results.
-- `verify_and_record(workspace, ...)`: verifies a task and writes a content-free v2 Signal receipt for learning aggregates using the pinned `.mighty-mouse/cline-adapter.json` identity. It records no prompt, source, path, command, or verifier output.
+- `setup_workspace(workspace, repository, ollama_model, ...)`: creates a pinned local MCP identity from the Ollama manifest; no hand-written JSON is needed.
+- `verify_and_record(workspace, ...)`: verifies a task and writes a content-free v2 Signal receipt for learning aggregates using the pinned `.mighty-mouse/mcp-adapter.json` identity. It records no prompt, source, path, command, or verifier output.
+- `recording_audit(workspace, after)`: supports optional host hooks that fail closed when a completed task did not record a Signal.
 
 Generic stdio configuration:
 

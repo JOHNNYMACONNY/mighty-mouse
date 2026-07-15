@@ -5,17 +5,18 @@ backend-path = ["."]
 
 [project]
 name = "mighty-mouse-mcp"
-version = "0.2.2"
+version = "0.2.3"
 description = "MCP transport for Mighty Mouse project verification and coding protocols"
 license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.0,<2",
-    "mighty-mouse>=0.2.2,<0.3",
+    "mighty-mouse>=0.2.3,<0.3",
 ]
 
 [project.scripts]
 mighty-mouse-mcp = "mighty_mouse_mcp.server:main"
+mighty-mouse-signal-audit = "mighty_mouse_mcp.hooks:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -23,14 +23,16 @@ else:
 
 
 def configure_cline_adapter(workspace: Path, *, model_digest: str, model_class: str = "local-large") -> None:
+    from mighty_mouse_mcp.server import _adapter_config
+
     state_dir = workspace / ".mighty-mouse"
     state_dir.mkdir()
-    (state_dir / "cline-adapter.json").write_text(json.dumps({
-        "repository": "JOHNNYMACONNY/mighty-mouse",
-        "model_digest": model_digest,
-        "model_class": model_class,
-        "execution_profile_id": "sha256:" + "d" * 64,
-    }), encoding="utf-8")
+    config = _adapter_config(
+        repository="JOHNNYMACONNY/mighty-mouse", model_digest=model_digest,
+        model_class=model_class, effective_context_limit=8192,
+        runtime_kind="cline", runtime_version="3.54.0",
+    )
+    (state_dir / "mcp-adapter.json").write_text(json.dumps(config), encoding="utf-8")
 
 
 def write_ollama_manifest(home: Path, model: str, digest: str) -> None:
@@ -128,11 +130,11 @@ def test_verify_and_record_refuses_unconfigured_or_unknown_provenance(tmp_path):
     with pytest.raises(ValueError, match="not configured"):
         run_verify_and_record(str(tmp_path))
     configure_cline_adapter(tmp_path, model_digest="sha256:" + "e" * 64)
-    config = tmp_path / ".mighty-mouse" / "cline-adapter.json"
+    config = tmp_path / ".mighty-mouse" / "mcp-adapter.json"
     document = json.loads(config.read_text())
     document["execution_profile_id"] = "unknown"
     config.write_text(json.dumps(document), encoding="utf-8")
-    with pytest.raises(ValueError, match="exact execution profile"):
+    with pytest.raises(ValueError, match="stale"):
         run_verify_and_record(str(tmp_path))
 
 
@@ -209,6 +211,24 @@ def test_setup_partitions_profiles_by_exact_host_facts_and_full_tool_contract(tm
     assert set(_mcp_tool_contract()) == {
         "contract_version", "protocol", "verify", "setup_workspace", "verify_and_record", "recording_audit",
     }
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_recording_requires_reonboarding_after_a_tool_contract_change(tmp_path, monkeypatch):
+    import mighty_mouse_mcp.server as server
+
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "7" * 64)
+    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 2)
+    with pytest.raises(ValueError, match="stale"):
+        server.run_verify_and_record(str(tmp_path))
+
+    server.run_setup_workspace(
+        str(tmp_path), "JOHNNYMACONNY/mighty-mouse", model_digest="sha256:" + "7" * 64,
+        model_class="local-large", runtime_kind="cline", runtime_version="3.54.0", replace=True,
+    )
+    assert server.run_verify_and_record(
+        str(tmp_path), test_command=[sys.executable, "-c", "print('ok')"],
+    )["signal_recorded"] is True
 
 
 @pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")

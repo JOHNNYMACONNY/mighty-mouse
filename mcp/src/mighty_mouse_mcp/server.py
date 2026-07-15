@@ -18,9 +18,9 @@ from mighty_mouse.v2.signals import SignalLifecycle
 
 mcp = FastMCP("mighty-mouse")
 ADAPTER_CONFIG_FILENAME = "mcp-adapter.json"
-LEGACY_ADAPTER_CONFIG_FILENAME = "cline-adapter.json"
 SUPPORTED_RUNTIME_KINDS = frozenset({"cline", "claude-code", "codex", "cursor", "antigravity", "hermes", "windsurf"})
 MCP_TOOL_CONTRACT_VERSION = 1
+MCP_ADAPTER_CONFIG_SCHEMA_VERSION = 2
 
 
 def run_verify(
@@ -70,26 +70,13 @@ def _adapter_scope(workspace: str, state_dir: str | None, task_category: str) ->
     resolved_state_dir = Path(state_dir) if state_dir else Path(workspace) / ".mighty-mouse"
     path = resolved_state_dir / ADAPTER_CONFIG_FILENAME
     if not path.is_file():
-        legacy_path = resolved_state_dir / LEGACY_ADAPTER_CONFIG_FILENAME
-        path = legacy_path if legacy_path.is_file() else path
-    if not path.is_file():
-        raise ValueError(f"Cline adapter identity is not configured: {path}")
+        raise ValueError(f"MCP adapter identity is not configured: {path}; run setup_workspace")
     try:
         config = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError("Cline adapter identity configuration is invalid JSON") from exc
-    required = {"repository", "model_digest", "model_class", "execution_profile_id"}
-    if set(config) != required:
-        raise ValueError("Cline adapter identity configuration has an invalid shape")
-    scope = Scope(Mode.CODING, config["repository"], TaskCategory(task_category), config["model_class"])
-    # Signal validates digest/profile formats. Refuse unknown provenance for automatic learning.
-    if config["execution_profile_id"] == "unknown":
-        raise ValueError("Cline adapter identity configuration requires an exact execution profile digest")
-    Signal(
-        signal_id="signal-000", scope=scope, model_digest=config["model_digest"],
-        execution_profile_id=config["execution_profile_id"], outcome="passed", duration_ms=0,
-        retry_count=0, verifier_category="none", verifier_result="not_run",
-    )
+    base_scope = _adapter_scope_from_config(config)
+    scope = Scope(Mode.CODING, base_scope.repository, TaskCategory(task_category), base_scope.model_class)
     return resolved_state_dir, scope, config["model_digest"], config["execution_profile_id"]
 
 
@@ -123,10 +110,7 @@ def _mcp_tool_contract() -> dict[str, str]:
     }
 
 
-def _adapter_config(
-    *, repository: str, model_digest: str, model_class: str, effective_context_limit: int,
-    runtime_kind: str, runtime_version: str,
-) -> dict[str, str]:
+def _current_execution_profile(*, runtime_kind: str, runtime_version: str, effective_context_limit: int):
     if runtime_kind not in SUPPORTED_RUNTIME_KINDS or not runtime_version or runtime_version == "unknown":
         raise ValueError("Workspace setup requires a supported runtime kind and exact runtime version")
     tool_contract = _mcp_tool_contract()
@@ -142,22 +126,52 @@ def _adapter_config(
         tool_contract_digest=tool_contract_digest, prompt_template_digest=prompt_template_digest,
         sampling_settings={}, resource_limits={}, capabilities=frozenset({"mcp", *tool_contract}),
     )
+    return profile, tool_contract_digest, prompt_template_digest
+
+
+def _adapter_config(
+    *, repository: str, model_digest: str, model_class: str, effective_context_limit: int,
+    runtime_kind: str, runtime_version: str,
+) -> dict[str, str | int]:
+    profile, tool_contract_digest, prompt_template_digest = _current_execution_profile(
+        runtime_kind=runtime_kind, runtime_version=runtime_version,
+        effective_context_limit=effective_context_limit,
+    )
     config = {
+        "schema_version": MCP_ADAPTER_CONFIG_SCHEMA_VERSION,
         "repository": repository, "model_digest": model_digest, "model_class": model_class,
-        "execution_profile_id": profile.profile_id,
+        "execution_profile_id": profile.profile_id, "runtime_kind": runtime_kind,
+        "runtime_version": runtime_version, "effective_context_limit": effective_context_limit,
+        "tool_contract_digest": tool_contract_digest, "prompt_template_digest": prompt_template_digest,
     }
     _adapter_scope_from_config(config)
     return config
 
 
-def _adapter_scope_from_config(config: dict[str, str]) -> Scope:
-    required = {"repository", "model_digest", "model_class", "execution_profile_id"}
+def _adapter_scope_from_config(config: dict[str, str | int]) -> Scope:
+    required = {
+        "schema_version", "repository", "model_digest", "model_class", "execution_profile_id",
+        "runtime_kind", "runtime_version", "effective_context_limit", "tool_contract_digest",
+        "prompt_template_digest",
+    }
     if set(config) != required:
-        raise ValueError("Cline adapter identity configuration has an invalid shape")
+        raise ValueError("MCP adapter identity configuration is stale or invalid; run setup_workspace")
+    if config["schema_version"] != MCP_ADAPTER_CONFIG_SCHEMA_VERSION:
+        raise ValueError("MCP adapter identity configuration is stale; run setup_workspace")
+    profile, tool_contract_digest, prompt_template_digest = _current_execution_profile(
+        runtime_kind=str(config["runtime_kind"]), runtime_version=str(config["runtime_version"]),
+        effective_context_limit=int(config["effective_context_limit"]),
+    )
+    if (
+        config["execution_profile_id"] != profile.profile_id
+        or config["tool_contract_digest"] != tool_contract_digest
+        or config["prompt_template_digest"] != prompt_template_digest
+    ):
+        raise ValueError("MCP adapter identity configuration is stale; run setup_workspace")
     scope = Scope(Mode.CODING, config["repository"], TaskCategory.UNKNOWN, config["model_class"])
     Signal(
         signal_id="signal-000", scope=scope, model_digest=config["model_digest"],
-        execution_profile_id=config["execution_profile_id"], outcome="passed", duration_ms=0,
+        execution_profile_id=str(config["execution_profile_id"]), outcome="passed", duration_ms=0,
         retry_count=0, verifier_category="none", verifier_result="not_run",
     )
     return scope

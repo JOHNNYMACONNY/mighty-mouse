@@ -34,7 +34,17 @@ def run_task(task_path: Path, model: str, host: str) -> bool:
         print(f"Failed to read protocol {protocol_path}: {e}", file=sys.stderr)
         return False
 
-    prompt = f"{protocol_content}\n\nTask:\n{task['description']}"
+    file_context = ""
+    for allowed in task.get("allowed_paths", []):
+        file_path = template / allowed
+        if file_path.is_file():
+            try:
+                content = file_path.read_text(encoding="utf-8")
+                file_context += f"\n\nExisting File: {allowed}\n```python\n{content}\n```"
+            except Exception as e:
+                print(f"Failed to read file context for {allowed}: {e}", file=sys.stderr)
+
+    prompt = f"{protocol_content}\n\nTask:\n{task['description']}{file_context}"
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Copy workspace files from template to temp_dir

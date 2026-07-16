@@ -38,3 +38,10 @@ Compare producer/consumer contracts, run downstream tests and builds, validate l
 </verify>
 
 After editing, call `mighty-mouse/verify_and_record` for the project workspace. Fix failures and retry, for no more than three verification rounds.
+
+## Output Format
+You MUST output all code modifications inside fenced code blocks containing the relative file path as a header, formatted exactly like:
+```python:path/to/file.py
+# Your code here
+```
+Only output files that are explicitly within the allowed paths scope. Do not output any other content outside the required code blocks and brief explanations.

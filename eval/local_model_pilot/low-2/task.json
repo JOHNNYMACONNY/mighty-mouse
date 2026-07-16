@@ -1,0 +1,12 @@
+{
+  "id": "pilot-low-2-paginator",
+  "description": "Fix pagination offset calculations in paginator.py. The get_page function calculates incorrect offsets, leading to off-by-one errors when requesting different pages. Ensure pages are 1-indexed, empty item lists return page 1 with an empty list, and requesting a page beyond total pages returns an empty list. Run the tests to verify.",
+  "complexity": "low",
+  "workspace_template": "workspace",
+  "allowed_paths": ["paginator.py"],
+  "ignored_paths": [".pytest_cache", "__pycache__"],
+  "checks": {
+    "tests": ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test_paginator.py"]
+  },
+  "check_timeout_seconds": 30
+}

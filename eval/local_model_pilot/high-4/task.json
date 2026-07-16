@@ -1,0 +1,12 @@
+{
+  "id": "pilot-high-4-migration",
+  "description": "Implement transaction rollback support in Migration in migration.py. If any step raises an exception during apply(), catch it, immediately halt execution, and call the rollback functions of all already-completed steps in reverse order. Re-raise the original exception. If a rollback function itself raises an exception, raise a RuntimeError describing both the original step failure and the rollback failure. Run the tests to verify correctness.",
+  "complexity": "high",
+  "workspace_template": "workspace",
+  "allowed_paths": ["migration.py"],
+  "ignored_paths": [".pytest_cache", "__pycache__"],
+  "checks": {
+    "tests": ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test_migration.py"]
+  },
+  "check_timeout_seconds": 30
+}

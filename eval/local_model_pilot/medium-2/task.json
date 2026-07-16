@@ -1,0 +1,12 @@
+{
+  "id": "pilot-medium-2-shipping",
+  "description": "Refactor calculate_shipping in shipping.py to use a dictionary dispatch map instead of if/elif chains. Add a new 'saver' method with a rate of base * 0.8. Unsupported methods must raise a ValueError. The tests will analyze the AST of calculate_shipping to ensure you refactored the branching structure to use a dictionary mapping instead of long if/elif chains.",
+  "complexity": "medium",
+  "workspace_template": "workspace",
+  "allowed_paths": ["shipping.py"],
+  "ignored_paths": [".pytest_cache", "__pycache__"],
+  "checks": {
+    "tests": ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test_shipping.py"]
+  },
+  "check_timeout_seconds": 30
+}

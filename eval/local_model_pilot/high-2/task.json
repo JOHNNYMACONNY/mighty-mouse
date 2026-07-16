@@ -1,0 +1,12 @@
+{
+  "id": "pilot-high-2-state-machine",
+  "description": "Fix a concurrency bug in transition_to of ProcessStateMachine in state_machine.py. The transition validation and state update must be atomic and synchronized. Currently, if Thread A begins transitioning INIT -> PENDING and Thread B attempts to transition PENDING -> PROCESSING immediately after, Thread B reads the state before Thread A completes its update, raising a ValueError. Guard the entire transition block with self._lock to ensure thread safety. Run the tests to verify.",
+  "complexity": "high",
+  "workspace_template": "workspace",
+  "allowed_paths": ["state_machine.py"],
+  "ignored_paths": [".pytest_cache", "__pycache__"],
+  "checks": {
+    "tests": ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test_state_machine.py"]
+  },
+  "check_timeout_seconds": 30
+}

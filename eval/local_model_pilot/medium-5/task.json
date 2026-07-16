@@ -1,0 +1,12 @@
+{
+  "id": "pilot-medium-5-retry",
+  "description": "Implement retry_call in retry_client.py. It takes a callable func, a tuple of exception classes exceptions, max_retries (default 3), initial_delay (default 0.1), and backoff_factor (default 2). On catching a listed exception, wait and retry. Multiply delay by backoff_factor on each retry. Return a tuple (result, attempt_count). If max_retries is exceeded, raise the last exception. Run the tests to verify correctness.",
+  "complexity": "medium",
+  "workspace_template": "workspace",
+  "allowed_paths": ["retry_client.py"],
+  "ignored_paths": [".pytest_cache", "__pycache__"],
+  "checks": {
+    "tests": ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "test_retry.py"]
+  },
+  "check_timeout_seconds": 30
+}

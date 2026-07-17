@@ -134,10 +134,11 @@ def log_mutation(record):
 
 def main():
     print("=== Mighty Mouse Mutation Engine Starting ===")
-    dominant_cat, is_timeout_dominant, failures, original_summary = analyze_failures()
-    if not dominant_cat:
+    analysis = analyze_failures()
+    if not analysis:
         print("[*] No failures to analyze. Exiting.")
         return
+    dominant_cat, is_timeout_dominant, failures, original_summary = analysis
 
     if is_timeout_dominant:
         print("[!] TIMEOUT detected as dominant failure mode (Gemma 4 Reasoning Horizon reached).")

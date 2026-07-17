@@ -10,7 +10,7 @@ from datetime import datetime
 import os
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AGENT_SCRIPT = os.path.join(REPO_ROOT, "src/mighty_mouse/orchestrator/mighty_mouse_agent.py")
-VERIFIER_SCRIPT = os.path.join(REPO_ROOT, "eval/run_benchmark.py")
+VERIFIER_SCRIPT = os.path.join(REPO_ROOT, "src/mighty_mouse/services/verifiers/run_benchmark.py")
 TASK_DIR = os.path.join(REPO_ROOT, "tasks/benchmark")
 CONFIG_DIR = os.path.join(REPO_ROOT, "configs")
 WORKSPACE_BASE = os.path.join(REPO_ROOT, "workspaces")

@@ -61,7 +61,7 @@ def solve_tasks(tier="tier_1"):
             
         # 5. Continue verification
         print(f"Running verification for {task_path}...")
-        subprocess.run(["python3", "eval/run_benchmark.py", task_path])
+        subprocess.run(["python3", "src/mighty_mouse/services/verifiers/run_benchmark.py", task_path])
         
         # Standardize result location
         if os.path.exists("logs/benchmark_results.json"):

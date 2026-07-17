@@ -30,7 +30,7 @@ def invoke_with_scaling(agent_cmd, task_path, variations=3):
         ret, out, err = run_command(agent_cmd)
         
         # Verify internally
-        subprocess.run(["python3", "eval/run_benchmark.py", task_path], capture_output=True)
+        subprocess.run(["python3", "src/mighty_mouse/services/verifiers/run_benchmark.py", task_path], capture_output=True)
         
         if os.path.exists("logs/benchmark_results.json"):
             with open("logs/benchmark_results.json", "r") as f:

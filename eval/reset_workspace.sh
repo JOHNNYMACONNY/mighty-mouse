@@ -18,7 +18,7 @@ git clean -fd \
 
 # 3. Hygiene Guard: Detect and purge "Ghost Files" (Adversarial artifacts)
 # We ensure no untracked .py files exist in the root, and we purge AppleDouble junk.
-find . -maxdepth 1 -name "*.py" -not -path "./legacy_registry.py" -not -path "./helpers.py" -not -path "./val_sys.py" -delete
+find . -maxdepth 1 -name "*.py" -not -path "./legacy_registry.py" -not -path "./helpers.py" -not -path "./val_sys.py" -not -path "./build_backend.py" -delete
 find . -name "._*" -delete
 
 # 4. Integrity Check

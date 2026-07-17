@@ -23,7 +23,7 @@ def verify(task_config):
         import subprocess
         res = subprocess.run(['git', 'ls-files', '--modified', '--others', '--exclude-standard'], capture_output=True, text=True)
         if res.returncode == 0:
-            found_files = res.stdout.splitlines()
+            found_files = [f for f in res.stdout.splitlines() if os.path.exists(f)]
             
     # Resolve fixtures
     fixture_paths = set()

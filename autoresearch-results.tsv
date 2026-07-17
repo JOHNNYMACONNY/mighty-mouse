@@ -1,0 +1,10 @@
+iteration	commit	metric	delta	status	guard	description
+0	-	2.0	0.0	baseline	pass	Initial measurement for tier_overnight
+1	a21cb2c6564ce80343007921f383395ed466e1b9	6.0	4.0	keep	pass	mandate PLANNING XML block in persona
+2	7923997b9c1b2a21644622843633a6312f212080	10.0	4.0	keep	pass	double-down on PLANNING XML block in discipline
+3	-	7.0	0.0	baseline	pass	Initial measurement for tier_3
+4	34d20686c90a2c7d83bf1f96fd4a7ee8c3500b42	7.0	0.0	keep	pass	add Zero-Footprint Protocol to discipline (shifted failures)
+5	-	10.0	0.0	baseline	pass	Initial measurement for tier_4
+0-pilot	-	0.00	0.0	baseline	pass	Initial gemma4 pilot fast baseline
+1-pilot	87090ab	1.00	1.0	keep	pass	add Output Format & inject workspace file context
+2-pilot	f1bb62c	1.00	0.00	keep	pass	full 12-task pilot baseline with fixed test

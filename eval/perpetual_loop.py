@@ -11,7 +11,7 @@ from datetime import datetime
 CONFIG_PATH = "eval/evaluation_config.json"
 STATE_PATH = "logs/perpetual_state.json"
 TELEMETRY_PATH = "logs/metric_telemetry.json"
-BENCHMARK_RESULTS_PATH = "logs/benchmark_results.json"
+BENCHMARK_RESULTS_PATH = "eval/results/benchmark_results.json"
 MUTATION_ENGINE_PATH = "eval/mutation_engine.py"
 AGENT_CONFIG_PATH = "configs/mighty_mouse_v2_lean.yaml"
 
@@ -74,7 +74,7 @@ def update_telemetry(tier, summary, config_hash):
 def run_benchmark(tier):
     print(f"[*] Starting benchmark for {tier}...")
     start_time = time.time()
-    cmd = [sys.executable, "eval/run_parallel.py", "--tier", tier]
+    cmd = [sys.executable, "eval/solve_benchmark.py", "--tier", tier]
     result = subprocess.run(cmd, capture_output=True, text=True)
     
     if result.returncode != 0:

@@ -13,7 +13,7 @@ sys.path.append(os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator"))
 from gemini_client import GeminiClient
 
 # Config
-RESULTS_PATH = "logs/benchmark_results.json"
+RESULTS_PATH = "eval/results/benchmark_results.json"
 MUTATION_LOG_PATH = "logs/mutation_log.jsonl"
 SEGMENTS_DIR = "configs/prompt_segments"
 AGENT_CONFIG = "configs/mighty_mouse_v1.yaml"
@@ -115,7 +115,7 @@ Output your response in this JSON format:
 
 def run_tier(tier):
     print(f"[*] Testing tier: {tier}...")
-    cmd = [sys.executable, "eval/run_parallel.py", "--tier", tier]
+    cmd = [sys.executable, "eval/solve_benchmark.py", "--tier", tier]
     subprocess.run(cmd, capture_output=True)
     if os.path.exists(RESULTS_PATH):
         with open(RESULTS_PATH, 'r') as f:

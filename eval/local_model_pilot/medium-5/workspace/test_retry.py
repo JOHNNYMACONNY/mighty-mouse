@@ -1,4 +1,4 @@
- from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch
 import pytest
 from retry_client import retry_call
 

@@ -22,8 +22,6 @@ The harness does not replace an agent's model provider. It supplies:
 
 ## Evidence and limitations
 
-![Gemma (gemma4:e4b) Benchmark Performance Chart](docs/assets/gemma_benchmark_chart.jpg)
-
 ### Small-Model Test-Time Compute Scaling Results
 
 With the introduction of the **Mighty Mouse Test-Time Scaling Engine** (combining Two-Stage Planner/Coder Blueprints, Multi-Turn Execution Feedback, Dynamic Temperature Annealing, and Best-of-$N$ Consensus Ranking), accuracy on small local models (`gemma4:e4b`) has improved from a **28% raw baseline** to **74.2% accuracy** (+165% net gain).

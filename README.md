@@ -10,28 +10,37 @@
 
 ![Gemma Test-Time Scaling Benchmark Chart](docs/assets/gemma_benchmark_chart.jpg)
 
-Mighty Mouse is a provider-agnostic coding protocol and verification harness for AI agents. Its primary research goal is to make small, locally operated models more viable for coding and agentic work through explicit protocols, project-native verification, and bounded recovery. It can be imported as a Python library, exposed to any MCP-compatible client, or used through platform rules for Antigravity, Claude Code, Cursor, Codex, Hermes, and Windsurf.
+Mighty Mouse is a provider-agnostic coding protocol and verification harness for AI agents. Its primary research goal is to make small, locally operated models more viable for coding and agentic work through explicit protocols, project-native verification, bounded recovery, and test-time compute scaling. It can be imported as a Python library, exposed to any MCP-compatible client, or used through platform rules for Antigravity, Claude Code, Codex, Cursor, Hermes, OpenClaw, and Windsurf.
 
 The harness does not replace an agent's model provider. It supplies:
 
 - versioned low, medium, and high-complexity coding protocols;
+- a two-stage blueprinting pipeline (`--stage {planner|coder|unified}`);
+- multi-turn execution feedback extraction with dynamic temperature annealing ($T=0.0 \rightarrow 0.70$);
+- sequential Best-of-$N$ consensus ranking based on minimal diff size and zero warnings;
 - project-native verification for tests, lint, builds, and Git scope;
 - structured pass/fail results with retry suggestions;
 - a local MCP server with `protocol`, `verify`, automatic workspace onboarding, and privacy-safe `verify_and_record` tools;
-- the original Ollama benchmark CLI and frozen evaluation evidence.
+- pre-packaged MCP configurations for Hermes (`hermes.yaml`), OpenClaw (`openclaw.yaml`), and Codex (`codex.json`).
 
 ## Evidence and limitations
 
 ### Small-Model Test-Time Compute Scaling Results
 
-With the introduction of the **Mighty Mouse Test-Time Scaling Engine** (combining Two-Stage Planner/Coder Blueprints, Multi-Turn Execution Feedback, Dynamic Temperature Annealing, and Best-of-$N$ Consensus Ranking), accuracy on small local models (`gemma4:e4b`) has improved from a **28% raw baseline** to **74.2% accuracy** (+165% net gain).
+With the introduction of the **Mighty Mouse Test-Time Scaling Engine**, accuracy on small local models (`gemma4:e4b`) has improved from a **28% raw baseline** to **74.2% accuracy** (+165% net gain) across benchmark evaluations.
+
+The core scaling components include:
+1. **Two-Stage Planner $\rightarrow$ Coder Pipeline**: Separates architectural reasoning (Stage 1 Blueprint `<plan>`) from surgical file execution (Stage 2 `<act>`).
+2. **High-Signal Feedback Extraction**: Captures scope violations, adherence logs, and truncated Pytest tracebacks, propagating them back into retry attempts.
+3. **Dynamic Temperature Annealing**: Automatically scales sampling temperature across variations ($T=0.0 \rightarrow 0.35 \rightarrow 0.70$).
+4. **Best-of-$N$ Consensus Ranker**: Evaluates candidate runs and locks in the draft with minimal total line changes and minimum warning count.
 
 The historical paired validation contains 15 original-protocol runs and 15 Lean protocol runs. Both recorded 15/15 passes; Lean reduced average latency by 29.5% in that recorded environment.
 
 A new bare control sent the same 15 frozen tasks to `gemma4:e4b` with one raw request per task, no Mighty Mouse prompt, and no verification retry loop. It also passed 15/15. Therefore:
 
 - the frozen synthetic corpus supports the recorded Lean latency result;
-- it does **not** demonstrate a success-rate advantage over a raw model call;
+- it does **not** demonstrate a success-rate advantage over a raw model call on permissive synthetic benchmarks;
 - its permissive tests have a ceiling effect and should not be generalized to real projects.
 
 See [`data/evidence/results/baseline_comparison.md`](data/evidence/results/baseline_comparison.md) and the raw [`bare_baseline_results.json`](data/evidence/results/bare_baseline_results.json).
@@ -52,6 +61,26 @@ python -m venv .venv
 ```
 
 The core library and MCP transport support CPython 3.10, 3.11, 3.12, and 3.13.
+
+## Two-Stage Execution & Agent CLI
+
+Run the agent in unified mode (default), planner mode, or coder mode:
+
+```bash
+# Stage 1: Generate architectural plan blueprint
+python3 src/mighty_mouse/orchestrator/mighty_mouse_agent.py \
+  configs/mighty_mouse_v1.yaml \
+  tasks/benchmark/task_1001.json \
+  --stage planner \
+  --plan-file logs/blueprint.md
+
+# Stage 2: Execute surgical code edits using generated blueprint
+python3 src/mighty_mouse/orchestrator/mighty_mouse_agent.py \
+  configs/mighty_mouse_v1.yaml \
+  tasks/benchmark/task_1001.json \
+  --stage coder \
+  --plan-file logs/blueprint.md
+```
 
 ## Verify any project
 
@@ -184,7 +213,7 @@ Generic stdio configuration:
 }
 ```
 
-Platform-specific rule files and current configuration shapes are documented in [`skills/README.md`](skills/README.md).
+Platform-specific rule files and MCP configuration shapes are documented in [`skills/README.md`](skills/README.md) and [`skills/mcp-configs/`](skills/mcp-configs/).
 
 ## Original benchmark CLI
 
@@ -214,11 +243,11 @@ The runner requires exactly 15 frozen tasks, makes one generation request per ta
 - `src/mighty_mouse/verifier/`: generic project verification public API.
 - `src/mighty_mouse/protocols/`: versioned complexity-scaled protocols.
 - `mcp/`: separately installable MCP transport.
-- `skills/`: platform rules and MCP configuration examples.
-- `src/mighty_mouse/orchestrator/`: original local-model agent loop.
+- `skills/`: platform rules (`antigravity`, `claude-code`, `codex`, `cursor`, `windsurf`) and MCP configurations (`hermes.yaml`, `openclaw.yaml`, `codex.json`).
+- `src/mighty_mouse/orchestrator/`: original local-model agent loop and scaling engine.
 - `src/mighty_mouse/services/`: synthetic benchmark and legacy verification services.
 - `data/evidence/`: frozen historical, bare-control, and real-project study artifacts.
-- `eval/`: evidence runners and automated tests.
+- `eval/`: evidence runners, scaling suite, and automated tests.
 
 ## Development
 

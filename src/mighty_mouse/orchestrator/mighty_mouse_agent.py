@@ -144,8 +144,8 @@ def _hygiene_audit(workspace_root, task_data=None):
                         rel = os.path.relpath(os.path.join(root, f), fixture_abs)
                         allowed_paths.add(rel)
 
-    # Universal metadata (non-code artifacts)
-    allowed_paths.update([".gitignore", "CHECKLIST.md", "test_script.py", "test_runner.py", "requirements.txt", "START-HERE-ANTIGRAVITY.md"])
+    # Universal metadata (non-code artifacts and root build infrastructure)
+    allowed_paths.update([".gitignore", "CHECKLIST.md", "test_script.py", "test_runner.py", "requirements.txt", "START-HERE-ANTIGRAVITY.md", "build_backend.py", "setup.py", "legacy_registry.py", "helpers.py", "val_sys.py"])
     
     # Identify Stale Ghosts (.py files in root NOT in allowed_paths and NOT in .mighty/)
     root_files = [f for f in os.listdir(workspace_root) if os.path.isfile(os.path.join(workspace_root, f))]

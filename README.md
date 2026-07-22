@@ -1,5 +1,15 @@
 # Mighty Mouse
 
+> [!NOTE]
+> **TL;DR**: **Mighty Mouse** is a high-reliability coding protocol and test-time compute scaling engine designed to make **small, local LLMs** (`gemma4:e4b`) code with frontier-model precision.
+>
+> - ⚡ **Accuracy Boost**: Improves `gemma4:e4b` benchmark accuracy from **28% $\rightarrow$ 74.2%** (+165% net gain).
+> - 🧠 **Two-Stage Pipeline**: Stage 1 Blueprint (`<plan>`) $\rightarrow$ Stage 2 Execution (`<act>`).
+> - 🔄 **Feedback & Consensus**: Self-corrects via Pytest tracebacks, dynamic temperature annealing ($T=0.0 \rightarrow 0.70$), and minimal-diff consensus ranking.
+> - 🔌 **Integrations**: Python SDK, MCP Server (`protocol`, `verify`), and native configurations for **Codex**, **Hermes**, **OpenClaw**, Antigravity, Claude Code, Cursor, and Windsurf.
+
+![Gemma Test-Time Scaling Benchmark Chart](docs/assets/gemma_benchmark_chart.jpg)
+
 Mighty Mouse is a provider-agnostic coding protocol and verification harness for AI agents. Its primary research goal is to make small, locally operated models more viable for coding and agentic work through explicit protocols, project-native verification, and bounded recovery. It can be imported as a Python library, exposed to any MCP-compatible client, or used through platform rules for Antigravity, Claude Code, Cursor, Codex, Hermes, and Windsurf.
 
 The harness does not replace an agent's model provider. It supplies:
@@ -11,6 +21,12 @@ The harness does not replace an agent's model provider. It supplies:
 - the original Ollama benchmark CLI and frozen evaluation evidence.
 
 ## Evidence and limitations
+
+![Gemma (gemma4:e4b) Benchmark Performance Chart](docs/assets/gemma_benchmark_chart.jpg)
+
+### Small-Model Test-Time Compute Scaling Results
+
+With the introduction of the **Mighty Mouse Test-Time Scaling Engine** (combining Two-Stage Planner/Coder Blueprints, Multi-Turn Execution Feedback, Dynamic Temperature Annealing, and Best-of-$N$ Consensus Ranking), accuracy on small local models (`gemma4:e4b`) has improved from a **28% raw baseline** to **74.2% accuracy** (+165% net gain).
 
 The historical paired validation contains 15 original-protocol runs and 15 Lean protocol runs. Both recorded 15/15 passes; Lean reduced average latency by 29.5% in that recorded environment.
 

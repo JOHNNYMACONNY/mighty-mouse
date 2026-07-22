@@ -183,7 +183,7 @@ def _write_run_metadata(client, workspace, task_input, p_cfg, feedback_str=None,
         json.dump(metadata, f, indent=2)
 
 
-def solve(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_skills=None):
+def solve(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_skills=None, temperature=None, stage="unified", plan_file=None):
     p_cfg_path = os.path.abspath(p_cfg_path)
     task_input = os.path.abspath(task_input)
     if workspace:
@@ -195,11 +195,11 @@ def solve(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_sk
     try:
         if workspace:
             os.chdir(workspace)
-        return _solve_inner(p_cfg_path, task_input, feedback_str, workspace, explicit_skills)
+        return _solve_inner(p_cfg_path, task_input, feedback_str, workspace, explicit_skills, temperature=temperature, stage=stage, plan_file=plan_file)
     finally:
         os.chdir(original_cwd)
 
-def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_skills=None):
+def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_skills=None, temperature=None, stage="unified", plan_file=None):
     task_data = None
     if os.path.exists(task_input):
         with open(task_input, 'r') as f:
@@ -219,6 +219,8 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
 
     with open(p_cfg_path, 'r') as f:
         p_cfg = yaml.safe_load(f)
+    if temperature is not None:
+        p_cfg["temperature"] = float(temperature)
     cfg_dir = os.path.dirname(os.path.abspath(p_cfg_path))
 
     segments = []
@@ -279,9 +281,43 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
         "Responses without at least one valid fenced block will be REJECTED.\n\n"
     )
 
-    user_prompt = f"{FORMAT_REMINDER}Implement the following task:\n{task_str}\n"
+    DISALLOWED_PATTERNS = (
+        "\n<disallowed_patterns>\n"
+        "- Do NOT create unused helper functions, stub files, or unnecessary abstractions.\n"
+        "- Do NOT swallow exceptions with silent try/except pass blocks.\n"
+        "- Do NOT modify files outside the authorized scope.\n"
+        "- Do NOT output dummy values, fake data, or placeholder strings.\n"
+        "</disallowed_patterns>\n"
+    )
+
+    plan_content = ""
+    if stage == "coder":
+        plan_path = plan_file or os.path.join("logs", "stage1_plan.md")
+        if plan_path and os.path.exists(plan_path):
+            with open(plan_path, "r") as f:
+                plan_content = f.read()
+        elif plan_file:
+            plan_content = plan_file
+
+    if stage == "planner":
+        PLANNER_REMINDER = (
+            "⚠️ STAGE 1: PLANNER MODE ⚠️\n"
+            "Analyze the codebase and task requirements. Output a detailed architectural blueprint inside <plan>...</plan> tags.\n"
+            "Include:\n"
+            "1. <context_audit>: Relevant files, symbols, and dependencies.\n"
+            "2. <scope_definition>: Strict list of files to edit/create.\n"
+            "3. <adversarial_plan>: Zero-deletion checks and risk analysis.\n"
+            "4. <proposed_changes>: Concrete steps and file-by-file changes.\n\n"
+        )
+        user_prompt = f"{PLANNER_REMINDER}Create an execution blueprint for the following task:\n{task_str}\n"
+    else:
+        user_prompt = f"{FORMAT_REMINDER}Implement the following task:\n{task_str}\n"
+        if plan_content:
+            user_prompt = f"<stage1_blueprint>\n{plan_content}\n</stage1_blueprint>\n\n" + user_prompt
+
     if feedback_str:
-        user_prompt += f"\n\nPREVIOUS ATTEMPT FAILED. FEEDBACK:\n{feedback_str}\n"
+        user_prompt += f"\n\n<execution_feedback>\nPREVIOUS ATTEMPT FAILED. FEEDBACK:\n{feedback_str}\n</execution_feedback>\n"
+    user_prompt += DISALLOWED_PATTERNS
 
     client = GeminiClient(config=p_cfg)
     allowed_delete_paths = []
@@ -349,6 +385,16 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
                 print("[agent] CRITICAL: Maximum attempts reached. Failing task.", file=sys.stderr)
                 pass_type = "failed"
                 break
+
+        if stage == "planner":
+            plan_dest = plan_file or os.path.join(_REPO_ROOT, "logs", "stage1_plan.md")
+            os.makedirs(os.path.dirname(os.path.abspath(plan_dest)), exist_ok=True)
+            with open(plan_dest, "w") as f:
+                f.write(response)
+            print(f"[Stage 1 Planner] Architectural blueprint saved to {plan_dest}", file=sys.stderr)
+            output_paths = [plan_dest]
+            pass_type = "clean"
+            break
 
         output_paths = ResponseParser.parse_and_write(
             response,
@@ -474,9 +520,21 @@ if __name__ == "__main__":
     parser.add_argument("--feedback", help="Feedback from previous run")
     parser.add_argument("--workspace", help="Path to isolated workspace")
     parser.add_argument("--skills", help="Comma-separated list of skill IDs to enable")
+    parser.add_argument("--temperature", type=float, help="LLM sampling temperature override")
+    parser.add_argument("--stage", choices=["planner", "coder", "unified"], default="unified", help="Execution stage mode")
+    parser.add_argument("--plan-file", help="Path to Stage 1 plan file or plan text input")
     args = parser.parse_args()
 
     cfg_abs = os.path.abspath(args.config)
     task_abs = os.path.abspath(args.task)
 
-    solve(cfg_abs, task_abs, feedback_str=args.feedback, workspace=args.workspace, explicit_skills=args.skills)
+    solve(
+        cfg_abs,
+        task_abs,
+        feedback_str=args.feedback,
+        workspace=args.workspace,
+        explicit_skills=args.skills,
+        temperature=args.temperature,
+        stage=args.stage,
+        plan_file=args.plan_file
+    )

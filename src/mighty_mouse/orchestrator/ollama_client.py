@@ -9,6 +9,7 @@ class OllamaClient:
         self.config = config or {}
         self.host = self.config.get("ollama_host", "http://localhost:11434")
         self.model_name = self.config.get("model", "gemma4:e4b")
+        self.format = self.config.get("format") or self.config.get("response_format")
         self.last_metadata = {}
 
     def generate_content(self, sys_instr, user_prompt):
@@ -28,6 +29,8 @@ class OllamaClient:
                 "num_ctx": 32768
             }
         }
+        if self.format:
+            payload["format"] = self.format
         
         headers = {"Content-Type": "application/json"}
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)

@@ -13,7 +13,7 @@ def run_command(cmd, cwd="."):
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
     return result.returncode, result.stdout, result.stderr
 
-def solve_tasks(tier="tier_1"):
+def solve_tasks(tier="tier_1", mode="single", concurrency=1):
     config_path = "eval/evaluation_config.json"
     results_dir = "eval/results"
     prompt_config = "configs/mighty_mouse_v1.yaml"
@@ -50,8 +50,8 @@ def solve_tasks(tier="tier_1"):
             task_data = json.load(f)
             
         # 3. Invoke Antigravity agent path with Compute Scaling
-        print("Invoking Antigravity agent with Compute Scaling...")
-        agent_cmd = f"python3 src/mighty_mouse/orchestrator/mighty_mouse_agent.py {prompt_config} '{task_path}'"
+        print(f"Invoking Antigravity agent with Compute Scaling (mode={mode}, concurrency={concurrency})...")
+        agent_cmd = f"python3 src/mighty_mouse/orchestrator/mighty_mouse_agent.py {prompt_config} '{task_path}' --mode {mode} --concurrency {concurrency}"
         ret, out, err = invoke_with_scaling(agent_cmd, task_path, variations=3)
         
         # 4. Save execution trace/logs outside reset scope
@@ -64,6 +64,7 @@ def solve_tasks(tier="tier_1"):
         subprocess.run(["python3", "src/mighty_mouse/services/verifiers/run_benchmark.py", task_path])
         
         # Standardize result location
+        parsed_result = None
         if os.path.exists("logs/benchmark_results.json"):
             with open("logs/benchmark_results.json", "r") as f:
                 bench_results = json.load(f)
@@ -71,8 +72,30 @@ def solve_tasks(tier="tier_1"):
                 results_list = bench_results if isinstance(bench_results, list) else bench_results.get("results", [])
                 for res in results_list:
                     if isinstance(res, dict) and res.get('task_id') == current_id:
-                        all_results.append(res)
+                        parsed_result = res
                         break
+
+        if not parsed_result and mode == "swarm":
+            # Extract swarm JSON output from stdout
+            try:
+                swarm_out = json.loads(out.strip())
+                verdict = swarm_out.get("review", {}).get("verdict", "REJECT")
+                parsed_result = {
+                    "task_id": task_data.get("id"),
+                    "status": "success" if verdict == "PASS" else "failed",
+                    "reason": swarm_out.get("review", {}).get("reason", "")
+                }
+            except Exception:
+                pass
+
+        if not parsed_result:
+            parsed_result = {
+                "task_id": task_data.get("id"),
+                "status": "failed",
+                "reason": "Verification missing"
+            }
+
+        all_results.append(parsed_result)
 
     # Final consolidate results
     success_count = len([r for r in all_results if r["status"] == "success"])
@@ -94,6 +117,8 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--tier", default="tier_1")
+    parser.add_argument("--mode", choices=["single", "swarm"], default="single")
+    parser.add_argument("--concurrency", type=int, choices=[1, 2], default=1)
     parser.add_argument("--parallel", action="store_true")
     args = parser.parse_args()
 
@@ -102,4 +127,4 @@ if __name__ == "__main__":
         import run_parallel
         run_parallel.main(args.tier)
     else:
-        solve_tasks(args.tier)
+        solve_tasks(args.tier, mode=args.mode, concurrency=args.concurrency)

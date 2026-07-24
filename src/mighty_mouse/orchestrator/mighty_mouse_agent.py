@@ -523,18 +523,29 @@ if __name__ == "__main__":
     parser.add_argument("--temperature", type=float, help="LLM sampling temperature override")
     parser.add_argument("--stage", choices=["planner", "coder", "unified"], default="unified", help="Execution stage mode")
     parser.add_argument("--plan-file", help="Path to Stage 1 plan file or plan text input")
+    parser.add_argument("--mode", choices=["single", "swarm"], default="single", help="Execution mode (single agent or multi-agent swarm)")
+    parser.add_argument("--concurrency", type=int, choices=[1, 2], default=1, help="Concurrency slots for swarm (1 for sequential, 2 for dual-slot)")
     args = parser.parse_args()
 
     cfg_abs = os.path.abspath(args.config)
     task_abs = os.path.abspath(args.task)
 
-    solve(
-        cfg_abs,
-        task_abs,
-        feedback_str=args.feedback,
-        workspace=args.workspace,
-        explicit_skills=args.skills,
-        temperature=args.temperature,
-        stage=args.stage,
-        plan_file=args.plan_file
-    )
+    if args.mode == "swarm":
+        from swarm import SwarmOrchestrator
+        with open(task_abs, "r") as f:
+            task_data = json.load(f)
+        orchestrator = SwarmOrchestrator(concurrency=args.concurrency)
+        result = orchestrator.execute_swarm_pipeline(task_data)
+        print(json.dumps(result, indent=2))
+    else:
+        solve(
+            cfg_abs,
+            task_abs,
+            feedback_str=args.feedback,
+            workspace=args.workspace,
+            explicit_skills=args.skills,
+            temperature=args.temperature,
+            stage=args.stage,
+            plan_file=args.plan_file
+        )
+

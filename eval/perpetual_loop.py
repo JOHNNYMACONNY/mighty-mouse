@@ -74,7 +74,9 @@ def update_telemetry(tier, summary, config_hash):
 def run_benchmark(tier):
     print(f"[*] Starting benchmark for {tier}...")
     start_time = time.time()
-    cmd = [sys.executable, "eval/solve_benchmark.py", "--tier", tier]
+    swarm_mode = os.getenv("MIGHTY_MOUSE_SWARM_MODE", "swarm")
+    concurrency = os.getenv("MIGHTY_MOUSE_CONCURRENCY", "2")
+    cmd = [sys.executable, "eval/solve_benchmark.py", "--tier", tier, "--mode", swarm_mode, "--concurrency", concurrency]
     result = subprocess.run(cmd, capture_output=True, text=True)
     
     if result.returncode != 0:

@@ -94,7 +94,24 @@
       "task_1414_local_registry_validator.json",
       "task_1415_file_proxy_retry.json"
     ],
-    "tier_2": "all"
+    "tier_2": "all",
+    "tier_8": [
+      "task_2000_distributed_lock_consensus.json",
+      "task_2001_event_bus_backpressure.json",
+      "task_2002_schema_migration_rollback.json",
+      "task_2003_gateway_rate_limit_circuitbreaker.json",
+      "task_2004_cache_invalidation_consistency.json",
+      "task_2005_circular_dependency_resolver.json",
+      "task_2006_worker_pool_shutdown_safety.json",
+      "task_2007_websocket_heartbeat_reconnect.json",
+      "task_2008_stream_adapter_backoff_retry.json",
+      "task_2009_in_memory_lru_ttl_cache.json",
+      "task_2010_multi_tenant_token_bucket.json",
+      "task_2011_telemetry_batch_flusher.json",
+      "task_2012_pipeline_filter_chain.json",
+      "task_2013_network_interface_failover.json",
+      "task_2014_storage_bridge_transaction.json"
+    ]
   },
   "agent_cmd": [
     "python3",
@@ -106,8 +123,8 @@
     "--task"
   ],
   "weights": {
-    "simple": 1.0,
-    "complex": 3.0
+    "simple": 1,
+    "complex": 3
   },
   "task_metadata": {
     "task_001_legacy_registry_ratelimiter.json": "simple",

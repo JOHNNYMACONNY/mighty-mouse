@@ -15,7 +15,14 @@ BENCHMARK_RESULTS_PATH = "eval/results/benchmark_results.json"
 MUTATION_ENGINE_PATH = "eval/mutation_engine.py"
 AGENT_CONFIG_PATH = "configs/mighty_mouse_v2_lean.yaml"
 
-TIERS = ["tier_1", "tier_overnight", "tier_3", "tier_4", "tier_5", "tier_6", "tier_7"]
+def load_tiers():
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, "r") as f:
+            cfg = json.load(f)
+            return list(cfg.get("tiers", {}).keys())
+    return ["tier_1", "tier_overnight", "tier_3", "tier_4", "tier_5", "tier_6", "tier_7", "tier_8"]
+
+TIERS = load_tiers()
 
 class AtomicState:
     def __init__(self, path):

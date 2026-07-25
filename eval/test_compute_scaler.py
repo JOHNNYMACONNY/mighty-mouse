@@ -28,7 +28,11 @@ def test_extract_feedback_scope_and_test_failure():
     with open("logs/benchmark_results.json", "w") as f:
         json.dump(results, f)
 
-    fb = extract_feedback_from_results("task_scope_fail")
-    assert "SCOPE VIOLATION" in fb
-    assert "secret.py" in fb
-    assert "TEST FAILURE" in fb
+    try:
+        fb = extract_feedback_from_results("task_scope_fail")
+        assert "SCOPE VIOLATION" in fb
+        assert "secret.py" in fb
+        assert "TEST FAILURE" in fb
+    finally:
+        if os.path.exists("logs/benchmark_results.json"):
+            os.remove("logs/benchmark_results.json")

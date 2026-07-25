@@ -1,0 +1,124 @@
+{
+  "tier": "tier_8",
+  "generated_at": "2026-07-25T01:32:01.476105",
+  "spec": {
+    "tier_name": "tier_8",
+    "description": "Distributed systems, consensus, transactional storage, backpressure, and fault-tolerant retry protocols.",
+    "capability_categories": [
+      "DISTRIBUTED_CONSENSUS",
+      "TRANSACTION_BRIDGE",
+      "BACKPRESSURE_QUEUE",
+      "CIRCUIT_BREAKER_FAILOVER",
+      "IDEMPOTENT_RETRY_CACHE"
+    ]
+  },
+  "total_tasks": 15,
+  "manifest_hash": "de3aca933914d6db898d6db63140265b31d3ebb71f764cbbaa8eaf8b8d597e2a",
+  "tasks": [
+    {
+      "task_id": "task_2000",
+      "filename": "task_2000_distributed_lock_consensus.json",
+      "test_script_sha256": "59d31c635d50c41f6412d712b1914a47d47a4d4c2e92396f6979daaaa54cd2d1",
+      "reference_sha256": "12f33f484635d96daa015ae036e68d6afed47dade0b0fb536558607b5a0a7d45",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2001",
+      "filename": "task_2001_transactional_storage_bridge.json",
+      "test_script_sha256": "0a8c67756dbfebe2c3f2a6681a0b714077540a2b81010670837dfe974f37d662",
+      "reference_sha256": "6afdce74e42ac9738ec91395582507565ce7b12802a338ea29053a9b5a857c97",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2002",
+      "filename": "task_2002_async_event_bus_backpressure.json",
+      "test_script_sha256": "de5efcf5d866459aeef6fdfcf9aaaf90d18fa176c11408598176dd6ec9b9f34d",
+      "reference_sha256": "a86ff672022ae67add5b129abe7313ffd5ccea6d0fee9b2debec7744095e6a57",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2003",
+      "filename": "task_2003_idempotent_retry_cache.json",
+      "test_script_sha256": "1f9a6fe77d2e4c436ebd16cbef8d29c9dc690e615a236587174cde860bee828f",
+      "reference_sha256": "c2ab64a81a94a0e50e7f78f78a3157acf393048f7a9c434f33096e1891030f9f",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2004",
+      "filename": "task_2004_leaky_bucket_rate_limiter.json",
+      "test_script_sha256": "97490a39dd5b109abf610718b0491cd3c693d5888dd6c92b37d1d0429c19bff5",
+      "reference_sha256": "7c82b3929becdcfc95ea171ef8f24d4c8a54cd918652aeb1298901d389ef810a",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2005",
+      "filename": "task_2005_consistent_hash_router.json",
+      "test_script_sha256": "2956807bc004fd17091df275c999cd98a4b6f4892793491f4bedba5c51a12c6c",
+      "reference_sha256": "790082af4d7b52e8307131500d57b51f812febf436a0a9a11a5fd916a0786120",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2006",
+      "filename": "task_2006_wal_log_compactor.json",
+      "test_script_sha256": "3a21acac4142e7d04c19aa3231ef50f58a38ec6a1a72622bc76a9697a1b018c4",
+      "reference_sha256": "7a1c9c82c9d1ba8faf29fc0203a21d88be735523ea71b6b0e483ccb7f3eddd70",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2007",
+      "filename": "task_2007_circuit_breaker_state_machine.json",
+      "test_script_sha256": "7ae85fc1a247dd827b0516fc27b8780a3550e5747ea736614be176b65612cfea",
+      "reference_sha256": "4d51177f6b5c6e7e128d19b40083e8dbb6d795cbfa7d8f813ff84d22e5922466",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2008",
+      "filename": "task_2008_sharded_lru_cache.json",
+      "test_script_sha256": "53cf9ce083a327340b5cc4a4246347f7e5dc51a8a31bbf2d61926f96c3c1096e",
+      "reference_sha256": "8ffc5bb1c803ed3f6802fbaeca6eb456728afd8aaa3ad54beb8152340f9c869b",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2009",
+      "filename": "task_2009_distributed_sequence_generator.json",
+      "test_script_sha256": "14e30d2e3f90080a6b1b2959c9acaf2a31bc11cd45c66153636d07bf73392118",
+      "reference_sha256": "42907c1b83b2f4b0cd21375699e0799ca286d880f2d32695163ce9cad3867492",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2010",
+      "filename": "task_2010_phi_accrual_heartbeat_detector.json",
+      "test_script_sha256": "650b6e9fb4b67a2c69a0729674481c394e79b616bd0069e74d2cd9322473d312",
+      "reference_sha256": "e62339b75cb45cbea23de199e848d270d92a4f64674489c2e77ee4e083816e7b",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2011",
+      "filename": "task_2011_vector_partition_index.json",
+      "test_script_sha256": "9112f0211677d4a70e711a20774357cccbdd6e5f262c4233ab20bdd73cb29663",
+      "reference_sha256": "1c934c876762aaa6e16f832c0ab392bcd1bbd85d303080e2784c596c01573cb0",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2012",
+      "filename": "task_2012_micro-batch_pipeline_aggregator.json",
+      "test_script_sha256": "48ca13082ebe3e03bed818f91c87ac51e554721e9232e025d536773efba8e33a",
+      "reference_sha256": "1f817571a76e35d0eab6ad2c03085a8aa6e8fd21ab9a1634b54dc2a031214995",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2013",
+      "filename": "task_2013_quorum_replica_synchronization.json",
+      "test_script_sha256": "b0d394ee977867972946c29d0199c5955dba6ab9ba429cba9fc7bd5dc9e67643",
+      "reference_sha256": "4e737897e32a8efeec49d5000636a8ad8fb15a4e5a6fafd94f7d01a6f65233f6",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_2014",
+      "filename": "task_2014_token_bucket_dynamic_refill.json",
+      "test_script_sha256": "335c87877629bb178561031778b07046197ef6c1011d5468167ff5513cedc1f6",
+      "reference_sha256": "7213100dd670014ebf27c92181eb2dd8244d53c739333fc77c6fdda2c52422aa",
+      "status": "VALIDATED_AND_PASSED"
+    }
+  ]
+}

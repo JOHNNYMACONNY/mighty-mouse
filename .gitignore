@@ -10,6 +10,7 @@ __pycache__/
 
 # Generated outputs
 eval/results/
+eval/mock_agent_for_test.py
 logs/
 workspaces/
 scratch/

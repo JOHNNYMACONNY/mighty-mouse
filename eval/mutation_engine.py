@@ -7,17 +7,20 @@ import time
 from datetime import datetime
 import yaml
 
-# Add src/mighty_mouse/orchestrator to path for GeminiClient
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
+if _EVAL_DIR not in sys.path: sys.path.append(_EVAL_DIR)
+if _REPO_ROOT not in sys.path: sys.path.append(_REPO_ROOT)
 sys.path.append(os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator"))
 from gemini_client import GeminiClient
+from tier_utils import load_tier_sequence, get_current_tier as utils_get_current_tier
 
 # Config
 RESULTS_PATH = "eval/results/benchmark_results.json"
 MUTATION_LOG_PATH = "logs/mutation_log.jsonl"
 SEGMENTS_DIR = "configs/prompt_segments"
 AGENT_CONFIG = "configs/mighty_mouse_v1.yaml"
-TIERS = ["tier_1", "tier_overnight", "tier_3", "tier_4", "tier_5", "tier_6", "tier_7"]
+TIERS = load_tier_sequence()
 
 CATEGORY_TO_SEGMENT = {
     "SCOPE": "constraints.txt",
@@ -31,19 +34,18 @@ CATEGORY_TO_SEGMENT = {
 }
 
 def get_current_tier():
-    state_path = "logs/perpetual_state.json"
-    if os.path.exists(state_path):
-        with open(state_path, 'r') as f:
-            return json.load(f).get("current_tier", TIERS[0])
-    return TIERS[0]
+    return utils_get_current_tier()
 
 def get_replay_tiers(current_tier):
-    idx = TIERS.index(current_tier)
+    tiers = load_tier_sequence()
+    if current_tier not in tiers:
+        return []
+    idx = tiers.index(current_tier)
     replays = []
     if idx > 0:
-        replays.append(TIERS[idx-1])
+        replays.append(tiers[idx-1])
     if idx > 1:
-        replays.append(TIERS[idx-2])
+        replays.append(tiers[idx-2])
     return replays
 
 def analyze_failures():

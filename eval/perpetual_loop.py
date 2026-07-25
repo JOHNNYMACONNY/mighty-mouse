@@ -15,12 +15,15 @@ BENCHMARK_RESULTS_PATH = "eval/results/benchmark_results.json"
 MUTATION_ENGINE_PATH = "eval/mutation_engine.py"
 AGENT_CONFIG_PATH = "configs/mighty_mouse_v2_lean.yaml"
 
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
+if _EVAL_DIR not in sys.path: sys.path.append(_EVAL_DIR)
+if _REPO_ROOT not in sys.path: sys.path.append(_REPO_ROOT)
+
+from tier_utils import load_tier_sequence
+
 def load_tiers():
-    if os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH, "r") as f:
-            cfg = json.load(f)
-            return list(cfg.get("tiers", {}).keys())
-    return ["tier_1", "tier_overnight", "tier_3", "tier_4", "tier_5", "tier_6", "tier_7", "tier_8"]
+    return load_tier_sequence(CONFIG_PATH)
 
 TIERS = load_tiers()
 

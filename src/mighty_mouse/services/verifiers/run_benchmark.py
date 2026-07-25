@@ -1,5 +1,10 @@
 import os, json, sys, subprocess
 from datetime import datetime
+
+_SERVICES_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _SERVICES_DIR not in sys.path:
+    sys.path.append(_SERVICES_DIR)
+
 from verifiers.adherence import check_adherence
 from verifiers.scope import verify as check_scope
 from verifiers.tester import run_task_tests

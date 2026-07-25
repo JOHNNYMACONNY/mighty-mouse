@@ -1,4 +1,15 @@
 {
+  "tier_sequence": [
+    "tier_1",
+    "tier_overnight",
+    "tier_2",
+    "tier_3",
+    "tier_4",
+    "tier_5",
+    "tier_6",
+    "tier_7",
+    "tier_8"
+  ],
   "tiers": {
     "tier_1": [
       "task_001_legacy_registry_ratelimiter.json",
@@ -97,20 +108,20 @@
     "tier_2": "all",
     "tier_8": [
       "task_2000_distributed_lock_consensus.json",
-      "task_2001_event_bus_backpressure.json",
-      "task_2002_schema_migration_rollback.json",
-      "task_2003_gateway_rate_limit_circuitbreaker.json",
-      "task_2004_cache_invalidation_consistency.json",
-      "task_2005_circular_dependency_resolver.json",
-      "task_2006_worker_pool_shutdown_safety.json",
-      "task_2007_websocket_heartbeat_reconnect.json",
-      "task_2008_stream_adapter_backoff_retry.json",
-      "task_2009_in_memory_lru_ttl_cache.json",
-      "task_2010_multi_tenant_token_bucket.json",
-      "task_2011_telemetry_batch_flusher.json",
-      "task_2012_pipeline_filter_chain.json",
-      "task_2013_network_interface_failover.json",
-      "task_2014_storage_bridge_transaction.json"
+      "task_2001_transactional_storage_bridge.json",
+      "task_2002_async_event_bus_backpressure.json",
+      "task_2003_idempotent_retry_cache.json",
+      "task_2004_leaky_bucket_rate_limiter.json",
+      "task_2005_consistent_hash_router.json",
+      "task_2006_wal_log_compactor.json",
+      "task_2007_circuit_breaker_state_machine.json",
+      "task_2008_sharded_lru_cache.json",
+      "task_2009_distributed_sequence_generator.json",
+      "task_2010_phi_accrual_heartbeat_detector.json",
+      "task_2011_vector_partition_index.json",
+      "task_2012_micro-batch_pipeline_aggregator.json",
+      "task_2013_quorum_replica_synchronization.json",
+      "task_2014_token_bucket_dynamic_refill.json"
     ]
   },
   "agent_cmd": [

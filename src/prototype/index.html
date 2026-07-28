@@ -191,7 +191,7 @@
       max-width: 800px;
     }
 
-    /* Mode Selection Header & Segmented Pill Control */
+    /* Mode Selector Header & Segmented Control */
     .mode-select-hdr {
       font-family: var(--font-mono);
       font-size: 12px;
@@ -240,7 +240,7 @@
       box-shadow: 0 4px 16px rgba(255, 107, 53, 0.4);
     }
 
-    /* Surface Cards (16px Radius, 24px Padding, Inset Glass Highlight) */
+    /* Surface Cards */
     .futuristic-card {
       background: var(--color-surface);
       border: 1px solid var(--color-border);
@@ -430,7 +430,7 @@
       box-shadow: 0 10px 28px rgba(255, 107, 53, 0.45);
     }
 
-    /* Bottom Brand Footer for Screenshots */
+    /* Bottom Brand Footer */
     .dashboard-footer {
       margin-top: 3rem;
       padding-top: 1.5rem;
@@ -510,12 +510,12 @@
   <header class="futuristic-nav">
     <div class="brand-wrap">
       <span class="brand-logo">Mighty Mouse</span>
-      <div class="status-badge"><span class="status-dot"></span> V9.1 FORENSIC SHIELD+</div>
+      <div class="status-badge" id="nav-shield-badge"><span class="status-dot"></span> V9.1 FORENSIC SHIELD+</div>
     </div>
     <div class="nav-stats">
-      <div class="stat-pill">MODEL: <span class="stat-val">gemma4:e4b</span></div>
-      <div class="stat-pill">NET ACCURACY: <span class="stat-val" style="color:var(--color-primary);">90.3%</span></div>
-      <div class="stat-pill">SCOPE DRIFT: <span class="stat-val">0.00%</span></div>
+      <div class="stat-pill">MODEL: <span class="stat-val" id="nav-model-name">gemma4:e4b</span></div>
+      <div class="stat-pill">NET ACCURACY: <span class="stat-val" id="nav-net-accuracy" style="color:var(--color-primary);">90.3%</span></div>
+      <div class="stat-pill">SCOPE DRIFT: <span class="stat-val" id="nav-scope-drift">0.00%</span></div>
     </div>
   </header>
 
@@ -527,8 +527,8 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
         AUTORESEARCH MILESTONE STATUS
       </div>
-      <h1 class="hero-display-lg">Verified 90.3% Net Accuracy. Zero Scope-Drift.</h1>
-      <p class="hero-body-md">
+      <h1 class="hero-display-lg" id="hero-title-display">Verified 90.3% Net Accuracy. Zero Scope-Drift.</h1>
+      <p class="hero-body-md" id="hero-desc-display">
         Mighty Mouse automatically refines test-time compute scaling protocols for small models (`gemma4:e4b`), delivering +222% accuracy gains with 0.00% un-scoped file deletions.
       </p>
     </div>
@@ -590,13 +590,13 @@
 
           <div class="stat-card-surface">
             <div class="label-md">SCOPE DRIFT RATE</div>
-            <div class="stat-hero-number" style="color:var(--color-primary);">0.00%</div>
+            <div class="stat-hero-number" id="v3-drift-num" style="color:var(--color-primary);">0.00%</div>
             <div class="stat-desc-text">Zero unrequested file deletions or un-scoped edits</div>
           </div>
 
           <div class="stat-card-surface">
             <div class="label-md">OVERNIGHT RUNS</div>
-            <div class="stat-hero-number" style="color:var(--color-accent);">100%</div>
+            <div class="stat-hero-number" id="v3-runs-num" style="color:var(--color-accent);">100%</div>
             <div class="stat-desc-text">16 consecutive overnight runs verified</div>
           </div>
         </div>
@@ -606,7 +606,7 @@
       <div class="side-utility-col">
         <div class="side-hero-card">
           <div class="label-md" style="color:var(--color-primary);">SWARM NET ACCURACY</div>
-          <div class="side-hero-num">90.3%</div>
+          <div class="side-hero-num" id="v3-net-acc-num">90.3%</div>
           <div style="font-size:14px; color:var(--color-text-secondary); margin-top:0.4rem;">+222% Net Accuracy Gain vs Raw Model (28.0%)</div>
         </div>
 
@@ -743,7 +743,43 @@
     let currentStep = 1;
     let currentMode = 'diff';
 
-    const stepDiffs = {
+    // Fetch Live Status from Node Server API
+    async function fetchLiveStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const json = await res.json();
+        if (json.ok && json.data) {
+          const d = json.data;
+          document.getElementById('nav-shield-badge').innerHTML = `<span class="status-dot"></span> ${d.shieldVersion}`;
+          document.getElementById('nav-model-name').innerText = d.model;
+          document.getElementById('nav-net-accuracy').innerText = `${d.netAccuracy}%`;
+          document.getElementById('nav-scope-drift').innerText = `${d.scopeDrift.toFixed(2)}%`;
+          
+          document.getElementById('v3-cycles-num').innerText = d.cycles;
+          document.getElementById('v3-drift-num').innerText = `${d.scopeDrift.toFixed(2)}%`;
+          document.getElementById('v3-net-acc-num').innerText = `${d.netAccuracy}%`;
+        }
+      } catch (err) {
+        console.log('Status polling fallback to offline mode');
+      }
+    }
+
+    // Fetch Live Diff from Node Server API
+    async function fetchLiveDiff(step) {
+      try {
+        const res = await fetch(`/api/diff?step=${step}`);
+        const json = await res.json();
+        if (json.ok && json.data) {
+          renderCodeViewFromData(json.data);
+          return;
+        }
+      } catch (err) {
+        console.log('Diff fetching fallback to local mode');
+      }
+      renderLocalCodeView(step);
+    }
+
+    const stepDiffsLocal = {
       1: {
         title: 'Step 1: Key Parity & Boundary Audit',
         diff: [
@@ -752,17 +788,6 @@
           { num: '3', text: '+ 1. Side-by-Side Key Parity: Compare string literals in .get() against DB keys side-by-side.', type: 'add' },
           { num: '4', text: '+ 2. Empirical Alignment Dry-Run: Execute validator script with Live-Shaped Data.', type: 'add' },
           { num: '5', text: '+ 3. Scope Restriction: Restrict all edits strictly within target line bounds.', type: 'add' }
-        ],
-        raw: [
-          { num: '1', text: '# Raw Model Output (gemma4:e4b baseline)', type: 'cmt' },
-          { num: '2', text: '1. State Verification: Check database keys manually.', type: '' },
-          { num: '3', text: '# Result: KeyError (28.0% Accuracy)', type: 'del' }
-        ],
-        opt: [
-          { num: '1', text: '# Swarm V9.1 Optimized Output', type: 'cmt' },
-          { num: '2', text: '1. Side-by-Side Key Parity: Compare string literals in .get() against DB keys side-by-side.', type: 'add' },
-          { num: '3', text: '2. Empirical Alignment Dry-Run: Execute validator script with Live-Shaped Data.', type: 'add' },
-          { num: '4', text: '# Result: 100% Key Parity Match (90.3% Net Accuracy)', type: 'add' }
         ]
       },
       2: {
@@ -771,9 +796,7 @@
           { num: '1', text: '# Protocol XML Mutation: Red Team Division Guard', type: 'cmt' },
           { num: '2', text: '- if budget == 0: return fallback_result', type: 'del' },
           { num: '3', text: '+ if budget <= 0: raise ScopeDriftViolation("Adversarial budget depletion detected")', type: 'add' }
-        ],
-        raw: [{ num: '1', text: 'if budget == 0: return fallback_result', type: 'del' }],
-        opt: [{ num: '1', text: 'if budget <= 0: raise ScopeDriftViolation("Adversarial budget depletion detected")', type: 'add' }]
+        ]
       },
       3: {
         title: 'Step 3: Forensic Dry-Run Alignment',
@@ -781,9 +804,7 @@
           { num: '1', text: '# Protocol XML Mutation: Dry-Run Alignment Validation', type: 'cmt' },
           { num: '2', text: '- run_tests_blindly()', type: 'del' },
           { num: '3', text: '+ execute_forensic_dry_run(shape_validator=True, strict_keys=True)', type: 'add' }
-        ],
-        raw: [{ num: '1', text: 'run_tests_blindly()', type: 'del' }],
-        opt: [{ num: '1', text: 'execute_forensic_dry_run(shape_validator=True, strict_keys=True)', type: 'add' }]
+        ]
       },
       4: {
         title: 'Step 4: Tier 8 Assertion Execution',
@@ -791,16 +812,11 @@
           { num: '1', text: '# Protocol XML Mutation: Final Tier 8 Verification', type: 'cmt' },
           { num: '2', text: '+ assert forensic_shield.score == 1.0', type: 'add' },
           { num: '3', text: '+ assert scope_drift_violations == 0', type: 'add' }
-        ],
-        raw: [{ num: '1', text: '# FAIL: Scope Drift Violation', type: 'del' }],
-        opt: [{ num: '1', text: 'assert forensic_shield.score == 1.0\nassert scope_drift_violations == 0', type: 'add' }]
+        ]
       }
     };
 
-    function renderFuturisticCodeView() {
-      const data = stepDiffs[currentStep];
-      if (!data) return;
-
+    function renderCodeViewFromData(data) {
       document.getElementById('diff-title-text').innerHTML = `
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18L22 12L16 6"/><path d="M8 6L2 12L8 18"/></svg>
         ${data.title}
@@ -808,14 +824,17 @@
       const box = document.getElementById('code-inspector-box');
       box.innerHTML = '';
 
-      const lines = currentMode === 'raw' ? data.raw : currentMode === 'opt' ? data.opt : data.diff;
-
-      lines.forEach(l => {
+      (data.lines || data.diff || []).forEach(l => {
         const div = document.createElement('div');
         div.className = 'code-row ' + (l.type === 'del' ? 'code-del' : l.type === 'add' ? 'code-add' : '');
         div.innerHTML = `<span class="code-num">${l.num}</span><span class="code-val">${l.text}</span>`;
         box.appendChild(div);
       });
+    }
+
+    function renderLocalCodeView(step) {
+      const data = stepDiffsLocal[step];
+      if (data) renderCodeViewFromData(data);
     }
 
     function toggleFuturisticMode(mode) {
@@ -824,14 +843,14 @@
       if (mode === 'diff') document.getElementById('btn-mode-diff').classList.add('active');
       if (mode === 'raw') document.getElementById('btn-mode-raw').classList.add('active');
       if (mode === 'opt') document.getElementById('btn-mode-opt').classList.add('active');
-      renderFuturisticCodeView();
+      fetchLiveDiff(currentStep);
     }
 
     function selectFuturisticStep(stepNum, element) {
       currentStep = stepNum;
       document.querySelectorAll('.segment-btn').forEach(el => el.classList.remove('active'));
       element.classList.add('active');
-      renderFuturisticCodeView();
+      fetchLiveDiff(currentStep);
     }
 
     function getVariantFromUrl() {
@@ -869,37 +888,26 @@
       document.querySelectorAll('.range-shield-input').forEach(el => el.value = val);
     }
 
-    function triggerSimulation(variantNum) {
-      const time = new Date().toLocaleTimeString();
-      const currentRetry = document.querySelector('.val-retry-txt').innerText;
-      
-      if (variantNum === 3) {
+    async function triggerSimulation(variantNum) {
+      try {
+        await fetch('/api/simulate', { method: 'POST', body: JSON.stringify({ variant: variantNum }) });
+        await fetchLiveStatus();
+      } catch (err) {
+        console.log('Simulation trigger fallback to local mode');
         const cyclesEl = document.getElementById('v3-cycles-num');
         let current = parseInt(cyclesEl.innerText, 10);
         cyclesEl.innerText = current + 1;
-      } else if (variantNum === 1) {
-        const logs = document.getElementById('term-logs-v1');
-        const newLog = document.createElement('div');
-        newLog.innerText = `[${time}] <act> Simulating test-time compute cycle with ${currentRetry}... DONE (100% Pass)`;
-        logs.appendChild(newLog);
-      } else if (variantNum === 2) {
-        const tbody = document.getElementById('v2-table-body');
-        const tr = document.createElement('tr');
-        const id = 'FB13-00' + (tbody.children.length + 1);
-        tr.innerHTML = `<td style="color:var(--color-primary); font-family:var(--font-mono);">${id}</td>
-          <td>Simulated Swarm Run (${currentRetry})</td>
-          <td style="color:#FF453A;">FAIL</td>
-          <td style="color:var(--color-primary); font-weight:600;">PASS (${time})</td>
-          <td>100%</td>
-          <td><span style="background:rgba(255,107,53,0.12); color:var(--color-primary); padding:0.2rem 0.5rem; border-radius:4px; font-size:12px;">VERIFIED</span></td>`;
-        tbody.appendChild(tr);
       }
     }
 
     window.addEventListener('DOMContentLoaded', () => {
       const initialVariant = getVariantFromUrl();
       switchVariant(initialVariant);
-      renderFuturisticCodeView();
+      fetchLiveStatus();
+      fetchLiveDiff(currentStep);
+      
+      // Auto-poll status every 3 seconds
+      setInterval(fetchLiveStatus, 3000);
     });
   </script>
 </body>

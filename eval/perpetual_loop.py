@@ -22,6 +22,14 @@ if _REPO_ROOT not in sys.path: sys.path.append(_REPO_ROOT)
 
 from tier_utils import load_tier_sequence, parse_pass_rate
 from mutation_engine import MutationEngine, MutationLogRecord, get_replay_tiers
+from mighty_mouse.v2.foundation import (
+    ImmutableStateStore,
+    Mode,
+    Scope,
+    Signal,
+    TaskCategory,
+)
+from mighty_mouse.v2.telemetry import TelemetryAggregator
 
 def load_tiers() -> List[str]:
     return load_tier_sequence(CONFIG_PATH)
@@ -72,6 +80,7 @@ class AutoresearchLoop:
         telemetry_path: str = TELEMETRY_PATH,
         benchmark_results_path: str = BENCHMARK_RESULTS_PATH,
         mutation_engine: Optional[MutationEngine] = None,
+        state_dir: str = "logs/v2-state",
     ):
         self.state_path = state_path
         self.telemetry_path = telemetry_path
@@ -79,6 +88,36 @@ class AutoresearchLoop:
         self.state_manager = AtomicState(self.state_path)
         self.mutation_engine = mutation_engine or MutationEngine(results_path=benchmark_results_path)
         self.tiers = load_tiers()
+        self.store = ImmutableStateStore(state_dir=state_dir)
+        self.telemetry_aggregator = TelemetryAggregator(store=self.store)
+
+    def record_signal(
+        self,
+        scope: Scope,
+        outcome: str,
+        duration_ms: int = 1000,
+        retry_count: int = 0,
+        verifier_category: str = "tests",
+        verifier_result: str = "passed",
+        model_digest: str = "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        execution_profile_id: str = "codex-local",
+        signal_counter: int = 100,
+    ) -> Any:
+        """Log a structured v2 Signal into ImmutableStateStore."""
+        signal_id = f"signal-{signal_counter:03d}"
+        signal = Signal(
+            signal_id=signal_id,
+            scope=scope,
+            model_digest=model_digest,
+            execution_profile_id=execution_profile_id,
+            outcome=outcome,
+            duration_ms=duration_ms,
+            retry_count=retry_count,
+            verifier_category=verifier_category,
+            verifier_result=verifier_result,
+        )
+        return self.store.append(signal)
+
 
     @property
     def state(self) -> Dict[str, Any]:

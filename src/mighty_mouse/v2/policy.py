@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional, Dict, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from mighty_mouse.v2.foundation import (
     ExecutionProfile,
@@ -13,6 +13,9 @@ from mighty_mouse.v2.foundation import (
     PolicySelection,
     Scope,
 )
+
+if TYPE_CHECKING:
+    from mighty_mouse.v2.telemetry import TelemetryAggregator
 
 
 class PolicyState(str, Enum):
@@ -35,11 +38,13 @@ class PolicyLifecycle:
         pinned_policies: Optional[Dict[str, Policy]] = None,
         min_pass_rate_threshold: float = 0.50,
         degraded_pass_rate_threshold: float = 0.75,
+        telemetry_aggregator: Optional[TelemetryAggregator] = None,
     ):
         self.store = store
         self.pinned_policies = pinned_policies or {}
         self.min_pass_rate_threshold = min_pass_rate_threshold
         self.degraded_pass_rate_threshold = degraded_pass_rate_threshold
+        self.telemetry_aggregator = telemetry_aggregator
 
     def determine_state(
         self,
@@ -49,6 +54,9 @@ class PolicyLifecycle:
         scope_key = _build_scope_key(scope)
         if scope_key in self.pinned_policies or scope.mode.value in self.pinned_policies:
             return PolicyState.PINNED
+
+        if recent_pass_rate is None and self.telemetry_aggregator is not None:
+            recent_pass_rate = self.telemetry_aggregator.compute_pass_rate(scope)
 
         if recent_pass_rate is not None:
             if recent_pass_rate < self.min_pass_rate_threshold:
@@ -65,6 +73,9 @@ class PolicyLifecycle:
         execution_profile: Optional[ExecutionProfile] = None,
         recent_pass_rate: Optional[float] = None,
     ) -> PolicySelection:
+        if recent_pass_rate is None and self.telemetry_aggregator is not None:
+            recent_pass_rate = self.telemetry_aggregator.compute_pass_rate(scope)
+
         state = self.determine_state(scope, recent_pass_rate)
         scope_key = _build_scope_key(scope)
 
@@ -120,12 +131,18 @@ def resolve_effective_policy(
     execution_profile: Optional[ExecutionProfile] = None,
     recent_pass_rate: Optional[float] = None,
     pinned_policies: Optional[Dict[str, Policy]] = None,
+    telemetry_aggregator: Optional[TelemetryAggregator] = None,
 ) -> PolicySelection:
     """High-level seam for resolving effective policy for a given run Scope."""
-    lifecycle = PolicyLifecycle(store=store, pinned_policies=pinned_policies)
+    lifecycle = PolicyLifecycle(
+        store=store,
+        pinned_policies=pinned_policies,
+        telemetry_aggregator=telemetry_aggregator,
+    )
     return lifecycle.resolve_policy(
         scope=scope,
         model_identity=model_identity,
         execution_profile=execution_profile,
         recent_pass_rate=recent_pass_rate,
     )
+

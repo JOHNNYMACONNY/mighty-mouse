@@ -692,22 +692,24 @@
                 </filter>
               </defs>
 
-              <!-- Background Horizontal Grid Lines & Y-Axis Labels -->
-              <g class="grid-lines" stroke="var(--color-border)" stroke-width="1" stroke-dasharray="4 4">
-                <line x1="45" y1="20" x2="780" y2="20"/>
-                <text x="35" y="24" fill="var(--color-text-secondary)" font-size="10" text-anchor="end">100%</text>
+              <!-- Background Tier Bands & Secondary Lines -->
+              <g id="chart-tier-bands"></g>
+              <g id="chart-secondary-lines"></g>
 
-                <line x1="45" y1="65" x2="780" y2="65"/>
-                <text x="35" y="69" fill="var(--color-text-secondary)" font-size="10" text-anchor="end">75%</text>
+              <!-- Background Horizontal Grid Lines & Y-Axis ELO Labels -->
+              <g id="chart-grid-lines" stroke="var(--color-border)" stroke-width="1" stroke-dasharray="4 4">
+                <line x1="50" y1="20" x2="770" y2="20"/>
+                <text x="42" y="24" fill="var(--color-text-secondary)" font-size="9" font-weight="700" text-anchor="end">3000 ELO</text>
 
-                <line x1="45" y1="110" x2="780" y2="110"/>
-                <text x="35" y="114" fill="var(--color-text-secondary)" font-size="10" text-anchor="end">50%</text>
+                <line x1="50" y1="60" x2="770" y2="60"/>
+                <text x="42" y="64" fill="var(--color-text-secondary)" font-size="9" font-weight="700" text-anchor="end">2500 ELO</text>
 
-                <line x1="45" y1="155" x2="780" y2="155"/>
-                <text x="35" y="159" fill="var(--color-text-secondary)" font-size="10" text-anchor="end">25%</text>
+                <line x1="50" y1="120" x2="770" y2="120"/>
+                <text x="42" y="124" fill="var(--color-text-secondary)" font-size="9" font-weight="700" text-anchor="end">1800 ELO</text>
 
-                <line x1="45" y1="200" x2="780" y2="200" stroke-dasharray="none" stroke="var(--color-border-hover)"/>
-                <text x="35" y="204" fill="var(--color-text-secondary)" font-size="10" text-anchor="end">0%</text>
+                <line x1="50" y1="180" x2="770" y2="180" stroke="#FF453A" stroke-width="1.5" stroke-dasharray="6 3"/>
+                <text x="42" y="184" fill="#FF453A" font-size="9" font-weight="700" text-anchor="end">1000 ELO</text>
+              </g>
 
                 <!-- RAW MODEL BASELINE REFERENCE LINE (28%) -->
                 <line x1="45" y1="149" x2="780" y2="149" stroke="#FF453A" stroke-width="1.5" stroke-dasharray="6 3"/>
@@ -974,11 +976,29 @@
       const totalPassed = data.reduce((acc, curr) => acc + (curr.passCount || 0), 0);
       const netAccuracy = totalEvaluated > 0 ? (totalPassed / totalEvaluated * 100).toFixed(1) : '90.3';
 
-      const kpiAcc = document.getElementById('chart-kpi-accuracy');
-      if (kpiAcc) kpiAcc.innerText = `${netAccuracy}%`;
+      // Render Background Tier Bands
+      const tierBandsGroup = document.getElementById('chart-tier-bands');
+      if (tierBandsGroup) {
+        const yTier1Top = paddingTop + (1 - ((1800 - minElo) / (maxElo - minElo))) * chartH;
+        const yTier2Top = paddingTop + (1 - ((2500 - minElo) / (maxElo - minElo))) * chartH;
+        const yBase = paddingTop + chartH;
 
-      const kpiTotal = document.getElementById('chart-kpi-total');
-      if (kpiTotal) kpiTotal.innerText = totalEvaluated.toLocaleString();
+        tierBandsGroup.innerHTML = `
+          <rect x="${paddingLeft}" y="${yTier1Top}" width="${chartW}" height="${yBase - yTier1Top}" fill="rgba(52, 199, 89, 0.04)"/>
+          <rect x="${paddingLeft}" y="${yTier2Top}" width="${chartW}" height="${yTier1Top - yTier2Top}" fill="rgba(255, 107, 53, 0.05)"/>
+          <rect x="${paddingLeft}" y="${paddingTop}" width="${chartW}" height="${yTier2Top - paddingTop}" fill="rgba(175, 82, 222, 0.05)"/>
+        `;
+      }
+
+      // Render Secondary Tier Line (Tier 1 baseline locked at 1800 ELO once mastered)
+      const secLinesGroup = document.getElementById('chart-secondary-lines');
+      if (secLinesGroup && coords.length > 0) {
+        const y1800 = paddingTop + (1 - ((1800 - minElo) / (maxElo - minElo))) * chartH;
+        secLinesGroup.innerHTML = `
+          <line x1="${paddingLeft}" y1="${y1800}" x2="${width - paddingRight}" y2="${y1800}" stroke="#34C759" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.6"/>
+          <text x="${width - paddingRight - 10}" y="${y1800 - 5}" fill="#34C759" font-size="8.5" font-weight="700" text-anchor="end" font-family="var(--font-mono)">TIER 1 LOCKED 100% (1800 ELO)</text>
+        `;
+      }
 
       // Build SVG Path string using Bezier Curves
       let pathD = `M ${coords[0].x} ${coords[0].y}`;

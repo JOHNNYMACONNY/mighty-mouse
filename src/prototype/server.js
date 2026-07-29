@@ -113,14 +113,14 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/history' && req.method === 'GET') {
     const evalResultsDir = path.join(__dirname, '..', '..', 'eval', 'results');
     let historyPoints = [
-      { iteration: 1, label: 'T1 Pack 1', passRate: 90.7, passCount: 49, totalCount: 54, milestone: 'Baseline' },
-      { iteration: 25, label: 'T1 Pack 2', passRate: 100.0, passCount: 50, totalCount: 50, milestone: 'Key Parity Active' },
-      { iteration: 50, label: 'T1 Pack 3', passRate: 100.0, passCount: 50, totalCount: 50, milestone: 'Tier 1 Complete' },
-      { iteration: 75, label: 'T1 Pack 4', passRate: 100.0, passCount: 50, totalCount: 50, milestone: 'Zero Drift' },
-      { iteration: 100, label: 'T1 Pack 5', passRate: 100.0, passCount: 50, totalCount: 50, milestone: '100% Stability' },
-      { iteration: 125, label: 'T1 Pack 6', passRate: 100.0, passCount: 50, totalCount: 50, milestone: 'Tier 1 Shielded' },
-      { iteration: 135, label: 'T2 Pack 1', passRate: 86.4, passCount: 38, totalCount: 44, milestone: 'Tier 2 Swarm Active' },
-      { iteration: 164, label: 'Specialized', passRate: 100.0, passCount: 144, totalCount: 144, milestone: '100% High Tier' }
+      { iteration: 1, label: 'T1 Pack 1', passRate: 90.7, passCount: 49, totalCount: 54, milestone: 'Initial Target', tier: 'Tier 1', tierDifficulty: 1.0, elo: 1227, cumulativeScore: 1227 },
+      { iteration: 25, label: 'T1 Pack 2', passRate: 100.0, passCount: 50, totalCount: 50, milestone: 'Key Parity Active', tier: 'Tier 1', tierDifficulty: 1.0, elo: 1450, cumulativeScore: 1450 },
+      { iteration: 50, label: 'T1 Pack 3', passRate: 100.0, passCount: 50, totalCount: 50, milestone: 'Tier 1 Complete', tier: 'Tier 1', tierDifficulty: 1.0, elo: 1680, cumulativeScore: 1680 },
+      { iteration: 75, label: 'T1 Pack 4', passRate: 100.0, passCount: 50, totalCount: 50, milestone: 'Zero Drift', tier: 'Tier 1', tierDifficulty: 1.0, elo: 1750, cumulativeScore: 1750 },
+      { iteration: 100, label: 'T1 Pack 5', passRate: 100.0, passCount: 50, totalCount: 50, milestone: '100% Stability', tier: 'Tier 1', tierDifficulty: 1.0, elo: 1800, cumulativeScore: 1800 },
+      { iteration: 125, label: 'T1 Pack 6', passRate: 100.0, passCount: 50, totalCount: 50, milestone: 'Tier 1 Shielded', tier: 'Tier 1', tierDifficulty: 1.0, elo: 1800, cumulativeScore: 1800 },
+      { iteration: 135, label: 'T2 Pack 1', passRate: 86.4, passCount: 38, totalCount: 44, milestone: 'Tier 2 Swarm Active', tier: 'Tier 2', tierDifficulty: 2.0, elo: 2405, cumulativeScore: 2405 },
+      { iteration: 164, label: 'Specialized', passRate: 100.0, passCount: 144, totalCount: 144, milestone: '100% High Tier', tier: 'High-Tier', tierDifficulty: 3.0, elo: 3000, cumulativeScore: 3000 }
     ];
 
     try {
@@ -143,7 +143,7 @@ const server = http.createServer((req, res) => {
             }
           });
           const keys = Object.keys(stats).map(Number).sort((a,b) => a - b);
-          let cumulativeElo = 1000; // Baseline v1.0 ELO
+          let cumulativeElo = 1000;
 
           if (keys.length > 0) {
             historyPoints = keys.map((k, idx) => {
@@ -152,43 +152,36 @@ const server = http.createServer((req, res) => {
               const rate = t > 0 ? parseFloat((p / t * 100).toFixed(1)) : 0;
               
               let milestone = '';
-              let version = 'v9.1';
               let tier = 'Tier 1';
               let tierDifficulty = 1.0;
 
               if (k === 0) {
-                milestone = 'v1.0 Baseline (28%)';
-                version = 'v1.0';
+                milestone = 'Initial Target (28%)';
                 tier = 'Tier 1';
                 tierDifficulty = 1.0;
                 cumulativeElo = 1000 + Math.round(rate * 2.5); // 1000 -> 1226 ELO
               } else if (k === 50) {
-                milestone = 'v3.0 Key Parity';
-                version = 'v3.0';
+                milestone = 'Key Parity Active';
                 tier = 'Tier 1';
                 tierDifficulty = 1.0;
                 cumulativeElo = 1450;
               } else if (k === 100) {
-                milestone = 'v5.0 Red Team Guard';
-                version = 'v5.0';
+                milestone = 'Red Team Shielded';
                 tier = 'Tier 1';
                 tierDifficulty = 1.0;
                 cumulativeElo = 1680;
               } else if (k === 300) {
                 milestone = '300 Task Streak';
-                version = 'v9.0';
                 tier = 'Tier 1';
                 tierDifficulty = 1.0;
                 cumulativeElo = 1800; // Tier 1 Mastered
               } else if (k === 350) {
-                milestone = 'v9.1 Tier 2 Swarm';
-                version = 'v9.1';
+                milestone = 'Tier 2 Swarm Active';
                 tier = 'Tier 2';
                 tierDifficulty = 2.0;
                 cumulativeElo = 1800 + Math.round((rate / 100) * 700); // 1800 -> 2405 ELO
               } else if (k >= 1000) {
                 milestone = 'High-Tier Specialized';
-                version = 'v9.1';
                 tier = 'High-Tier';
                 tierDifficulty = 3.0;
                 cumulativeElo = 2500 + Math.round((rate / 100) * 500); // 2500 -> 3000 ELO
@@ -216,10 +209,10 @@ const server = http.createServer((req, res) => {
                 passCount: p,
                 totalCount: t,
                 milestone: milestone,
-                version: version,
                 tier: tier,
                 tierDifficulty: tierDifficulty,
                 elo: cumulativeElo,
+                cumulativeScore: cumulativeElo,
                 tasks: sampleTasks
               };
             });

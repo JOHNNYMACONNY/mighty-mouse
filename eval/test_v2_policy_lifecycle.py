@@ -101,3 +101,12 @@ def test_resolve_policy_champion_fallback(store, scope, model_identity, executio
     )
     assert selection.source == "safe_baseline"
     assert "safe-baseline-coding" in selection.policy.policy_id
+
+
+def test_resolve_effective_policy_2_args(store, scope):
+    selection = resolve_effective_policy(
+        scope=scope,
+        store=store,
+    )
+    assert selection.source == "safe_baseline"
+

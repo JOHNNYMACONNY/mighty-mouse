@@ -52,8 +52,8 @@ class PolicyLifecycle:
     def resolve_policy(
         self,
         scope: Scope,
-        model_identity: ModelIdentity,
-        execution_profile: ExecutionProfile,
+        model_identity: Optional[ModelIdentity] = None,
+        execution_profile: Optional[ExecutionProfile] = None,
         recent_pass_rate: Optional[float] = None,
     ) -> PolicySelection:
         state = self.determine_state(scope, recent_pass_rate)
@@ -82,6 +82,11 @@ class PolicyLifecycle:
                 record_hash=None,
             )
 
+        if model_identity is None:
+            model_identity = ModelIdentity(artifact_digest=None)
+        if execution_profile is None:
+            execution_profile = ExecutionProfile(profile_id="default", capabilities=frozenset())
+
         # Champion state fallback to store's selection logic
         return self.store.select_policy(
             scope=scope,
@@ -93,8 +98,8 @@ class PolicyLifecycle:
 def resolve_effective_policy(
     scope: Scope,
     store: ImmutableStateStore,
-    model_identity: ModelIdentity,
-    execution_profile: ExecutionProfile,
+    model_identity: Optional[ModelIdentity] = None,
+    execution_profile: Optional[ExecutionProfile] = None,
     recent_pass_rate: Optional[float] = None,
     pinned_policies: Optional[Dict[str, Policy]] = None,
 ) -> PolicySelection:

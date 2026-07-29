@@ -198,7 +198,21 @@ class AutoresearchLoop:
         print(f"[*] Results: {success_rate_str} ({pass_rate:.1f}%)")
         self.update_telemetry(current_tier, summary, config_hash)
         
+        cycle_scope = Scope(
+            mode=Mode.AGENTIC,
+            repository="JOHNNYMACONNY/mighty-mouse",
+            task_category=TaskCategory.MAINTENANCE,
+            model_class="local-small",
+        )
+        cycle_outcome = "passed" if pass_rate >= 50.0 else "failed"
+        self.record_signal(
+            scope=cycle_scope,
+            outcome=cycle_outcome,
+            signal_counter=max(1, self.state["total_iterations"]),
+        )
+
         if pass_rate >= 90:
+
             print("[+] Escalation criteria met (>=90%).")
             self.state["mutation_count"] = 0
             current_idx = self.tiers.index(current_tier) if current_tier in self.tiers else 0

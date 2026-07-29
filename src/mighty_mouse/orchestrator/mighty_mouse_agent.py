@@ -14,8 +14,9 @@ except ImportError:
     from response_parser import ResponseParser
 
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 SKILL_REGISTRY_PATH = os.getenv("SKILL_REGISTRY_PATH_OVERRIDE", os.path.join(_REPO_ROOT, "configs", "skills", "registry.yaml"))
+
 
 
 def _load_skills(explicit_skills=None, task_data=None):

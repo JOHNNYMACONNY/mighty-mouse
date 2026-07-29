@@ -34,13 +34,15 @@ class TelemetryAggregator:
         scope: Scope,
         window_size: Optional[int] = None,
     ) -> Tuple[List[Signal], int]:
-        eff_window_size = window_size if window_size is not None else self.default_window_size
+        """Extract matching signals within the effective sliding window."""
+        effective_window_size = window_size if window_size is not None else self.default_window_size
         signals = self.get_signals_for_scope(scope)
-        if not signals or eff_window_size <= 0:
-            return [], eff_window_size
-        return signals[-eff_window_size:], eff_window_size
+        if not signals or effective_window_size <= 0:
+            return [], effective_window_size
+        return signals[-effective_window_size:], effective_window_size
 
     def _count_passed_signals(self, window_signals: List[Signal]) -> int:
+        """Count the total number of signals with a passed outcome."""
         return sum(1 for s in window_signals if s.outcome == "passed")
 
     def compute_pass_rate(
@@ -90,4 +92,5 @@ class TelemetryAggregator:
             "avg_duration_ms": total_duration / len(window_signals),
             "window_size": eff_window_size,
         }
+
 

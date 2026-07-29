@@ -2,12 +2,15 @@ import pytest
 
 from mighty_mouse.v2 import PolicyState, PolicyLifecycle, resolve_effective_policy
 from mighty_mouse.v2.foundation import (
+    Candidate,
+    EligibleSuccessor,
     ExecutionProfile,
     ImmutableStateStore,
     ModelIdentity,
     Mode,
     Policy,
     PolicySelection,
+    PromotionController,
     Scope,
     TaskCategory,
 )
@@ -97,6 +100,18 @@ def test_resolve_policy_rollback(store, scope, model_identity, execution_profile
     assert "safe-baseline-coding" in selection.policy.policy_id
 
 
+def test_resolve_policy_degraded(store, scope, model_identity, execution_profile):
+    selection = resolve_effective_policy(
+        scope=scope,
+        store=store,
+        model_identity=model_identity,
+        execution_profile=execution_profile,
+        recent_pass_rate=0.65,
+    )
+    assert selection.source == "champion_degraded"
+    assert "safe-baseline-coding" in selection.policy.policy_id
+
+
 def test_resolve_policy_champion_fallback(store, scope, model_identity, execution_profile):
     selection = resolve_effective_policy(
         scope=scope,
@@ -109,10 +124,35 @@ def test_resolve_policy_champion_fallback(store, scope, model_identity, executio
     assert "safe-baseline-coding" in selection.policy.policy_id
 
 
+def test_resolve_policy_champion_promotion(store, scope, model_identity, execution_profile):
+    policy = Policy(policy_id="promoted-champ-001", mode=Mode.CODING, version="v2.1")
+    candidate = Candidate(
+        candidate_id="cand-001",
+        policy=policy,
+        scope=scope,
+        model_digest=model_identity.artifact_digest,
+        required_capabilities=frozenset(["python", "git"]),
+        compatible_execution_profiles=frozenset(["ep-standard"]),
+    )
+    from mighty_mouse.v2.foundation import Promotion
+    store.append_candidate(candidate)
+    successor = EligibleSuccessor(candidate=candidate, experiment_id="exp-001", evidence_bundle_id="bundle-001")
+    store.append_promotion(Promotion(eligible_successor=successor, prior_champion_id=None, machine_gates_passed=True))
+
+    selection = resolve_effective_policy(
+        scope=scope,
+        store=store,
+        model_identity=model_identity,
+        execution_profile=execution_profile,
+        recent_pass_rate=0.95,
+    )
+    assert selection.policy == policy
+    assert selection.source == "project_improvement"
+
+
 def test_resolve_effective_policy_2_args(store, scope):
     selection = resolve_effective_policy(
         scope=scope,
         store=store,
     )
     assert selection.source == "safe_baseline"
-

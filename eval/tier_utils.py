@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Dict, Any, Optional
 
 DEFAULT_CONFIG_PATH = "eval/evaluation_config.json"
 DEFAULT_STATE_PATH = "logs/perpetual_state.json"
@@ -41,3 +42,13 @@ def get_replay_tiers(current_tier, config_path=DEFAULT_CONFIG_PATH):
         idx = tiers.index(current_tier)
         return tiers[:idx + 1]
     return tiers
+
+def parse_pass_rate(summary: Optional[Dict[str, Any]]) -> float:
+    if not summary:
+        return 0.0
+    rate_str = summary.get("success_rate", "0/0")
+    try:
+        passed, total = map(int, rate_str.split('/'))
+        return (passed / total) if total > 0 else 0.0
+    except Exception:
+        return 0.0

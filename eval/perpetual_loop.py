@@ -20,8 +20,8 @@ _EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
 if _EVAL_DIR not in sys.path: sys.path.append(_EVAL_DIR)
 if _REPO_ROOT not in sys.path: sys.path.append(_REPO_ROOT)
 
-from tier_utils import load_tier_sequence
-from mutation_engine import MutationEngine, ProtocolManifest, get_replay_tiers
+from tier_utils import load_tier_sequence, parse_pass_rate
+from mutation_engine import MutationEngine, MutationLogRecord, get_replay_tiers
 
 def load_tiers() -> List[str]:
     return load_tier_sequence(CONFIG_PATH)
@@ -151,11 +151,7 @@ class AutoresearchLoop:
         self.state["total_iterations"] += 1
         summary = bench_data.get("summary", {})
         success_rate_str = summary.get("success_rate", "0/0")
-        try:
-            passed, total = map(int, success_rate_str.split('/'))
-            pass_rate = (passed / total) * 100 if total > 0 else 0
-        except Exception:
-            pass_rate = 0.0
+        pass_rate = parse_pass_rate(summary) * 100.0
 
         print(f"[*] Results: {success_rate_str} ({pass_rate:.1f}%)")
         self.update_telemetry(current_tier, summary, config_hash)
@@ -186,8 +182,8 @@ class AutoresearchLoop:
                 print(f"[*] Triggering in-process mutation cycle (Attempt {self.state['mutation_count']}/3)...")
                 # Direct typed in-process execution instead of subprocess
                 replay_tiers = get_replay_tiers(current_tier)
-                manifest = self.mutation_engine.execute_mutation_cycle(current_tier=current_tier, replay_tiers=replay_tiers)
-                print(f"[*] Mutation cycle finished. Manifest decision: {manifest.decision if manifest else 'None'}")
+                record = self.mutation_engine.execute_mutation_cycle(current_tier=current_tier, replay_tiers=replay_tiers)
+                print(f"[*] Mutation cycle finished. Record decision: {record.decision if record else 'None'}")
         else:
             print("[*] Performance in stable range (50% - 90%). Maintaining current tier.")
             self.state["mutation_count"] = 0

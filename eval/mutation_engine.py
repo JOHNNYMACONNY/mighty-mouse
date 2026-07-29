@@ -16,7 +16,7 @@ if _REPO_ROOT not in sys.path: sys.path.append(_REPO_ROOT)
 sys.path.append(os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator"))
 
 from gemini_client import GeminiClient
-from tier_utils import load_tier_sequence, get_current_tier as utils_get_current_tier
+from tier_utils import load_tier_sequence, get_current_tier as utils_get_current_tier, parse_pass_rate
 
 # Default Configuration Constants
 RESULTS_PATH = "eval/results/benchmark_results.json"
@@ -68,7 +68,7 @@ class MutationAttempt:
 
 
 @dataclass(frozen=True)
-class ProtocolManifest:
+class MutationLogRecord:
     timestamp: str
     failure_category: str
     segment_changed: str
@@ -186,26 +186,20 @@ Output your response in this JSON format:
         return None
 
     def get_pass_rate(self, summary: Optional[Dict[str, Any]]) -> float:
-        if not summary: return 0.0
-        rate_str = summary.get("success_rate", "0/0")
-        try:
-            passed, total = map(int, rate_str.split('/'))
-            return (passed / total) if total > 0 else 0.0
-        except Exception:
-            return 0.0
+        return parse_pass_rate(summary)
 
-    def log_mutation(self, manifest: ProtocolManifest) -> None:
+    def log_mutation(self, record: MutationLogRecord) -> None:
         log_dir = os.path.dirname(self.mutation_log_path)
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
         with open(self.mutation_log_path, 'a') as f:
-            f.write(json.dumps(manifest.to_dict()) + "\n")
+            f.write(json.dumps(record.to_dict()) + "\n")
 
     def execute_mutation_cycle(
         self,
         current_tier: Optional[str] = None,
         replay_tiers: Optional[List[str]] = None,
-    ) -> Optional[ProtocolManifest]:
+    ) -> Optional[MutationLogRecord]:
         print("=== Mighty Mouse Mutation Engine Starting ===")
         analysis = self.analyze_failures()
         if not analysis:
@@ -220,7 +214,7 @@ Output your response in this JSON format:
         if analysis.is_timeout_dominant:
             print("[!] TIMEOUT detected as dominant failure mode (Gemma 4 Reasoning Horizon reached).")
             print("[!] FREEZING mutations to reasoning.txt and discipline.txt.")
-            manifest = ProtocolManifest(
+            record = MutationLogRecord(
                 timestamp=datetime.now().isoformat(),
                 failure_category=analysis.dominant_category,
                 segment_changed="none",
@@ -230,12 +224,12 @@ Output your response in this JSON format:
                 replay_tiers_tested=replay_tiers,
                 decision="FROZEN_TIMEOUT",
             )
-            self.log_mutation(manifest)
-            return manifest
+            self.log_mutation(record)
+            return record
 
         segment_file, attempt = self.generate_mutation(analysis.dominant_category, analysis.failures)
         if not attempt or not segment_file:
-            manifest = ProtocolManifest(
+            record = MutationLogRecord(
                 timestamp=datetime.now().isoformat(),
                 failure_category=analysis.dominant_category,
                 segment_changed=segment_file or "unknown",
@@ -245,8 +239,8 @@ Output your response in this JSON format:
                 replay_tiers_tested=replay_tiers,
                 decision="FAILED_GENERATION",
             )
-            self.log_mutation(manifest)
-            return manifest
+            self.log_mutation(record)
+            return record
 
         segment_path = os.path.join(self.segments_dir, segment_file)
         backup_path = segment_path + ".bak"
@@ -274,7 +268,7 @@ Output your response in this JSON format:
                     decision = "REJECT"
                     break
         
-        manifest = ProtocolManifest(
+        record = MutationLogRecord(
             timestamp=datetime.now().isoformat(),
             failure_category=analysis.dominant_category,
             segment_changed=segment_file,
@@ -291,11 +285,11 @@ Output your response in this JSON format:
         else:
             print("[+] Mutation PROMOTED.")
         
-        self.log_mutation(manifest)
+        self.log_mutation(record)
         if os.path.exists(backup_path):
             os.remove(backup_path)
 
-        return manifest
+        return record
 
 
 # Module-level convenience functions for backward compatibility
@@ -320,7 +314,7 @@ def get_pass_rate(summary: Optional[Dict[str, Any]]) -> float:
     return MutationEngine().get_pass_rate(summary)
 
 def log_mutation(record: Dict[str, Any]) -> None:
-    manifest = ProtocolManifest(
+    log_record = MutationLogRecord(
         timestamp=record.get("timestamp", datetime.now().isoformat()),
         failure_category=record.get("failure_category", "LOGIC"),
         segment_changed=record.get("segment_changed", ""),
@@ -330,7 +324,7 @@ def log_mutation(record: Dict[str, Any]) -> None:
         replay_tiers_tested=record.get("replay_tiers_tested", []),
         decision=record.get("decision", "REJECT")
     )
-    MutationEngine().log_mutation(manifest)
+    MutationEngine().log_mutation(log_record)
 
 def main() -> None:
     engine = MutationEngine()

@@ -8,7 +8,7 @@ from mutation_engine import (
     MutationEngine,
     FailureAnalysis,
     MutationAttempt,
-    ProtocolManifest,
+    MutationLogRecord,
     CATEGORY_TO_SEGMENT,
 )
 from perpetual_loop import AutoresearchLoop, AtomicState
@@ -56,10 +56,10 @@ def test_timeout_dominance_freeze(tmp_path):
         json.dump(data, f)
 
     engine = MutationEngine(results_path=results_path, mutation_log_path=mutation_log_path)
-    manifest = engine.execute_mutation_cycle(current_tier="tier-1", replay_tiers=[])
+    record = engine.execute_mutation_cycle(current_tier="tier-1", replay_tiers=[])
     
-    assert manifest is not None
-    assert manifest.decision == "FROZEN_TIMEOUT"
+    assert record is not None
+    assert record.decision == "FROZEN_TIMEOUT"
     assert os.path.exists(mutation_log_path)
 
 
@@ -128,16 +128,16 @@ def test_execute_mutation_cycle_promote_and_reject_replay(tmp_path):
     # Test rejection due to lower replay tier score
     with patch.object(engine, "generate_mutation", return_value=("reasoning.txt", mock_attempt)), \
          patch.object(engine, "run_tier", side_effect=[{"success_rate": "2/2"}, {"success_rate": "1/2"}]):
-        manifest = engine.execute_mutation_cycle(current_tier="tier-2", replay_tiers=["tier-1"])
-        assert manifest is not None
-        assert manifest.decision == "REJECT"
+        record = engine.execute_mutation_cycle(current_tier="tier-2", replay_tiers=["tier-1"])
+        assert record is not None
+        assert record.decision == "REJECT"
         # Verify segment restored after rejection
         with open(os.path.join(segments_dir, "reasoning.txt"), "r") as f:
             assert f.read() == "Original reasoning"
 
 
-def test_protocol_manifest_serialization():
-    manifest = ProtocolManifest(
+def test_mutation_log_record_serialization():
+    record = MutationLogRecord(
         timestamp="2026-07-28T20:00:00",
         failure_category="LOGIC",
         segment_changed="reasoning.txt",
@@ -147,7 +147,7 @@ def test_protocol_manifest_serialization():
         replay_tiers_tested=["tier-1"],
         decision="PROMOTE"
     )
-    d = manifest.to_dict()
+    d = record.to_dict()
     assert d["decision"] == "PROMOTE"
     assert d["failure_category"] == "LOGIC"
 

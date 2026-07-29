@@ -78,8 +78,7 @@ class PolicyLifecycle:
                     record_hash=None,
                 )
 
-        if state in (PolicyState.ROLLBACK, PolicyState.DEGRADED):
-            source = "quality_degradation_rollback" if state == PolicyState.ROLLBACK else "quality_degradation_degraded"
+        if state == PolicyState.ROLLBACK:
             safe_baseline_policy = Policy(
                 policy_id=f"safe-baseline-{scope.mode.value}",
                 mode=scope.mode,
@@ -87,8 +86,8 @@ class PolicyLifecycle:
             )
             return PolicySelection(
                 policy=safe_baseline_policy,
-                source=source,
-                reason=f"Recent pass rate ({recent_pass_rate}) in {state.value} range",
+                source="quality_degradation_rollback",
+                reason=f"Recent pass rate ({recent_pass_rate}) below threshold ({self.min_pass_rate_threshold})",
                 record_hash=None,
             )
 
@@ -97,12 +96,21 @@ class PolicyLifecycle:
         if execution_profile is None:
             execution_profile = ExecutionProfile(profile_id="default", capabilities=frozenset())
 
-        # Champion state fallback to store's selection logic
-        return self.store.select_policy(
+        selection = self.store.select_policy(
             scope=scope,
             model_identity=model_identity,
             execution_profile=execution_profile,
         )
+
+        if state == PolicyState.DEGRADED:
+            return PolicySelection(
+                policy=selection.policy,
+                source="champion_degraded",
+                reason=f"Recent pass rate ({recent_pass_rate}) in degraded range (<{self.degraded_pass_rate_threshold})",
+                record_hash=selection.record_hash,
+            )
+
+        return selection
 
 
 def resolve_effective_policy(

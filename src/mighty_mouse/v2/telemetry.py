@@ -47,7 +47,6 @@ class TelemetryAggregator:
         """Count the total number of signals with a passed outcome."""
         return sum(1 for s in window_signals if s.outcome == _SIGNAL_OUTCOME_PASSED)
 
-
     def compute_pass_rate(
         self,
         scope: Scope,

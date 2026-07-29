@@ -44,10 +44,8 @@ class TelemetryAggregator:
             return None
 
         window_signals = signals[-eff_window_size:]
-        if not window_signals:
-            return None
-
         passed_count = sum(1 for s in window_signals if s.outcome == "passed")
+
         return passed_count / len(window_signals)
 
     def get_telemetry_summary(

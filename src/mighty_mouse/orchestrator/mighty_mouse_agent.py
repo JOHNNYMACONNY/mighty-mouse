@@ -216,14 +216,8 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
             except Exception:
                 pass
 
-    if os.path.exists(task_input):
-        with open(task_input, 'r') as f:
-            try:
-                task_data = json.load(f)
-            except Exception:
-                pass
-    
     stale_removed = _hygiene_audit(os.getcwd(), task_data=task_data)
+
 
     with open(p_cfg_path, 'r') as f:
         p_cfg = yaml.safe_load(f)
@@ -539,8 +533,15 @@ if __name__ == "__main__":
     task_abs = os.path.abspath(args.task)
 
     if args.mode == "swarm":
-        from swarm import SwarmOrchestrator
+        try:
+            from mighty_mouse.orchestrator.swarm import SwarmOrchestrator
+        except ImportError:
+            try:
+                from .swarm import SwarmOrchestrator
+            except ImportError:
+                from swarm import SwarmOrchestrator
         with open(task_abs, "r") as f:
+
             task_data = json.load(f)
         orchestrator = SwarmOrchestrator(concurrency=args.concurrency)
         result = orchestrator.execute_swarm_pipeline(task_data)

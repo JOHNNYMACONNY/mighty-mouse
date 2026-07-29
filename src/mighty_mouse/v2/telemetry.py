@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from mighty_mouse.v2.foundation import ImmutableStateStore, Scope, Signal
 from mighty_mouse.v2.signals import SignalLifecycle
 
+_SIGNAL_OUTCOME_PASSED = "passed"
+
 
 class TelemetryAggregator:
     """Aggregates execution signals from ImmutableStateStore and SignalLifecycle to compute windowed metrics."""
@@ -43,7 +45,8 @@ class TelemetryAggregator:
 
     def _count_passed_signals(self, window_signals: List[Signal]) -> int:
         """Count the total number of signals with a passed outcome."""
-        return sum(1 for s in window_signals if s.outcome == "passed")
+        return sum(1 for s in window_signals if s.outcome == _SIGNAL_OUTCOME_PASSED)
+
 
     def compute_pass_rate(
         self,

@@ -67,7 +67,7 @@ class TelemetryAggregator:
         window_size: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Return structured summary metrics for a given Scope."""
-        window_signals, eff_window_size = self._get_window_signals(scope, window_size)
+        window_signals, effective_window_size = self._get_window_signals(scope, window_size)
         if not window_signals:
             return {
                 "scope": scope,
@@ -76,7 +76,7 @@ class TelemetryAggregator:
                 "passed_signals": 0,
                 "failed_signals": 0,
                 "avg_duration_ms": 0.0,
-                "window_size": eff_window_size,
+                "window_size": effective_window_size,
             }
 
         passed_count = self._count_passed_signals(window_signals)
@@ -90,7 +90,5 @@ class TelemetryAggregator:
             "passed_signals": passed_count,
             "failed_signals": failed_count,
             "avg_duration_ms": total_duration / len(window_signals),
-            "window_size": eff_window_size,
+            "window_size": effective_window_size,
         }
-
-

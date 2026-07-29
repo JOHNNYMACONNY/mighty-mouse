@@ -212,7 +212,6 @@ class AutoresearchLoop:
         )
 
         if pass_rate >= 90:
-
             print("[+] Escalation criteria met (>=90%).")
             self.state["mutation_count"] = 0
             current_idx = self.tiers.index(current_tier) if current_tier in self.tiers else 0

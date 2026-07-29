@@ -1,5 +1,3 @@
-import os
-import tempfile
 import pytest
 
 from mighty_mouse.v2 import (

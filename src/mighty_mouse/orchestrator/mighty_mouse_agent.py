@@ -6,8 +6,16 @@ import time
 
 import yaml
 
-from gemini_client import GeminiClient
-from response_parser import ResponseParser
+try:
+    from mighty_mouse.orchestrator.gemini_client import GeminiClient
+    from mighty_mouse.orchestrator.response_parser import ResponseParser
+except ImportError:
+    try:
+        from .gemini_client import GeminiClient
+        from .response_parser import ResponseParser
+    except ImportError:
+        from gemini_client import GeminiClient
+        from response_parser import ResponseParser
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SKILL_REGISTRY_PATH = os.getenv("SKILL_REGISTRY_PATH_OVERRIDE", os.path.join(_REPO_ROOT, "configs", "skills", "registry.yaml"))

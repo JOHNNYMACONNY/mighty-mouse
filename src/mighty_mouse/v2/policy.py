@@ -132,11 +132,15 @@ def resolve_effective_policy(
     recent_pass_rate: Optional[float] = None,
     pinned_policies: Optional[Dict[str, Policy]] = None,
     telemetry_aggregator: Optional[TelemetryAggregator] = None,
+    min_pass_rate_threshold: float = 0.50,
+    degraded_pass_rate_threshold: float = 0.75,
 ) -> PolicySelection:
     """High-level seam for resolving effective policy for a given run Scope."""
     lifecycle = PolicyLifecycle(
         store=store,
         pinned_policies=pinned_policies,
+        min_pass_rate_threshold=min_pass_rate_threshold,
+        degraded_pass_rate_threshold=degraded_pass_rate_threshold,
         telemetry_aggregator=telemetry_aggregator,
     )
     return lifecycle.resolve_policy(
@@ -145,4 +149,5 @@ def resolve_effective_policy(
         execution_profile=execution_profile,
         recent_pass_rate=recent_pass_rate,
     )
+
 

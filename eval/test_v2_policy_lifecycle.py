@@ -109,6 +109,9 @@ def test_resolve_policy_degraded(store, scope, model_identity, execution_profile
         recent_pass_rate=0.65,
     )
     assert selection.source == "safe_baseline"
+    # Verify original store reason is preserved as prefix
+    assert selection.reason.startswith("no exact compatible Champion")
+    # Verify degradation warning is appended
     assert "degraded range" in selection.reason
     assert "safe-baseline-coding" in selection.policy.policy_id
 

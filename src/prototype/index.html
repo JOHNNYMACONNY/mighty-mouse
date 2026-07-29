@@ -990,13 +990,25 @@
         `;
       }
 
-      // Render Secondary Tier Line (Tier 1 baseline locked at 1800 ELO once mastered)
+      // Render Secondary Tier Lines (Tier 1 locked + Tier 2 climbing series)
       const secLinesGroup = document.getElementById('chart-secondary-lines');
       if (secLinesGroup && coords.length > 0) {
         const y1800 = paddingTop + (1 - ((1800 - minElo) / (maxElo - minElo))) * chartH;
+        
+        // Tier 2 Climbing Path calculation
+        const t2Coords = coords.filter(c => c.data.tier === 'Tier 2' || c.data.elo > 1800);
+        let t2PathD = '';
+        if (t2Coords.length > 0) {
+          t2PathD = `M ${t2Coords[0].x} ${t2Coords[0].y}`;
+          for (let i = 1; i < t2Coords.length; i++) {
+            t2PathD += ` L ${t2Coords[i].x} ${t2Coords[i].y}`;
+          }
+        }
+
         secLinesGroup.innerHTML = `
           <line x1="${paddingLeft}" y1="${y1800}" x2="${width - paddingRight}" y2="${y1800}" stroke="#34C759" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.6"/>
           <text x="${width - paddingRight - 10}" y="${y1800 - 5}" fill="#34C759" font-size="8.5" font-weight="700" text-anchor="end" font-family="var(--font-mono)">TIER 1 LOCKED 100% (1800 ELO)</text>
+          ${t2PathD ? `<path id="tier-2-climbing-line" d="${t2PathD}" stroke="#FF6B35" stroke-width="2.5" stroke-dasharray="2 2" fill="none" opacity="0.85"/>` : ''}
         `;
       }
 

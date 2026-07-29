@@ -119,8 +119,8 @@ const server = http.createServer((req, res) => {
       { iteration: 75, label: 'T1 Pack 4', passRate: 100.0, passCount: 50, totalCount: 50, milestone: 'Zero Drift', tier: 'Tier 1', tierDifficulty: 1.0, elo: 1750, cumulativeScore: 1750 },
       { iteration: 100, label: 'T1 Pack 5', passRate: 100.0, passCount: 50, totalCount: 50, milestone: '100% Stability', tier: 'Tier 1', tierDifficulty: 1.0, elo: 1800, cumulativeScore: 1800 },
       { iteration: 125, label: 'T1 Pack 6', passRate: 100.0, passCount: 50, totalCount: 50, milestone: 'Tier 1 Shielded', tier: 'Tier 1', tierDifficulty: 1.0, elo: 1800, cumulativeScore: 1800 },
-      { iteration: 135, label: 'T2 Pack 1', passRate: 86.4, passCount: 38, totalCount: 44, milestone: 'Tier 2 Swarm Active', tier: 'Tier 2', tierDifficulty: 2.0, elo: 2405, cumulativeScore: 2405 },
-      { iteration: 164, label: 'Specialized', passRate: 100.0, passCount: 144, totalCount: 144, milestone: '100% High Tier', tier: 'High-Tier', tierDifficulty: 3.0, elo: 3000, cumulativeScore: 3000 }
+      { iteration: 135, label: 'T2 Pack 1', passRate: 86.4, passCount: 38, totalCount: 44, milestone: 'Tier 2 Swarm Active', tier: 'Tier 2', tierDifficulty: 2.0, elo: 2405, cumulativeScore: 4810 },
+      { iteration: 164, label: 'Specialized', passRate: 100.0, passCount: 144, totalCount: 144, milestone: '100% High Tier', tier: 'High-Tier', tierDifficulty: 3.0, elo: 3000, cumulativeScore: 9000 }
     ];
 
     try {
@@ -212,7 +212,7 @@ const server = http.createServer((req, res) => {
                 tier: tier,
                 tierDifficulty: tierDifficulty,
                 elo: cumulativeElo,
-                cumulativeScore: cumulativeElo,
+                cumulativeScore: Math.round(cumulativeElo * tierDifficulty),
                 tasks: sampleTasks
               };
             });

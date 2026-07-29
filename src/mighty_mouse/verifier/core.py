@@ -145,6 +145,18 @@ def verify(
                 duration_sec=round(time.monotonic() - started, 3),
             )
         )
+        checklist_path = task_config.get("checklist_path", "CHECKLIST.md")
+        if os.path.exists(os.path.join(workspace, checklist_path)) or "checklist_path" in task_config or task_config.get("require_adherence"):
+            started_adh = time.monotonic()
+            adh_passed, adh_msg = check_adherence(os.path.join(workspace, checklist_path))
+            checks.append(
+                CheckResult(
+                    name="task-adherence",
+                    passed=adh_passed,
+                    output=adh_msg,
+                    duration_sec=round(time.monotonic() - started_adh, 3),
+                )
+            )
 
     if not checks:
         return VerificationResult(

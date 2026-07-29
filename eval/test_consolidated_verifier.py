@@ -55,6 +55,17 @@ def test_verify_with_task_config(tmp_path):
     assert "task-scope" in check_names
 
 
+def test_verify_with_task_config_adherence(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='0'\n")
+    (tmp_path / "test_sample.py").write_text("def test_ok(): assert True\n")
+    (tmp_path / "CHECKLIST.md").write_text("- [x] item\n")
+
+    result = verify(str(tmp_path), task_config={"expected_files": [], "checklist_path": "CHECKLIST.md"})
+    check_names = [check.name for check in result.checks]
+    assert "task-adherence" in check_names
+
+
+
 def test_services_verifiers_shims_compatibility():
     assert shim_scope.verify == verify_task_scope
     assert shim_adherence.check_adherence == check_adherence

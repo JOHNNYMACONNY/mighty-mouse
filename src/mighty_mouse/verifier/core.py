@@ -147,7 +147,7 @@ def verify(
         )
         checklist_path = task_config.get("checklist_path", "CHECKLIST.md")
         abs_checklist_path = checklist_path if os.path.isabs(checklist_path) else os.path.join(workspace, checklist_path)
-        if os.path.exists(abs_checklist_path) or "checklist_path" in task_config or task_config.get("require_adherence"):
+        if "checklist_path" in task_config or task_config.get("require_adherence"):
             started_adh = time.monotonic()
             adh_passed, adh_msg = check_adherence(abs_checklist_path, cwd=workspace)
             checks.append(

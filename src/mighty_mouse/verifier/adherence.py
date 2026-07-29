@@ -21,6 +21,9 @@ def check_adherence(checklist_path: str = "CHECKLIST.md", cwd: str | None = None
         res = subprocess.run([sys.executable, script_path, abs_checklist_path], capture_output=True, text=True, cwd=exec_cwd)
 
         passed = (res.returncode == 0)
-        return passed, res.stdout + res.stderr
+        output_summary = res.stdout.strip() or res.stderr.strip() or ("Adherence check passed" if passed else "Adherence check failed")
+        if len(output_summary) > 300:
+            output_summary = output_summary[:300] + "..."
+        return passed, output_summary
     except Exception as e:
-        return False, str(e)
+        return False, f"Infrastructure error during adherence execution: {e}"

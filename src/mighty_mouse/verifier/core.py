@@ -9,8 +9,9 @@ import subprocess
 import time
 from typing import Sequence
 
+from .adherence import check_adherence
 from .detect import detect_checks, detect_projects
-from .scope import check_scope
+from .scope import check_scope, verify_task_scope
 
 MAX_OUTPUT_CHARS = 12_000
 
@@ -90,6 +91,7 @@ def verify(
     lint_command: str | Sequence[str] | None = None,
     build_command: str | Sequence[str] | None = None,
     allowed_paths: list[str] | None = None,
+    task_config: dict | None = None,
     timeout_sec: int = 120,
 ) -> VerificationResult:
     """Run applicable checks and return a structured, provider-neutral result."""
@@ -131,6 +133,18 @@ def verify(
         )
         if violations:
             warnings.append("Revert or explicitly allow the out-of-scope paths.")
+
+    if task_config is not None:
+        started = time.monotonic()
+        task_passed, task_msg, _ = verify_task_scope(task_config)
+        checks.append(
+            CheckResult(
+                name="task-scope",
+                passed=task_passed,
+                output=task_msg,
+                duration_sec=round(time.monotonic() - started, 3),
+            )
+        )
 
     if not checks:
         return VerificationResult(

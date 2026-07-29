@@ -20,6 +20,7 @@ Execution MUST strictly follow these 13 ordered stages:
 - Read request and check for `--dry-run` and `--run-id` flags.
 - Generate unique `<run-id>` if omitted (e.g. `run-20260728-214800`).
 - Create run directory at `.autonomous-delivery/runs/<run-id>/`.
+- **Conversation ID Mapping Rule**: Record `conversationId`-to-`run-id` mapping in `.autonomous-delivery/conversations/<conversation_id>.json` containing `{"run_id": "<run-id>"}` so the PreToolUse hook (`delivery_guard.py`) can authorize operations for this session.
 - **Active-Run Pointer Rule**: Write `.autonomous-delivery/active_run` ONLY if running implicitly without `--run-id`. If started with explicit `--run-id`, do NOT modify `.autonomous-delivery/active_run`.
 - Record `baseline_revision` (`git rev-parse HEAD`) and uncommitted user files (`git status --porcelain`) in `.autonomous-delivery/runs/<run-id>/state.yaml`. Uncommitted user files are marked user-owned and protected.
 
@@ -77,9 +78,10 @@ Execution MUST strictly follow these 13 ordered stages:
 - Track repair cycles: Increment `repair_cycle_count` (max 6). Increment `no_progress_counter` if test set, findings, diff, and repro result remain unchanged (max 2 consecutive). If limits exceeded, transition to `FAILED_TO_CONVERGE`.
 
 ### Stage M: Resolve Terminal State
-Execution halts when `state.yaml` reaches one of four normalized terminal statuses:
+Execution halts when `state.yaml` reaches one of five normalized terminal statuses:
 
 - **`COMPLETE`**: Acceptance criteria satisfied, required tests pass, required browser verification passes, zero unresolved critical/major findings, diff reviewed against `baseline_revision`, tickets updated.
+- **`DRY_RUN_COMPLETE`**: Dry-run simulation completed. Requires unchanged `HEAD` and unchanged working-tree status (`git status --porcelain`) relative to run initialization.
 - **`BLOCKED_NEEDS_USER`**: True blocker requires explicit user intervention, permissions, or product decision.
 - **`BLOCKED_ENVIRONMENT`**: Required system dependency missing or compatibility gate failure.
 - **`FAILED_TO_CONVERGE`**: Exhausted 3 planning cycles, 6 repair cycles, or 2 consecutive no-progress cycles. Evidence logged in `findings.yaml`.

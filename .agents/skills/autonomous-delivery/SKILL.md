@@ -105,6 +105,9 @@ Every run creates a dedicated directory under `.autonomous-delivery/runs/<run-id
 - `.autonomous-delivery/runs/<run-id>/decisions.md` - Engineering decisions & assumptions log.
 - `.autonomous-delivery/runs/<run-id>/findings.yaml` - Review findings & repair log.
 
+### Conversation ID Mapping Rule
+Every run MUST record a `conversationId`-to-`run-id` mapping file at `.autonomous-delivery/conversations/<conversation_id>.json` containing `{"run_id": "<run-id>"}` during Stage A. This mapping enables the PreToolUse safety hook (`delivery_guard.py`) to verify run authorization.
+
 ### Active-Run Pointer Rules
 - An **implicit run** started without `--run-id` MAY write `.autonomous-delivery/active_run`.
 - A run started with an **explicit `--run-id`** MUST NOT modify `.autonomous-delivery/active_run`.
@@ -178,7 +181,7 @@ When invoked with `--dry-run`:
 4. Run validation via `validate-implementation-plan`.
 5. If valid, evaluate required compatibility gates.
 6. Simulate skill routing trace step-by-step.
-7. Save state to `state.yaml` and return without modifying source code, git state, or external resources.
+7. Save state to `state.yaml` with terminal status `DRY_RUN_COMPLETE` (requiring unchanged `HEAD` and unchanged working-tree status relative to run initialization) and return without modifying source code, git state, or external resources.
 
 ---
 

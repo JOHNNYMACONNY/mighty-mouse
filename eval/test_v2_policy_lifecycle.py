@@ -60,6 +60,12 @@ def test_determine_state_rollback(store, scope):
     assert state == PolicyState.ROLLBACK
 
 
+def test_determine_state_degraded(store, scope):
+    lifecycle = PolicyLifecycle(store=store, min_pass_rate_threshold=0.50, degraded_pass_rate_threshold=0.75)
+    state = lifecycle.determine_state(scope, recent_pass_rate=0.65)
+    assert state == PolicyState.DEGRADED
+
+
 def test_determine_state_champion(store, scope):
     lifecycle = PolicyLifecycle(store=store)
     state = lifecycle.determine_state(scope, recent_pass_rate=0.85)

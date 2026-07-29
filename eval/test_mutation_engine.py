@@ -63,6 +63,79 @@ def test_timeout_dominance_freeze(tmp_path):
     assert os.path.exists(mutation_log_path)
 
 
+def test_generate_mutation_mocked_gemini(tmp_path):
+    agent_config = str(tmp_path / "agent.yaml")
+    segments_dir = str(tmp_path / "segments")
+    os.makedirs(segments_dir, exist_ok=True)
+    segment_file = str(tmp_path / "segments" / "constraints.txt")
+    with open(segment_file, "w") as f:
+        f.write("Original constraint content")
+
+    with open(agent_config, "w") as f:
+        f.write("model: gemma\n")
+
+    failures = [{"task_id": "t1", "reason": "failed constraints"}]
+
+    mock_client = MagicMock()
+    mock_client.generate_content.return_value = json.dumps({
+        "hypothesis": "Refine strict boundaries",
+        "new_content": "Updated constraint content"
+    })
+
+    with patch("mutation_engine.GeminiClient", return_value=mock_client):
+        engine = MutationEngine(segments_dir=segments_dir, agent_config=agent_config)
+        seg, attempt = engine.generate_mutation("SCOPE", failures)
+        assert seg == "constraints.txt"
+        assert attempt is not None
+        assert attempt.hypothesis == "Refine strict boundaries"
+        assert attempt.new_content == "Updated constraint content"
+
+
+def test_execute_mutation_cycle_promote_and_reject_replay(tmp_path):
+    results_path = str(tmp_path / "benchmark_results.json")
+    mutation_log_path = str(tmp_path / "mutation_log.jsonl")
+    segments_dir = str(tmp_path / "segments")
+    os.makedirs(segments_dir, exist_ok=True)
+    with open(os.path.join(segments_dir, "reasoning.txt"), "w") as f:
+        f.write("Original reasoning")
+
+    agent_config = str(tmp_path / "agent.yaml")
+    with open(agent_config, "w") as f:
+        f.write("model: gemma\n")
+
+    initial_data = {
+        "summary": {"success_rate": "1/2"},
+        "results": [
+            {"task_id": "t1", "status": "fail", "category": "LOGIC", "reason": "logic error"}
+        ]
+    }
+    with open(results_path, "w") as f:
+        json.dump(initial_data, f)
+
+    engine = MutationEngine(
+        results_path=results_path,
+        mutation_log_path=mutation_log_path,
+        segments_dir=segments_dir,
+        agent_config=agent_config,
+    )
+
+    mock_attempt = MutationAttempt(
+        segment_file="reasoning.txt",
+        hypothesis="Fix logic reasoning step",
+        new_content="New reasoning content"
+    )
+
+    # Test rejection due to lower replay tier score
+    with patch.object(engine, "generate_mutation", return_value=("reasoning.txt", mock_attempt)), \
+         patch.object(engine, "run_tier", side_effect=[{"success_rate": "2/2"}, {"success_rate": "1/2"}]):
+        manifest = engine.execute_mutation_cycle(current_tier="tier-2", replay_tiers=["tier-1"])
+        assert manifest is not None
+        assert manifest.decision == "REJECT"
+        # Verify segment restored after rejection
+        with open(os.path.join(segments_dir, "reasoning.txt"), "r") as f:
+            assert f.read() == "Original reasoning"
+
+
 def test_protocol_manifest_serialization():
     manifest = ProtocolManifest(
         timestamp="2026-07-28T20:00:00",

@@ -22,30 +22,39 @@ class PolicyState(str, Enum):
     ROLLBACK = "ROLLBACK"
 
 
+def _build_scope_key(scope: Scope) -> str:
+    return f"{scope.mode.value}:{scope.task_category.value}:{scope.model_class}"
+
+
 class PolicyLifecycle:
-    """Manages Policy state transitions, pin overrides, and quality-degradation rollbacks."""
+    """Manages Policy state transitions, pin overrides, degraded quality flags, and rollbacks."""
 
     def __init__(
         self,
         store: ImmutableStateStore,
         pinned_policies: Optional[Dict[str, Policy]] = None,
         min_pass_rate_threshold: float = 0.50,
+        degraded_pass_rate_threshold: float = 0.75,
     ):
         self.store = store
         self.pinned_policies = pinned_policies or {}
         self.min_pass_rate_threshold = min_pass_rate_threshold
+        self.degraded_pass_rate_threshold = degraded_pass_rate_threshold
 
     def determine_state(
         self,
         scope: Scope,
         recent_pass_rate: Optional[float] = None,
     ) -> PolicyState:
-        scope_key = f"{scope.mode.value}:{scope.task_category.value}:{scope.model_class}"
+        scope_key = _build_scope_key(scope)
         if scope_key in self.pinned_policies or scope.mode.value in self.pinned_policies:
             return PolicyState.PINNED
 
-        if recent_pass_rate is not None and recent_pass_rate < self.min_pass_rate_threshold:
-            return PolicyState.ROLLBACK
+        if recent_pass_rate is not None:
+            if recent_pass_rate < self.min_pass_rate_threshold:
+                return PolicyState.ROLLBACK
+            if recent_pass_rate < self.degraded_pass_rate_threshold:
+                return PolicyState.DEGRADED
 
         return PolicyState.CHAMPION
 
@@ -57,9 +66,9 @@ class PolicyLifecycle:
         recent_pass_rate: Optional[float] = None,
     ) -> PolicySelection:
         state = self.determine_state(scope, recent_pass_rate)
+        scope_key = _build_scope_key(scope)
 
         if state == PolicyState.PINNED:
-            scope_key = f"{scope.mode.value}:{scope.task_category.value}:{scope.model_class}"
             pinned_policy = self.pinned_policies.get(scope_key) or self.pinned_policies.get(scope.mode.value)
             if pinned_policy:
                 return PolicySelection(
@@ -69,7 +78,8 @@ class PolicyLifecycle:
                     record_hash=None,
                 )
 
-        if state == PolicyState.ROLLBACK:
+        if state in (PolicyState.ROLLBACK, PolicyState.DEGRADED):
+            source = "quality_degradation_rollback" if state == PolicyState.ROLLBACK else "quality_degradation_degraded"
             safe_baseline_policy = Policy(
                 policy_id=f"safe-baseline-{scope.mode.value}",
                 mode=scope.mode,
@@ -77,8 +87,8 @@ class PolicyLifecycle:
             )
             return PolicySelection(
                 policy=safe_baseline_policy,
-                source="quality_degradation_rollback",
-                reason=f"Recent pass rate ({recent_pass_rate}) below threshold ({self.min_pass_rate_threshold})",
+                source=source,
+                reason=f"Recent pass rate ({recent_pass_rate}) in {state.value} range",
                 record_hash=None,
             )
 

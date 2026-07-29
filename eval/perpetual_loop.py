@@ -21,7 +21,7 @@ if _EVAL_DIR not in sys.path: sys.path.append(_EVAL_DIR)
 if _REPO_ROOT not in sys.path: sys.path.append(_REPO_ROOT)
 
 from tier_utils import load_tier_sequence
-from mutation_engine import MutationEngine, ProtocolManifest
+from mutation_engine import MutationEngine, ProtocolManifest, get_replay_tiers
 
 def load_tiers() -> List[str]:
     return load_tier_sequence(CONFIG_PATH)
@@ -185,7 +185,8 @@ class AutoresearchLoop:
             else:
                 print(f"[*] Triggering in-process mutation cycle (Attempt {self.state['mutation_count']}/3)...")
                 # Direct typed in-process execution instead of subprocess
-                manifest = self.mutation_engine.execute_mutation_cycle(current_tier=current_tier)
+                replay_tiers = get_replay_tiers(current_tier)
+                manifest = self.mutation_engine.execute_mutation_cycle(current_tier=current_tier, replay_tiers=replay_tiers)
                 print(f"[*] Mutation cycle finished. Manifest decision: {manifest.decision if manifest else 'None'}")
         else:
             print("[*] Performance in stable range (50% - 90%). Maintaining current tier.")

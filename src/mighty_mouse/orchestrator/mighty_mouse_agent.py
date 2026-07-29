@@ -10,12 +10,9 @@ try:
     from mighty_mouse.orchestrator.gemini_client import GeminiClient
     from mighty_mouse.orchestrator.response_parser import ResponseParser
 except ImportError:
-    try:
-        from .gemini_client import GeminiClient
-        from .response_parser import ResponseParser
-    except ImportError:
-        from gemini_client import GeminiClient
-        from response_parser import ResponseParser
+    from gemini_client import GeminiClient
+    from response_parser import ResponseParser
+
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SKILL_REGISTRY_PATH = os.getenv("SKILL_REGISTRY_PATH_OVERRIDE", os.path.join(_REPO_ROOT, "configs", "skills", "registry.yaml"))
@@ -536,11 +533,9 @@ if __name__ == "__main__":
         try:
             from mighty_mouse.orchestrator.swarm import SwarmOrchestrator
         except ImportError:
-            try:
-                from .swarm import SwarmOrchestrator
-            except ImportError:
-                from swarm import SwarmOrchestrator
+            from swarm import SwarmOrchestrator
         with open(task_abs, "r") as f:
+
 
             task_data = json.load(f)
         orchestrator = SwarmOrchestrator(concurrency=args.concurrency)

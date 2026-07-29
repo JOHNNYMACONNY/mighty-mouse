@@ -17,8 +17,11 @@ AGENT_CONFIG_PATH = "configs/mighty_mouse_v2_lean.yaml"
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
-if _EVAL_DIR not in sys.path: sys.path.append(_EVAL_DIR)
-if _REPO_ROOT not in sys.path: sys.path.append(_REPO_ROOT)
+if _EVAL_DIR not in sys.path:
+    sys.path.append(_EVAL_DIR)
+if _REPO_ROOT not in sys.path:
+    sys.path.append(_REPO_ROOT)
+
 
 from tier_utils import load_tier_sequence, parse_pass_rate
 from mutation_engine import MutationEngine, MutationLogRecord, get_replay_tiers

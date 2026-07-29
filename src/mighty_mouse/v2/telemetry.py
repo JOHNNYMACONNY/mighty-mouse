@@ -29,6 +29,17 @@ class TelemetryAggregator:
                 matched.append(record.value)
         return matched
 
+    def _get_window_signals(
+        self,
+        scope: Scope,
+        window_size: Optional[int] = None,
+    ) -> tuple[List[Signal], int]:
+        eff_window_size = window_size if window_size is not None else self.default_window_size
+        signals = self.get_signals_for_scope(scope)
+        if not signals or eff_window_size <= 0:
+            return [], eff_window_size
+        return signals[-eff_window_size:], eff_window_size
+
     def compute_pass_rate(
         self,
         scope: Scope,
@@ -36,16 +47,13 @@ class TelemetryAggregator:
     ) -> Optional[float]:
         """Compute the pass rate across the sliding window of recent signals for a given Scope.
         
-        Returns None if no signals exist for the scope.
+        Returns None if no signals exist for the scope or window_size <= 0.
         """
-        eff_window_size = window_size if window_size is not None else self.default_window_size
-        signals = self.get_signals_for_scope(scope)
-        if not signals:
+        window_signals, _ = self._get_window_signals(scope, window_size)
+        if not window_signals:
             return None
 
-        window_signals = signals[-eff_window_size:]
         passed_count = sum(1 for s in window_signals if s.outcome == "passed")
-
         return passed_count / len(window_signals)
 
     def get_telemetry_summary(
@@ -54,9 +62,8 @@ class TelemetryAggregator:
         window_size: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Return structured summary metrics for a given Scope."""
-        eff_window_size = window_size if window_size is not None else self.default_window_size
-        signals = self.get_signals_for_scope(scope)
-        if not signals:
+        window_signals, eff_window_size = self._get_window_signals(scope, window_size)
+        if not window_signals:
             return {
                 "scope": scope,
                 "pass_rate": None,
@@ -67,7 +74,6 @@ class TelemetryAggregator:
                 "window_size": eff_window_size,
             }
 
-        window_signals = signals[-eff_window_size:]
         passed_count = sum(1 for s in window_signals if s.outcome == "passed")
         failed_count = len(window_signals) - passed_count
         total_duration = sum(s.duration_ms for s in window_signals)
@@ -81,3 +87,4 @@ class TelemetryAggregator:
             "avg_duration_ms": total_duration / len(window_signals),
             "window_size": eff_window_size,
         }
+

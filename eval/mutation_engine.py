@@ -4,7 +4,9 @@ import subprocess
 import sys
 import shutil
 import time
+from dataclasses import dataclass, asdict, field
 from datetime import datetime
+from typing import Dict, Any, List, Optional, Tuple, Literal
 import yaml
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -12,10 +14,11 @@ _EVAL_DIR = os.path.dirname(os.path.abspath(__file__))
 if _EVAL_DIR not in sys.path: sys.path.append(_EVAL_DIR)
 if _REPO_ROOT not in sys.path: sys.path.append(_REPO_ROOT)
 sys.path.append(os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator"))
+
 from gemini_client import GeminiClient
 from tier_utils import load_tier_sequence, get_current_tier as utils_get_current_tier
 
-# Config
+# Default Configuration Constants
 RESULTS_PATH = "eval/results/benchmark_results.json"
 MUTATION_LOG_PATH = "logs/mutation_log.jsonl"
 SEGMENTS_DIR = "configs/prompt_segments"
@@ -33,10 +36,10 @@ CATEGORY_TO_SEGMENT = {
     "TIMEOUT": "timeout_policy"
 }
 
-def get_current_tier():
+def get_current_tier() -> str:
     return utils_get_current_tier()
 
-def get_replay_tiers(current_tier):
+def get_replay_tiers(current_tier: str) -> List[str]:
     tiers = load_tier_sequence()
     if current_tier not in tiers:
         return []
@@ -48,39 +51,91 @@ def get_replay_tiers(current_tier):
         replays.append(tiers[idx-2])
     return replays
 
-def analyze_failures():
-    if not os.path.exists(RESULTS_PATH):
-        return None
-    with open(RESULTS_PATH, 'r') as f:
-        data = json.load(f)
-    
-    results = data.get("results", [])
-    failures = [r for r in results if r.get("status") == "fail"]
-    if not failures:
-        return None
-    
-    counts = {}
-    for f in failures:
-        cat = f.get("category", "LOGIC")
-        counts[cat] = counts.get(cat, 0) + 1
-    
-    dominant = max(counts, key=counts.get)
-    
-    # Timeout Dominance Logic: Plurality OR 2+ instances
-    is_timeout_dominant = (dominant == "TIMEOUT") or (counts.get("TIMEOUT", 0) >= 2)
-    
-    return dominant, is_timeout_dominant, failures, data.get("summary")
 
-def generate_mutation(category, failures):
-    segment_file = CATEGORY_TO_SEGMENT.get(category, "reasoning.txt")
-    segment_path = os.path.join(SEGMENTS_DIR, segment_file)
-    
-    with open(segment_path, 'r') as f:
-        current_content = f.read()
-    
-    examples = "\n".join([f"- Task: {f['task_id']}, Reason: {f['reason']}" for f in failures[:3]])
-    
-    prompt = f"""
+@dataclass(frozen=True)
+class FailureAnalysis:
+    dominant_category: str
+    is_timeout_dominant: bool
+    failures: List[Dict[str, Any]]
+    original_summary: Optional[Dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class MutationAttempt:
+    segment_file: str
+    hypothesis: str
+    new_content: str
+
+
+@dataclass(frozen=True)
+class ProtocolManifest:
+    timestamp: str
+    failure_category: str
+    segment_changed: str
+    hypothesis: str
+    before: Optional[Dict[str, Any]]
+    after: Optional[Dict[str, Any]]
+    replay_tiers_tested: List[str]
+    decision: Literal["PROMOTE", "REJECT", "FROZEN_TIMEOUT", "FAILED_GENERATION"]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+class MutationEngine:
+    """Typed in-process engine for prompt mutation generation, evaluation, and promotion."""
+
+    def __init__(
+        self,
+        results_path: str = RESULTS_PATH,
+        mutation_log_path: str = MUTATION_LOG_PATH,
+        segments_dir: str = SEGMENTS_DIR,
+        agent_config: str = AGENT_CONFIG,
+    ):
+        self.results_path = results_path
+        self.mutation_log_path = mutation_log_path
+        self.segments_dir = segments_dir
+        self.agent_config = agent_config
+
+    def analyze_failures(self) -> Optional[FailureAnalysis]:
+        if not os.path.exists(self.results_path):
+            return None
+        with open(self.results_path, 'r') as f:
+            data = json.load(f)
+        
+        results = data.get("results", [])
+        failures = [r for r in results if r.get("status") == "fail"]
+        if not failures:
+            return None
+        
+        counts: Dict[str, int] = {}
+        for f in failures:
+            cat = f.get("category", "LOGIC")
+            counts[cat] = counts.get(cat, 0) + 1
+        
+        dominant = max(counts, key=counts.get) # type: ignore
+        is_timeout_dominant = (dominant == "TIMEOUT") or (counts.get("TIMEOUT", 0) >= 2)
+        
+        return FailureAnalysis(
+            dominant_category=dominant,
+            is_timeout_dominant=is_timeout_dominant,
+            failures=failures,
+            original_summary=data.get("summary")
+        )
+
+    def generate_mutation(self, category: str, failures: List[Dict[str, Any]]) -> Tuple[Optional[str], Optional[MutationAttempt]]:
+        segment_file = CATEGORY_TO_SEGMENT.get(category, "reasoning.txt")
+        segment_path = os.path.join(self.segments_dir, segment_file)
+        
+        if not os.path.exists(segment_path):
+            return segment_file, None
+
+        with open(segment_path, 'r') as f:
+            current_content = f.read()
+        
+        examples = "\n".join([f"- Task: {f['task_id']}, Reason: {f.get('reason', '')}" for f in failures[:3]])
+        
+        prompt = f"""
 You are a Prompt Engineering Expert for the Mighty Mouse project.
 We are seeing failures in the category: {category}.
 Representative failures:
@@ -96,116 +151,190 @@ Output your response in this JSON format:
   "new_content": "The full new content for the segment"
 }}
 """
-    # Use a dummy config for mutation generation or the real one
-    with open(AGENT_CONFIG, 'r') as f:
-        cfg = yaml.safe_load(f)
-    
-    client = GeminiClient(config=cfg)
-    try:
-        response_text = client.generate_content("You are a prompt engineering expert.", prompt)
-        # Find JSON block
-        if "```json" in response_text:
-            response_text = response_text.split("```json")[1].split("```")[0].strip()
-        elif "{" in response_text:
-            response_text = response_text[response_text.find("{"):response_text.rfind("}")+1]
+        if not os.path.exists(self.agent_config):
+            return segment_file, None
+
+        with open(self.agent_config, 'r') as f:
+            cfg = yaml.safe_load(f)
         
-        mutation = json.loads(response_text)
-        return segment_file, mutation
-    except Exception as e:
-        print(f"[!] Mutation generation failed: {e}")
-        return None, None
+        client = GeminiClient(config=cfg)
+        try:
+            response_text = client.generate_content("You are a prompt engineering expert.", prompt)
+            if "```json" in response_text:
+                response_text = response_text.split("```json")[1].split("```")[0].strip()
+            elif "{" in response_text:
+                response_text = response_text[response_text.find("{"):response_text.rfind("}")+1]
+            
+            mutation_data = json.loads(response_text)
+            attempt = MutationAttempt(
+                segment_file=segment_file,
+                hypothesis=mutation_data.get("hypothesis", ""),
+                new_content=mutation_data.get("new_content", "")
+            )
+            return segment_file, attempt
+        except Exception as e:
+            print(f"[!] Mutation generation failed: {e}")
+            return segment_file, None
 
-def run_tier(tier):
-    print(f"[*] Testing tier: {tier}...")
-    cmd = [sys.executable, "eval/solve_benchmark.py", "--tier", tier]
-    subprocess.run(cmd, capture_output=True)
-    if os.path.exists(RESULTS_PATH):
-        with open(RESULTS_PATH, 'r') as f:
-            return json.load(f).get("summary")
-    return None
+    def run_tier(self, tier: str) -> Optional[Dict[str, Any]]:
+        print(f"[*] Testing tier: {tier}...")
+        cmd = [sys.executable, "eval/solve_benchmark.py", "--tier", tier]
+        subprocess.run(cmd, capture_output=True)
+        if os.path.exists(self.results_path):
+            with open(self.results_path, 'r') as f:
+                return json.load(f).get("summary")
+        return None
 
-def get_pass_rate(summary):
-    if not summary: return 0
-    rate_str = summary.get("success_rate", "0/0")
-    passed, total = map(int, rate_str.split('/'))
-    return (passed / total) if total > 0 else 0
+    def get_pass_rate(self, summary: Optional[Dict[str, Any]]) -> float:
+        if not summary: return 0.0
+        rate_str = summary.get("success_rate", "0/0")
+        try:
+            passed, total = map(int, rate_str.split('/'))
+            return (passed / total) if total > 0 else 0.0
+        except Exception:
+            return 0.0
 
-def log_mutation(record):
-    with open(MUTATION_LOG_PATH, 'a') as f:
-        f.write(json.dumps(record) + "\n")
+    def log_mutation(self, manifest: ProtocolManifest) -> None:
+        log_dir = os.path.dirname(self.mutation_log_path)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        with open(self.mutation_log_path, 'a') as f:
+            f.write(json.dumps(manifest.to_dict()) + "\n")
 
-def main():
-    print("=== Mighty Mouse Mutation Engine Starting ===")
-    analysis = analyze_failures()
-    if not analysis:
-        print("[*] No failures to analyze. Exiting.")
-        return
-    dominant_cat, is_timeout_dominant, failures, original_summary = analysis
+    def execute_mutation_cycle(
+        self,
+        current_tier: Optional[str] = None,
+        replay_tiers: Optional[List[str]] = None,
+    ) -> Optional[ProtocolManifest]:
+        print("=== Mighty Mouse Mutation Engine Starting ===")
+        analysis = self.analyze_failures()
+        if not analysis:
+            print("[*] No failures to analyze. Exiting.")
+            return None
 
-    if is_timeout_dominant:
-        print("[!] TIMEOUT detected as dominant failure mode (Gemma 4 Reasoning Horizon reached).")
-        print("[!] FREEZING mutations to reasoning.txt and discipline.txt.")
-        print("[!] Recommendation: Run an efficiency/decomposition mini-spike instead of prompt expansion.")
-        return
+        if current_tier is None:
+            current_tier = get_current_tier()
+        if replay_tiers is None:
+            replay_tiers = get_replay_tiers(current_tier)
 
-    current_tier = get_current_tier()
-    replay_tiers = get_replay_tiers(current_tier)
-    
-    segment_file, mutation = generate_mutation(dominant_cat, failures)
-    if not mutation:
-        return
+        if analysis.is_timeout_dominant:
+            print("[!] TIMEOUT detected as dominant failure mode (Gemma 4 Reasoning Horizon reached).")
+            print("[!] FREEZING mutations to reasoning.txt and discipline.txt.")
+            manifest = ProtocolManifest(
+                timestamp=datetime.now().isoformat(),
+                failure_category=analysis.dominant_category,
+                segment_changed="none",
+                hypothesis="Mutations frozen due to dominant timeout failure mode.",
+                before=analysis.original_summary,
+                after=None,
+                replay_tiers_tested=replay_tiers,
+                decision="FROZEN_TIMEOUT",
+            )
+            self.log_mutation(manifest)
+            return manifest
 
-    segment_path = os.path.join(SEGMENTS_DIR, segment_file)
-    backup_path = segment_path + ".bak"
-    shutil.copy2(segment_path, backup_path)
-    
-    print(f"[*] Applying mutation to {segment_file}...")
-    print(f"[*] Hypothesis: {mutation['hypothesis']}")
-    
-    with open(segment_path, 'w') as f:
-        f.write(mutation['new_content'])
-    
-    # Evaluate
-    new_summary = run_tier(current_tier)
-    
-    original_rate = get_pass_rate(original_summary)
-    new_rate = get_pass_rate(new_summary)
-    
-    print(f"[*] Current Tier Results: {original_rate:.1%} -> {new_rate:.1%}")
-    
-    decision = "REJECT"
-    if new_rate >= original_rate:
-        # Replay tests
-        decision = "PROMOTE"
-        for rt in replay_tiers:
-            rt_summary = run_tier(rt)
-            # We don't have historical data for replay tiers easily available here, 
-            # but we assume the previous prompt passed them (since it's the current config).
-            # If it passes now, it's good.
-            if get_pass_rate(rt_summary) < 0.90: # Tiers are only escalated at 90%
-                print(f"[!] Mutation failed replay test on {rt}. Rejecting.")
-                decision = "REJECT"
-                break
-    
-    record = {
-        "timestamp": datetime.now().isoformat(),
-        "failure_category": dominant_cat,
-        "segment_changed": segment_file,
-        "hypothesis": mutation["hypothesis"],
-        "before": original_summary,
-        "after": new_summary,
-        "replay_tiers_tested": replay_tiers,
-        "decision": decision
-    }
-    
-    if decision == "REJECT":
-        print("[!] Mutation REJECTED. Restoring segment.")
-        shutil.copy2(backup_path, segment_path)
-    else:
-        print("[+] Mutation PROMOTED.")
-    
-    log_mutation(record)
-    os.remove(backup_path)
+        segment_file, attempt = self.generate_mutation(analysis.dominant_category, analysis.failures)
+        if not attempt or not segment_file:
+            manifest = ProtocolManifest(
+                timestamp=datetime.now().isoformat(),
+                failure_category=analysis.dominant_category,
+                segment_changed=segment_file or "unknown",
+                hypothesis="Mutation generation failed.",
+                before=analysis.original_summary,
+                after=None,
+                replay_tiers_tested=replay_tiers,
+                decision="FAILED_GENERATION",
+            )
+            self.log_mutation(manifest)
+            return manifest
+
+        segment_path = os.path.join(self.segments_dir, segment_file)
+        backup_path = segment_path + ".bak"
+        shutil.copy2(segment_path, backup_path)
+        
+        print(f"[*] Applying mutation to {segment_file}...")
+        print(f"[*] Hypothesis: {attempt.hypothesis}")
+        
+        with open(segment_path, 'w') as f:
+            f.write(attempt.new_content)
+        
+        new_summary = self.run_tier(current_tier)
+        original_rate = self.get_pass_rate(analysis.original_summary)
+        new_rate = self.get_pass_rate(new_summary)
+        
+        print(f"[*] Current Tier Results: {original_rate:.1%} -> {new_rate:.1%}")
+        
+        decision: Literal["PROMOTE", "REJECT", "FROZEN_TIMEOUT", "FAILED_GENERATION"] = "REJECT"
+        if new_rate >= original_rate:
+            decision = "PROMOTE"
+            for rt in replay_tiers:
+                rt_summary = self.run_tier(rt)
+                if self.get_pass_rate(rt_summary) < 0.90:
+                    print(f"[!] Mutation failed replay test on {rt}. Rejecting.")
+                    decision = "REJECT"
+                    break
+        
+        manifest = ProtocolManifest(
+            timestamp=datetime.now().isoformat(),
+            failure_category=analysis.dominant_category,
+            segment_changed=segment_file,
+            hypothesis=attempt.hypothesis,
+            before=analysis.original_summary,
+            after=new_summary,
+            replay_tiers_tested=replay_tiers,
+            decision=decision
+        )
+        
+        if decision == "REJECT":
+            print("[!] Mutation REJECTED. Restoring segment.")
+            shutil.copy2(backup_path, segment_path)
+        else:
+            print("[+] Mutation PROMOTED.")
+        
+        self.log_mutation(manifest)
+        if os.path.exists(backup_path):
+            os.remove(backup_path)
+
+        return manifest
+
+
+# Module-level convenience functions for backward compatibility
+def analyze_failures() -> Optional[Tuple[str, bool, List[Dict[str, Any]], Optional[Dict[str, Any]]]]:
+    engine = MutationEngine()
+    res = engine.analyze_failures()
+    if not res:
+        return None
+    return res.dominant_category, res.is_timeout_dominant, res.failures, res.original_summary
+
+def generate_mutation(category: str, failures: List[Dict[str, Any]]) -> Tuple[Optional[str], Optional[Dict[str, str]]]:
+    engine = MutationEngine()
+    seg, attempt = engine.generate_mutation(category, failures)
+    if not attempt:
+        return seg, None
+    return seg, {"hypothesis": attempt.hypothesis, "new_content": attempt.new_content}
+
+def run_tier(tier: str) -> Optional[Dict[str, Any]]:
+    return MutationEngine().run_tier(tier)
+
+def get_pass_rate(summary: Optional[Dict[str, Any]]) -> float:
+    return MutationEngine().get_pass_rate(summary)
+
+def log_mutation(record: Dict[str, Any]) -> None:
+    manifest = ProtocolManifest(
+        timestamp=record.get("timestamp", datetime.now().isoformat()),
+        failure_category=record.get("failure_category", "LOGIC"),
+        segment_changed=record.get("segment_changed", ""),
+        hypothesis=record.get("hypothesis", ""),
+        before=record.get("before"),
+        after=record.get("after"),
+        replay_tiers_tested=record.get("replay_tiers_tested", []),
+        decision=record.get("decision", "REJECT")
+    )
+    MutationEngine().log_mutation(manifest)
+
+def main() -> None:
+    engine = MutationEngine()
+    engine.execute_mutation_cycle()
 
 if __name__ == "__main__":
     main()

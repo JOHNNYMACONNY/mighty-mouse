@@ -107,8 +107,11 @@ def test_telemetry_aggregator_sliding_window(store, scope_a):
     # Override window size to 10 (all 10 signals: 5 passed out of 10 -> 0.5)
     assert aggregator.compute_pass_rate(scope_a, window_size=10) == 0.5
 
-    # Window size 0 should return None safely
+    # Non-positive window sizes (0 or negative) should return None / default summary safely
     assert aggregator.compute_pass_rate(scope_a, window_size=0) is None
+    assert aggregator.compute_pass_rate(scope_a, window_size=-5) is None
+    assert aggregator.get_telemetry_summary(scope_a, window_size=0)["pass_rate"] is None
+    assert aggregator.get_telemetry_summary(scope_a, window_size=-5)["pass_rate"] is None
 
 
 def test_policy_lifecycle_with_telemetry_champion(store, scope_a):

@@ -535,8 +535,6 @@ if __name__ == "__main__":
         except ImportError:
             from swarm import SwarmOrchestrator
         with open(task_abs, "r") as f:
-
-
             task_data = json.load(f)
         orchestrator = SwarmOrchestrator(concurrency=args.concurrency)
         result = orchestrator.execute_swarm_pipeline(task_data)

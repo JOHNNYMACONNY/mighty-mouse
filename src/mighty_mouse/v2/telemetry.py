@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from mighty_mouse.v2.foundation import ImmutableStateStore, Scope, Signal
 from mighty_mouse.v2.signals import SignalLifecycle
@@ -33,12 +33,15 @@ class TelemetryAggregator:
         self,
         scope: Scope,
         window_size: Optional[int] = None,
-    ) -> tuple[List[Signal], int]:
+    ) -> Tuple[List[Signal], int]:
         eff_window_size = window_size if window_size is not None else self.default_window_size
         signals = self.get_signals_for_scope(scope)
         if not signals or eff_window_size <= 0:
             return [], eff_window_size
         return signals[-eff_window_size:], eff_window_size
+
+    def _count_passed_signals(self, window_signals: List[Signal]) -> int:
+        return sum(1 for s in window_signals if s.outcome == "passed")
 
     def compute_pass_rate(
         self,
@@ -53,7 +56,7 @@ class TelemetryAggregator:
         if not window_signals:
             return None
 
-        passed_count = sum(1 for s in window_signals if s.outcome == "passed")
+        passed_count = self._count_passed_signals(window_signals)
         return passed_count / len(window_signals)
 
     def get_telemetry_summary(
@@ -74,7 +77,7 @@ class TelemetryAggregator:
                 "window_size": eff_window_size,
             }
 
-        passed_count = sum(1 for s in window_signals if s.outcome == "passed")
+        passed_count = self._count_passed_signals(window_signals)
         failed_count = len(window_signals) - passed_count
         total_duration = sum(s.duration_ms for s in window_signals)
 

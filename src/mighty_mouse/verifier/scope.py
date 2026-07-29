@@ -56,6 +56,34 @@ def check_scope(workspace: str, allowed_paths: list[str]) -> tuple[bool, str, li
     return True, f"All {len(changed_paths)} changed path(s) are within scope.", []
 
 
+UNIVERSAL_HARNESS_FILES = {
+    ".gitignore",
+    "CHECKLIST.md",
+    "test_script.py",
+    "test_runner.py",
+    "requirements.txt",
+    "START-HERE-ANTIGRAVITY.md",
+}
+
+DEFAULT_IGNORED_PREFIXES = (
+    ".gsd/",
+    "src/mighty_mouse/",
+    "src/prototype/",
+    "eval/",
+    ".DS_Store",
+    "logs/",
+    "autoresearch",
+    "baseline_run.log",
+    "configs/",
+    "scratch/",
+    "workspaces/",
+    ".git/",
+    ".venv/",
+    "__pycache__/",
+    ".mighty/",
+)
+
+
 def verify_task_scope(task_config: dict, workspace: str | None = None) -> tuple[bool, str, dict]:
     """Verify scope for task configurations, tracking expected files and ghost files."""
     expected_files = task_config.get('expected_files', [])
@@ -88,14 +116,6 @@ def verify_task_scope(task_config: dict, workspace: str | None = None) -> tuple[
                     rel = os.path.relpath(os.path.join(root, f), fixture_abs)
                     fixture_paths.add(rel)
 
-    universal = {'.gitignore', 'CHECKLIST.md', 'test_script.py', 'test_runner.py', 'requirements.txt', 'START-HERE-ANTIGRAVITY.md'}
-
-    ignored_prefixes = [
-        '.gsd/', 'src/mighty_mouse/', 'src/prototype/', 'eval/', '.DS_Store', 'logs/', 'autoresearch',
-        'baseline_run.log', 'configs/', 'scratch/', 'workspaces/', '.git/',
-        '.venv/', '__pycache__/', '.mighty/'
-    ]
-
     ghost_files_flagged = []
     fixture_files_preserved = 0
     harness_files_ignored = 0
@@ -110,11 +130,11 @@ def verify_task_scope(task_config: dict, workspace: str | None = None) -> tuple[
             fixture_files_preserved += 1
             continue
 
-        if f_clean in universal:
+        if f_clean in UNIVERSAL_HARNESS_FILES:
             harness_files_ignored += 1
             continue
 
-        if any(f_clean.startswith(p) for p in ignored_prefixes):
+        if any(f_clean.startswith(p) for p in DEFAULT_IGNORED_PREFIXES):
             harness_files_ignored += 1
             continue
 

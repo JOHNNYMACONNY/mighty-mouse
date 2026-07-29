@@ -56,31 +56,31 @@ def check_scope(workspace: str, allowed_paths: list[str]) -> tuple[bool, str, li
     return True, f"All {len(changed_paths)} changed path(s) are within scope.", []
 
 
-def verify_task_scope(task_config: dict) -> tuple[bool, str, dict]:
+def verify_task_scope(task_config: dict, workspace: str | None = None) -> tuple[bool, str, dict]:
     """Verify scope for task configurations, tracking expected files and ghost files."""
     expected_files = task_config.get('expected_files', [])
     fixture_dir = task_config.get('fixture_dir')
 
-    cwd = os.getcwd()
-    in_workspace = 'workspaces/' in cwd
+    target_dir = os.path.abspath(workspace) if workspace else os.getcwd()
+    in_workspace = 'workspaces/' in target_dir
 
     found_files = []
     if in_workspace:
-        for root, dirs, files in os.walk('.'):
+        for root, dirs, files in os.walk(target_dir):
             dirs[:] = [d for d in dirs if d not in ['.git', '__pycache__', 'logs']]
             for f in files:
-                rel_path = os.path.relpath(os.path.join(root, f), '.')
+                rel_path = os.path.relpath(os.path.join(root, f), target_dir)
                 if rel_path.startswith('./'):
                     rel_path = rel_path[2:]
                 found_files.append(rel_path)
     else:
-        res = subprocess.run(['git', 'ls-files', '--modified', '--others', '--exclude-standard'], capture_output=True, text=True)
+        res = subprocess.run(['git', '-C', target_dir, 'ls-files', '--modified', '--others', '--exclude-standard'], capture_output=True, text=True)
         if res.returncode == 0:
-            found_files = [f for f in res.stdout.splitlines() if os.path.exists(f)]
+            found_files = [f for f in res.stdout.splitlines() if os.path.exists(os.path.join(target_dir, f))]
 
     fixture_paths = set()
     if fixture_dir:
-        repo_root = os.path.abspath(os.path.join(cwd, "../..")) if in_workspace else os.path.abspath(cwd)
+        repo_root = os.path.abspath(os.path.join(target_dir, "../..")) if in_workspace else target_dir
         fixture_abs = os.path.join(repo_root, fixture_dir)
         if os.path.exists(fixture_abs):
             for root, _, files in os.walk(fixture_abs):
@@ -124,11 +124,11 @@ def verify_task_scope(task_config: dict) -> tuple[bool, str, dict]:
 
         ghost_files_flagged.append(f)
 
-    missing = [f for f in expected_files if f not in found_files and not os.path.exists(f)]
+    missing = [f for f in expected_files if f not in found_files and not os.path.exists(os.path.join(target_dir, f))]
 
     passed = (len(ghost_files_flagged) == 0 and len(missing) == 0)
 
-    telemetry = {
+    signal = {
         "ghost_files_flagged_post_run": ghost_files_flagged,
         "fixture_files_preserved": fixture_files_preserved,
         "harness_files_ignored": harness_files_ignored,
@@ -136,4 +136,4 @@ def verify_task_scope(task_config: dict) -> tuple[bool, str, dict]:
     }
 
     msg = "Scope verified." if passed else f"Scope fail. Unexp: {ghost_files_flagged} Miss: {missing}"
-    return passed, msg, telemetry
+    return passed, msg, signal

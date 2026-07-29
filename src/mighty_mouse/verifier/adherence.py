@@ -13,7 +13,7 @@ def check_adherence(checklist_path: str = "CHECKLIST.md") -> tuple[bool, str]:
 
     try:
         package_root = os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            os.path.dirname(os.path.abspath(__file__))
         )
         script_path = os.path.join(package_root, "orchestrator", "enforce_workflow.py")
         res = subprocess.run([sys.executable, script_path, checklist_path], capture_output=True, text=True)

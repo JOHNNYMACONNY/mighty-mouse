@@ -136,7 +136,7 @@ def verify(
 
     if task_config is not None:
         started = time.monotonic()
-        task_passed, task_msg, _ = verify_task_scope(task_config)
+        task_passed, task_msg, _ = verify_task_scope(task_config, workspace=workspace)
         checks.append(
             CheckResult(
                 name="task-scope",

@@ -165,3 +165,18 @@ def test_autoresearch_loop_signal_recording(tmp_path, scope_a):
 
     pass_rate = loop.telemetry_aggregator.compute_pass_rate(scope_a)
     assert pass_rate == 1.0
+
+
+def test_signal_count_for_scope_populated(store, scope_a, scope_b):
+    aggregator = TelemetryAggregator(store=store)
+    for i in range(5):
+        store.append(make_signal(f"signal-{i+100:03d}", scope_a, "passed"))
+    store.append(make_signal("signal-200", scope_b, "passed"))
+
+    assert aggregator.signal_count_for_scope(scope_a) == 5
+    assert aggregator.signal_count_for_scope(scope_b) == 1
+
+
+def test_signal_count_for_scope_empty(store, scope_a):
+    aggregator = TelemetryAggregator(store=store)
+    assert aggregator.signal_count_for_scope(scope_a) == 0

@@ -212,8 +212,8 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
         with open(task_input, 'r') as f:
             try:
                 task_data = json.load(f)
-            except Exception:
-                pass
+            except json.JSONDecodeError as exc:
+                print(f"[!] Warning: could not parse task file as JSON ({task_input}): {exc}")
 
     stale_removed = _hygiene_audit(os.getcwd(), task_data=task_data)
 
@@ -256,7 +256,8 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
             try:
                 task_data = json.load(f)
                 task_str = json.dumps(task_data, indent=2)
-            except Exception:
+            except json.JSONDecodeError:
+                # Task file is not JSON; read as raw text
                 with open(task_input, 'r') as f2:
                     task_str = f2.read()
     else:

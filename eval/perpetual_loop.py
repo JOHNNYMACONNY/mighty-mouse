@@ -132,8 +132,9 @@ class AutoresearchLoop:
             try:
                 with open(self.telemetry_path, 'r') as f:
                     history = json.load(f)
-            except Exception:
-                pass
+            except (OSError, json.JSONDecodeError) as exc:
+                print(f"[!] Warning: could not load telemetry history ({self.telemetry_path}): {exc}. Starting fresh.")
+
         
         history.append({
             "timestamp": datetime.now().isoformat(),

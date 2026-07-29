@@ -31,6 +31,10 @@ class TelemetryAggregator:
                 matched.append(record.value)
         return matched
 
+    def signal_count_for_scope(self, scope: Scope) -> int:
+        """Return the count of recorded signals matching the exact given Scope."""
+        return len(self.get_signals_for_scope(scope))
+
     def _get_window_signals(
         self,
         scope: Scope,

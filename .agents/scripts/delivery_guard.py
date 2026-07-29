@@ -55,16 +55,16 @@ def load_state(workspace_dir: str, conversation_id: str):
         try:
             data = json.loads(mapping_file.read_text())
             run_id = data.get("run_id")
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"[!] Warning: could not read conversation mapping ({mapping_file}): {exc}")
 
     if not run_id:
         active_pointer = auto_dir / "active_run"
         if active_pointer.exists():
             try:
                 run_id = active_pointer.read_text().strip()
-            except Exception:
-                pass
+            except OSError as exc:
+                print(f"[!] Warning: could not read active_run pointer ({active_pointer}): {exc}")
 
     if not run_id:
         return None, None
@@ -84,8 +84,8 @@ def load_state(workspace_dir: str, conversation_id: str):
                 k = parts[0].strip()
                 v = parts[1].strip().strip('"').strip("'")
                 state[k] = v
-    except Exception:
-        pass
+    except OSError as exc:
+        print(f"[!] Warning: could not read state file ({state_file}): {exc}")
 
     return run_id, state
 

@@ -4,11 +4,13 @@ const path = require('path');
 
 const PORT = 8085;
 const APP_PATH = path.join(__dirname, 'index.html');
-const CONFIG_PATH = path.join(__dirname, '..', '..', 'eval', 'evaluation_config.json');
+const LOGS_DIR = path.join(__dirname, '..', '..', 'logs');
+const STATE_PATH = path.join(LOGS_DIR, 'perpetual_state.json');
+const TELEMETRY_PATH = path.join(LOGS_DIR, 'metric_telemetry.json');
 
-// In-memory state for live simulation triggers
+// In-memory fallback state for live triggers
 let state = {
-  cycles: 164,
+  cycles: 135,
   netAccuracy: 90.3,
   scopeDrift: 0.00,
   overnightPassCount: 16,
@@ -74,15 +76,34 @@ const server = http.createServer((req, res) => {
   // API Route: Status
   if (url.pathname === '/api/status' && req.method === 'GET') {
     let taskCount = 55;
+    let currentTier = 'tier_2';
+    let totalIterations = state.cycles;
+    let latestPassRate = state.netAccuracy;
+
     try {
       if (fs.existsSync(CONFIG_PATH)) {
         const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
         if (cfg.tiers) {
-          taskCount = Object.values(cfg.tiers).reduce((acc, arr) => acc + arr.length, 0);
+          taskCount = Object.values(cfg.tiers).reduce((acc, arr) => Array.isArray(arr) ? acc + arr.length : acc, 0);
+        }
+      }
+      if (fs.existsSync(STATE_PATH)) {
+        const st = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+        if (st.current_tier) currentTier = st.current_tier;
+        if (st.total_iterations) totalIterations = st.total_iterations;
+      }
+      if (fs.existsSync(TELEMETRY_PATH)) {
+        const tel = JSON.parse(fs.readFileSync(TELEMETRY_PATH, 'utf8'));
+        if (Array.isArray(tel) && tel.length > 0) {
+          const last = tel[tel.length - 1];
+          if (last.success_rate && last.success_rate.includes('/')) {
+            const [p, t] = last.success_rate.split('/').map(Number);
+            if (t > 0) latestPassRate = parseFloat(((p / t) * 100).toFixed(1));
+          }
         }
       }
     } catch (e) {
-      console.error('Error reading eval config:', e.message);
+      console.error('Error reading live stats:', e.message);
     }
 
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -90,6 +111,9 @@ const server = http.createServer((req, res) => {
       ok: true,
       data: {
         ...state,
+        cycles: totalIterations,
+        netAccuracy: latestPassRate,
+        currentTier: currentTier,
         totalTasks: taskCount,
         timestamp: new Date().toISOString()
       }

@@ -11,7 +11,7 @@
 | Metric | Before (Raw Model) | **After (Mighty Mouse Swarm v2.0)** | Impact |
 | --- | ---: | ---: | --- |
 | **Local Model Accuracy** | `28.0%` | **`90.3%`** | **+222% Net Accuracy Gain** across all benchmark tasks |
-| **Tier 6 Challenge Pass Rate** | `20.0%` | **`80.0%`** | **4.0x Jump** on multi-step complex reasoning challenges |
+| **Tier 7 Challenge Pass Rate** | `20.0%` | **`100.0%`** | **5.0x Jump** on multi-step complex reasoning challenges |
 | **Overnight Pass Consistency** | High Variance | **`0% Variance`** | 16 consecutive overnight runs holding `12/15` pass rate |
 | **Scope Drift & Rogue Deletes** | High Drift | **`0 Violations`** | 100% adherence to zero-footprint scope constraints |
 

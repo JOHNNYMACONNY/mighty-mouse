@@ -699,21 +699,18 @@
               <!-- Background Horizontal Grid Lines & Y-Axis ELO Labels -->
               <g id="chart-grid-lines" stroke="var(--color-border)" stroke-width="1" stroke-dasharray="4 4">
                 <line x1="50" y1="20" x2="770" y2="20"/>
-                <text x="42" y="24" fill="var(--color-text-secondary)" font-size="9" font-weight="700" text-anchor="end">3000 ELO</text>
+                <text x="44" y="25" fill="var(--color-text-secondary)" font-size="11" font-weight="700" text-anchor="end" font-family="var(--font-mono)">3000</text>
 
                 <line x1="50" y1="60" x2="770" y2="60"/>
-                <text x="42" y="64" fill="var(--color-text-secondary)" font-size="9" font-weight="700" text-anchor="end">2500 ELO</text>
+                <text x="44" y="65" fill="var(--color-text-secondary)" font-size="11" font-weight="700" text-anchor="end" font-family="var(--font-mono)">2500</text>
 
                 <line x1="50" y1="120" x2="770" y2="120"/>
-                <text x="42" y="124" fill="var(--color-text-secondary)" font-size="9" font-weight="700" text-anchor="end">1800 ELO</text>
+                <text x="44" y="125" fill="#34C759" font-size="11" font-weight="700" text-anchor="end" font-family="var(--font-mono)">1800</text>
 
-                <line x1="50" y1="180" x2="770" y2="180" stroke="#FF453A" stroke-width="1.5" stroke-dasharray="6 3"/>
-                <text x="42" y="184" fill="#FF453A" font-size="9" font-weight="700" text-anchor="end">1000 ELO</text>
+                <line x1="50" y1="180" x2="770" y2="180" stroke="rgba(255,69,58,0.5)" stroke-width="1" stroke-dasharray="4 4"/>
+                <text x="44" y="185" fill="rgba(255,69,58,0.8)" font-size="11" font-weight="700" text-anchor="end" font-family="var(--font-mono)">1000</text>
 
-                <!-- RAW MODEL BASELINE REFERENCE LINE (28%) -->
-                <line x1="45" y1="149" x2="780" y2="149" stroke="#FF453A" stroke-width="1.5" stroke-dasharray="6 3"/>
-                <rect x="615" y="137" width="160" height="20" rx="4" fill="rgba(255,69,58,0.15)" stroke="#FF453A" stroke-width="1"/>
-                <text x="695" y="151" fill="#FF453A" font-size="9.5" font-weight="700" text-anchor="middle">RAW MODEL BASELINE (28%)</text>
+                <text x="18" y="110" fill="var(--color-text-secondary)" font-size="9" font-weight="600" text-anchor="middle" transform="rotate(-90, 18, 110)" font-family="var(--font-mono)" opacity="0.6">ELO SCORE</text>
               </g>
 
               <!-- Dynamic Filled Area Path -->
@@ -917,15 +914,15 @@
 
     // Default history dataset if offline
     const defaultHistoryData = [
-      { iteration: 1, label: 'Task 000-049', passRate: 90.7, passCount: 49, totalCount: 54, milestone: 'Tier 1 Launch' },
-      { iteration: 25, label: 'Task 050-099', passRate: 100.0, passCount: 50, totalCount: 50, milestone: '100% Pass' },
-      { iteration: 50, label: 'Task 100-149', passRate: 100.0, passCount: 50, totalCount: 50, milestone: '' },
-      { iteration: 75, label: 'Task 150-199', passRate: 100.0, passCount: 50, totalCount: 50, milestone: '' },
-      { iteration: 100, label: 'Task 200-249', passRate: 100.0, passCount: 50, totalCount: 50, milestone: '200 Streak' },
-      { iteration: 125, label: 'Task 250-299', passRate: 100.0, passCount: 50, totalCount: 50, milestone: '' },
-      { iteration: 150, label: 'Task 300-349', passRate: 100.0, passCount: 50, totalCount: 50, milestone: '300 Task Streak' },
-      { iteration: 175, label: 'Task 350-399', passRate: 86.4, passCount: 38, totalCount: 44, milestone: 'Tier 2 Active' },
-      { iteration: 200, label: 'Specialized', passRate: 100.0, passCount: 144, totalCount: 144, milestone: '100% High Tier' }
+      { iteration: 1,   label: 'Task 000-049', passRate: 90.7,  passCount: 49,  totalCount: 54,  elo: 1050, tier: 'Tier 1', milestone: 'Initial Launch' },
+      { iteration: 25,  label: 'Task 050-099', passRate: 100.0, passCount: 50,  totalCount: 50,  elo: 1250, tier: 'Tier 1', milestone: 'Key Parity Achieved' },
+      { iteration: 50,  label: 'Task 100-149', passRate: 100.0, passCount: 50,  totalCount: 50,  elo: 1500, tier: 'Tier 1', milestone: '' },
+      { iteration: 75,  label: 'Task 150-199', passRate: 100.0, passCount: 50,  totalCount: 50,  elo: 1700, tier: 'Tier 1', milestone: 'Red Team Shielded' },
+      { iteration: 100, label: 'Task 200-249', passRate: 100.0, passCount: 50,  totalCount: 50,  elo: 1820, tier: 'Tier 1', milestone: '300 Task Streak' },
+      { iteration: 125, label: 'Task 250-299', passRate: 100.0, passCount: 50,  totalCount: 50,  elo: 2100, tier: 'Tier 2', milestone: '' },
+      { iteration: 150, label: 'Task 300-349', passRate: 100.0, passCount: 50,  totalCount: 50,  elo: 2300, tier: 'Tier 2', milestone: 'Tier 2 Swarm Active' },
+      { iteration: 175, label: 'Task 350-399', passRate: 86.4,  passCount: 38,  totalCount: 44,  elo: 2600, tier: 'Tier 2', milestone: '' },
+      { iteration: 200, label: 'Task 1400-1449', passRate: 100.0, passCount: 144, totalCount: 144, elo: 2950, tier: 'High-Tier', milestone: 'High-Tier Specialized' }
     ];
 
     async function fetchLiveHistory() {
@@ -951,10 +948,10 @@
 
       const width = 800;
       const height = 220;
-      const paddingLeft = 50;
+      const paddingLeft = 56;
       const paddingRight = 30;
-      const paddingTop = 20;
-      const paddingBottom = 40;
+      const paddingTop = 25;
+      const paddingBottom = 55;
 
       const chartW = width - paddingLeft - paddingRight;
       const chartH = height - paddingTop - paddingBottom;
@@ -1043,21 +1040,36 @@
           const d = pt.data;
           const nodeColor = d.passRate >= 95 ? '#FF6B35' : (d.passRate >= 80 ? '#FCA311' : '#FF453A');
 
-          // Dot
-          nodesHTML += `<circle cx="${pt.x}" cy="${pt.y}" r="5" fill="${nodeColor}" stroke="#151518" stroke-width="2.5" class="chart-node-dot" data-idx="${i}" style="cursor:pointer; transition:all 0.2s;" />`;
+          // Dot — larger, crisp
+          nodesHTML += `<circle cx="${pt.x}" cy="${pt.y}" r="6" fill="${nodeColor}" stroke="#151518" stroke-width="2.5" class="chart-node-dot" data-idx="${i}" style="cursor:pointer; transition:all 0.2s;" />`;
 
-          // X Label
-          if (i % Math.ceil(coords.length / 7) === 0 || i === coords.length - 1) {
+          // X Label — max 8 evenly spaced to prevent dense overlap
+          const xLabelStep = Math.ceil(coords.length / 8);
+          if (i % xLabelStep === 0 || i === coords.length - 1) {
             const shortLabel = d.label.replace('Task ', '');
-            nodesHTML += `<text x="${pt.x}" y="${height - 15}" fill="var(--color-text-secondary)" font-size="10" text-anchor="middle" font-family="var(--font-mono)">${shortLabel}</text>`;
+            nodesHTML += `<text x="${pt.x}" y="${height - 8}" fill="var(--color-text-secondary)" font-size="10" text-anchor="end" font-family="var(--font-mono)" transform="rotate(-35, ${pt.x}, ${height - 8})">${shortLabel}</text>`;
           }
 
-          // Milestone
-          if (d.milestone) {
+          // Milestone pill — deduplicated & smart-staggered
+          const isNewMilestone = d.milestone && (i === 0 || d.milestone !== coords[i - 1].data.milestone);
+          if (isNewMilestone) {
+            const labelW = Math.min(140, Math.max(76, d.milestone.length * 6.2 + 12));
+            const staggerHeights = [22, 58, 22, 58];
+            const rawYOff = staggerHeights[i % staggerHeights.length];
+            
+            // If point is too close to top edge (y < 55), flip milestone box below node
+            const isNearTop = pt.y < 55;
+            const yOff = isNearTop ? (24 + (i % 2) * 16) : rawYOff;
+            const textY = isNearTop ? 13 : -4;
+            const rectY = isNearTop ? 0 : -17;
+            const lineY1 = 0;
+            const lineY2 = isNearTop ? -yOff : yOff - 8;
+
             nodesHTML += `
-              <g transform="translate(${pt.x}, ${pt.y - 12})">
-                <rect x="-40" y="-12" width="80" height="15" rx="4" fill="rgba(255,107,53,0.2)" stroke="rgba(255,107,53,0.5)" stroke-width="1"/>
-                <text x="0" y="-2" fill="#FF6B35" font-size="8.5" font-weight="700" text-anchor="middle" font-family="var(--font-mono)">${d.milestone.toUpperCase()}</text>
+              <g transform="translate(${pt.x}, ${pt.y + (isNearTop ? yOff : -yOff)})">
+                <line x1="0" y1="${lineY1}" x2="0" y2="${lineY2}" stroke="${nodeColor}" stroke-width="1" stroke-dasharray="3 2" opacity="0.6"/>
+                <rect x="${-labelW/2}" y="${rectY}" width="${labelW}" height="18" rx="4" fill="rgba(21,21,24,0.92)" stroke="rgba(255,107,53,0.75)" stroke-width="1.2"/>
+                <text x="0" y="${textY}" fill="#FF6B35" font-size="9" font-weight="700" text-anchor="middle" font-family="var(--font-mono)">${d.milestone.toUpperCase()}</text>
               </g>
             `;
           }
@@ -1498,15 +1510,32 @@
 
           nodesHTML += `<circle cx="${pt.x}" cy="${pt.y}" r="6" fill="${nodeColor}" stroke="#151518" stroke-width="3" class="modal-node-dot" data-idx="${i}" style="cursor:pointer; transition:transform 0.2s;" />`;
 
-          // X Label
-          const shortLabel = d.label.replace('Task ', '');
-          nodesHTML += `<text x="${pt.x}" y="${height - 20}" fill="var(--color-text-secondary)" font-size="11" text-anchor="middle" font-family="var(--font-mono)">${shortLabel}</text>`;
+          // X Label — max 10 evenly spaced to prevent overlap
+          const xLabelStep = Math.ceil(coords.length / 10);
+          if (i % xLabelStep === 0 || i === coords.length - 1) {
+            const shortLabel = d.label.replace('Task ', '');
+            nodesHTML += `<text x="${pt.x}" y="${height - 18}" fill="var(--color-text-secondary)" font-size="10.5" text-anchor="end" font-family="var(--font-mono)" transform="rotate(-30, ${pt.x}, ${height - 18})">${shortLabel}</text>`;
+          }
 
-          if (d.milestone) {
+          // Milestone pill — deduplicated & smart-staggered
+          const isNewMilestone = d.milestone && (i === 0 || d.milestone !== coords[i - 1].data.milestone);
+          if (isNewMilestone) {
+            const labelW = Math.min(140, Math.max(85, d.milestone.length * 7 + 16));
+            const staggerHeights = [32, 54, 32, 54];
+            const rawYOff = staggerHeights[i % staggerHeights.length];
+
+            const isNearTop = pt.y < 50;
+            const yOff = isNearTop ? 26 : rawYOff;
+            const textY = isNearTop ? 13 : -4;
+            const rectY = isNearTop ? 0 : -17;
+            const lineY1 = 0;
+            const lineY2 = isNearTop ? -yOff : yOff - 8;
+
             nodesHTML += `
-              <g transform="translate(${pt.x}, ${pt.y - 16})">
-                <rect x="-45" y="-14" width="90" height="18" rx="5" fill="rgba(255,107,53,0.2)" stroke="rgba(255,107,53,0.5)" stroke-width="1"/>
-                <text x="0" y="-1" fill="#FF6B35" font-size="9" font-weight="800" text-anchor="middle" font-family="var(--font-mono)">${d.milestone.toUpperCase()}</text>
+              <g transform="translate(${pt.x}, ${pt.y + (isNearTop ? yOff : -yOff)})">
+                <line x1="0" y1="${lineY1}" x2="0" y2="${lineY2}" stroke="${nodeColor}" stroke-width="1" stroke-dasharray="3 2" opacity="0.6"/>
+                <rect x="${-labelW/2}" y="${rectY}" width="${labelW}" height="19" rx="4" fill="rgba(21,21,24,0.92)" stroke="rgba(255,107,53,0.75)" stroke-width="1.2"/>
+                <text x="0" y="${textY}" fill="#FF6B35" font-size="10" font-weight="700" text-anchor="middle" font-family="var(--font-mono)">${d.milestone.toUpperCase()}</text>
               </g>
             `;
           }

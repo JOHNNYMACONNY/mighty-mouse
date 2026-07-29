@@ -108,7 +108,8 @@ def test_resolve_policy_degraded(store, scope, model_identity, execution_profile
         execution_profile=execution_profile,
         recent_pass_rate=0.65,
     )
-    assert selection.source == "champion_degraded"
+    assert selection.source == "safe_baseline"
+    assert "degraded range" in selection.reason
     assert "safe-baseline-coding" in selection.policy.policy_id
 
 

@@ -105,8 +105,8 @@ class PolicyLifecycle:
         if state == PolicyState.DEGRADED:
             return PolicySelection(
                 policy=selection.policy,
-                source="champion_degraded",
-                reason=f"Recent pass rate ({recent_pass_rate}) in degraded range (<{self.degraded_pass_rate_threshold})",
+                source=selection.source,
+                reason=f"{selection.reason} (Warning: Recent pass rate {recent_pass_rate} in degraded range <{self.degraded_pass_rate_threshold})",
                 record_hash=selection.record_hash,
             )
 

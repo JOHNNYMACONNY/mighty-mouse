@@ -8,7 +8,13 @@ import sys
 
 
 def check_adherence(checklist_path: str = "CHECKLIST.md", cwd: str | None = None) -> tuple[bool, str]:
-    abs_checklist_path = os.path.abspath(checklist_path)
+    if os.path.isabs(checklist_path):
+        abs_checklist_path = checklist_path
+    elif cwd:
+        abs_checklist_path = os.path.abspath(os.path.join(cwd, checklist_path))
+    else:
+        abs_checklist_path = os.path.abspath(checklist_path)
+
     if not os.path.exists(abs_checklist_path):
         return False, f"Checklist file not found: {checklist_path}"
 

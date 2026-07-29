@@ -237,7 +237,7 @@ const server = http.createServer((req, res) => {
     let activities = [
       { time: '19:16', title: 'Task 392 Passed', desc: 'Resolved on Turn 1 — Key Parity & Boundary Verified', status: 'pass' },
       { time: '19:12', title: 'Task 391 Passed', desc: 'Resolved on Turn 1 — Zero Scope Drift', status: 'pass' },
-      { time: '19:08', title: 'Candidate #135 Promoted', desc: 'Refined Key Parity & Red Team Division Guard', status: 'promotion' },
+      { time: '19:08', title: 'Candidate #135 Promoted', desc: 'Refined Key Parity & Development Suite Guard', status: 'promotion' },
       { time: '19:05', title: 'Task 390 Passed', desc: 'Resolved on Turn 1 — Syntax & Adherence 100%', status: 'pass' },
       { time: '19:01', title: 'Task 389 Passed', desc: 'Resolved on Turn 1 — Forensic Dry-Run Complete', status: 'pass' }
     ];
@@ -315,5 +315,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Mighty Mouse Autoresearch Server running at http://localhost:${PORT}`);
+  console.log(`Mighty Mouse Dashboard Host Adapter running at http://localhost:${PORT}`);
 });

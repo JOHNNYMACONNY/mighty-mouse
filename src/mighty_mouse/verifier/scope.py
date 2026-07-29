@@ -91,8 +91,8 @@ def verify_task_scope(task_config: dict, workspace: str | None = None) -> tuple[
     universal = {'.gitignore', 'CHECKLIST.md', 'test_script.py', 'test_runner.py', 'requirements.txt', 'START-HERE-ANTIGRAVITY.md'}
 
     ignored_prefixes = [
-        '.gsd/', 'src/mighty_mouse/orchestrator/', 'eval/', '.DS_Store', 'logs/', 'autoresearch',
-        'baseline_run.log', 'configs/', 'scratch/', 'workspaces/', '.git/', 'src/',
+        '.gsd/', 'src/mighty_mouse/', 'src/prototype/', 'eval/', '.DS_Store', 'logs/', 'autoresearch',
+        'baseline_run.log', 'configs/', 'scratch/', 'workspaces/', '.git/',
         '.venv/', '__pycache__/', '.mighty/'
     ]
 

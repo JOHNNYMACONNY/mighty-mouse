@@ -5,6 +5,8 @@ description: "Workspace-specific stateful controller for one-command software de
 
 # Autonomous Delivery Controller
 
+> **CRITICAL ENTRY GUARD**: If this skill is loaded directly without an active `/deliver` workflow run and initialized run state, do not inspect or edit application code. Stop and instruct the caller to invoke `/deliver`. Direct skill loading is not equivalent to workflow execution.
+
 `autonomous-delivery` is the stateful controller governing automated software delivery in this repository. It operates from a natural-language request through per-run state creation, mode classification, task-dependent capability derivation, plan validation, evidence-based readiness emission, TDD implementation, verification, code review, targeted repair, and final integration.
 
 ---

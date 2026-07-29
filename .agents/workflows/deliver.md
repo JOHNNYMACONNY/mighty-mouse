@@ -1,3 +1,7 @@
+---
+description: Run autonomous software delivery through planning, validation, implementation, testing, review, repair, and final verification.
+---
+
 # Autonomous Delivery Workflow (/deliver)
 
 Run workspace-specific autonomous software delivery from natural-language request through per-run planning, implementation, verification, code review, repair, and final integration.

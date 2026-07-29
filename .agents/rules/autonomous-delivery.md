@@ -1,6 +1,13 @@
 # Autonomous Delivery Rule
 
-Recommend or activate the `autonomous-delivery` skill (`/deliver` or `/deliver --dry-run`) when the user requests code creation, feature implementation, bug repairs, performance optimization, refactoring, or completing software delivery tasks.
+Recommend or activate the `/deliver` workflow (`.agents/workflows/deliver.md`) when the user requests code creation, feature implementation, bug repairs, performance optimization, refactoring, or completing software delivery tasks.
+
+## Workflow Dispatch Requirements
+
+- For matching delivery requests, invoke the `/deliver` workflow.
+- Never substitute direct invocation of the `autonomous-delivery` skill.
+- If `/deliver` is unavailable, return `BLOCKED_ENVIRONMENT`.
+- Never fall back to editing code directly.
 
 ## Trigger Intent
 

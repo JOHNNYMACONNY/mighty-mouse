@@ -43,6 +43,10 @@ def parse_payload():
         return {}
 
 
+def _log_warning(msg: str):
+    sys.stderr.write(f"[!] Warning: {msg}\n")
+
+
 def load_state(workspace_dir: str, conversation_id: str):
     if not conversation_id or not workspace_dir:
         return None, None
@@ -56,7 +60,7 @@ def load_state(workspace_dir: str, conversation_id: str):
             data = json.loads(mapping_file.read_text())
             run_id = data.get("run_id")
         except (OSError, json.JSONDecodeError) as exc:
-            print(f"[!] Warning: could not read conversation mapping ({mapping_file}): {exc}")
+            _log_warning(f"could not read conversation mapping ({mapping_file}): {exc}")
 
     if not run_id:
         active_pointer = auto_dir / "active_run"
@@ -64,7 +68,7 @@ def load_state(workspace_dir: str, conversation_id: str):
             try:
                 run_id = active_pointer.read_text().strip()
             except OSError as exc:
-                print(f"[!] Warning: could not read active_run pointer ({active_pointer}): {exc}")
+                _log_warning(f"could not read active_run pointer ({active_pointer}): {exc}")
 
     if not run_id:
         return None, None
@@ -85,7 +89,7 @@ def load_state(workspace_dir: str, conversation_id: str):
                 v = parts[1].strip().strip('"').strip("'")
                 state[k] = v
     except OSError as exc:
-        print(f"[!] Warning: could not read state file ({state_file}): {exc}")
+        _log_warning(f"could not read state file ({state_file}): {exc}")
 
     return run_id, state
 

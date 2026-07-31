@@ -33,9 +33,10 @@ def test_check_scope_git_paths(tmp_path):
     assert "blocked.py" in violations
 
 
-def test_verify_task_scope_clean():
+def test_verify_task_scope_clean(tmp_path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
     config = {"expected_files": []}
-    passed, msg, signal = verify_task_scope(config)
+    passed, msg, signal = verify_task_scope(config, workspace=str(tmp_path))
     assert passed
     assert "Scope verified" in msg
     assert signal["scope_status"] == "PASS"

@@ -1,8 +1,11 @@
 import argparse
 import json
+import logging
 import os
 import sys
 import time
+
+logger = logging.getLogger(__name__)
 
 from pathlib import Path
 
@@ -209,11 +212,12 @@ def solve(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_sk
 def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_skills=None, temperature=None, stage="unified", plan_file=None):
     task_data = None
     if os.path.exists(task_input):
-        with open(task_input, 'r') as f:
-            try:
+        try:
+            with open(task_input, 'r') as f:
                 task_data = json.load(f)
-            except json.JSONDecodeError as exc:
-                print(f"[!] Warning: could not parse task file as JSON ({task_input}): {exc}")
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.debug(f"[agent] Could not parse task file as JSON ({task_input}): {exc}")
+            task_data = None
 
     stale_removed = _hygiene_audit(os.getcwd(), task_data=task_data)
 

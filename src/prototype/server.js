@@ -4,9 +4,10 @@ const path = require('path');
 
 const PORT = 8085;
 const APP_PATH = path.join(__dirname, 'index.html');
+const CONFIG_PATH = path.join(__dirname, '..', '..', 'eval', 'evaluation_config.json');
 const LOGS_DIR = path.join(__dirname, '..', '..', 'logs');
 const STATE_PATH = path.join(LOGS_DIR, 'perpetual_state.json');
-const TELEMETRY_PATH = path.join(LOGS_DIR, 'metric_telemetry.json');
+const SIGNAL_AGGREGATE_PATH = path.join(LOGS_DIR, 'metric_telemetry.json');
 
 // In-memory fallback state for live triggers
 let state = {
@@ -17,6 +18,54 @@ let state = {
   model: 'gemma4:e4b',
   shieldVersion: 'V9.1 FORENSIC SHIELD+'
 };
+
+function getLiveStatusMetrics() {
+  let taskCount = 55;
+  let currentTier = 'Tier 2';
+  let totalIterations = state.cycles;
+  let latestPassRate = state.netAccuracy;
+
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      if (cfg.tiers) {
+        taskCount = Object.values(cfg.tiers).reduce((acc, arr) => Array.isArray(arr) ? acc + arr.length : acc, 0);
+      }
+    }
+    if (fs.existsSync(STATE_PATH)) {
+      const st = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+      if (st.current_tier) {
+        currentTier = st.current_tier.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      }
+      if (st.total_iterations) totalIterations = st.total_iterations;
+    }
+    if (fs.existsSync(SIGNAL_AGGREGATE_PATH)) {
+      const tel = JSON.parse(fs.readFileSync(SIGNAL_AGGREGATE_PATH, 'utf8'));
+      if (Array.isArray(tel) && tel.length > 0) {
+        const last = tel[tel.length - 1];
+        if (last && last.success_rate) {
+          const match = String(last.success_rate).match(/^(\d+)\s*\/\s*(\d+)$/);
+          if (match) {
+            const p = parseInt(match[1], 10);
+            const t = parseInt(match[2], 10);
+            if (t > 0) latestPassRate = parseFloat(((p / t) * 100).toFixed(1));
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error reading live stats:', e.message);
+  }
+
+  return {
+    ...state,
+    cycles: totalIterations,
+    netAccuracy: latestPassRate,
+    currentTier: currentTier,
+    totalTasks: taskCount,
+    timestamp: new Date().toISOString()
+  };
+}
 
 // Step diffs payload generator
 function getStepDiffData(step) {
@@ -75,48 +124,11 @@ const server = http.createServer((req, res) => {
 
   // API Route: Status
   if (url.pathname === '/api/status' && req.method === 'GET') {
-    let taskCount = 55;
-    let currentTier = 'tier_2';
-    let totalIterations = state.cycles;
-    let latestPassRate = state.netAccuracy;
-
-    try {
-      if (fs.existsSync(CONFIG_PATH)) {
-        const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-        if (cfg.tiers) {
-          taskCount = Object.values(cfg.tiers).reduce((acc, arr) => Array.isArray(arr) ? acc + arr.length : acc, 0);
-        }
-      }
-      if (fs.existsSync(STATE_PATH)) {
-        const st = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
-        if (st.current_tier) currentTier = st.current_tier;
-        if (st.total_iterations) totalIterations = st.total_iterations;
-      }
-      if (fs.existsSync(TELEMETRY_PATH)) {
-        const tel = JSON.parse(fs.readFileSync(TELEMETRY_PATH, 'utf8'));
-        if (Array.isArray(tel) && tel.length > 0) {
-          const last = tel[tel.length - 1];
-          if (last.success_rate && last.success_rate.includes('/')) {
-            const [p, t] = last.success_rate.split('/').map(Number);
-            if (t > 0) latestPassRate = parseFloat(((p / t) * 100).toFixed(1));
-          }
-        }
-      }
-    } catch (e) {
-      console.error('Error reading live stats:', e.message);
-    }
-
+    const statusData = getLiveStatusMetrics();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       ok: true,
-      data: {
-        ...state,
-        cycles: totalIterations,
-        netAccuracy: latestPassRate,
-        currentTier: currentTier,
-        totalTasks: taskCount,
-        timestamp: new Date().toISOString()
-      }
+      data: statusData
     }));
     return;
   }

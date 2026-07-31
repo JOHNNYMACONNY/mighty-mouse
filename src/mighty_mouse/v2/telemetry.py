@@ -1,17 +1,28 @@
-"""Telemetry aggregation and pass rate calculation for Mighty Mouse v2."""
+"""Signal aggregate telemetry calculation for Mighty Mouse v2.
+
+Maps structured Signal observations from ImmutableStateStore and SignalLifecycle
+to compute windowed pass rates and aggregate metrics.
+"""
 
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from enum import Enum
+import time
+
 from mighty_mouse.v2.foundation import ImmutableStateStore, Scope, Signal
 from mighty_mouse.v2.signals import SignalLifecycle
 
-_SIGNAL_OUTCOME_PASSED = "passed"
+
+class SignalOutcome(str, Enum):
+    """Canonical Signal execution outcomes."""
+    PASSED = "passed"
+    FAILED = "failed"
 
 
 class TelemetryAggregator:
-    """Aggregates execution signals from ImmutableStateStore and SignalLifecycle to compute windowed metrics."""
+    """Aggregates execution Signals from ImmutableStateStore and SignalLifecycle to compute windowed metrics."""
 
     def __init__(
         self,
@@ -31,8 +42,21 @@ class TelemetryAggregator:
                 matched.append(record.value)
         return matched
 
-    def signal_count_for_scope(self, scope: Scope) -> int:
-        """Return the count of recorded signals matching the exact given Scope."""
+    def get_signals_for_retention_window(
+        self,
+        scope: Scope,
+        max_age_seconds: int = 30 * 86400,
+    ) -> List[Signal]:
+        """Filter signals for a scope within a 30-day retention window."""
+        now = time.time()
+        signals = self.get_signals_for_scope(scope)
+        return [s for s in signals if (now - getattr(s, 'timestamp', 0.0)) <= max_age_seconds]
+
+    def signal_count_for_scope(self, scope: Scope, window_size: Optional[int] = None) -> int:
+        """Return the count of recorded signals matching the given Scope within optional sliding window."""
+        if window_size is not None:
+            window_signals, _ = self._get_window_signals(scope, window_size)
+            return len(window_signals)
         return len(self.get_signals_for_scope(scope))
 
     def _get_window_signals(
@@ -49,7 +73,7 @@ class TelemetryAggregator:
 
     def _count_passed_signals(self, window_signals: List[Signal]) -> int:
         """Count the total number of signals with a passed outcome."""
-        return sum(1 for s in window_signals if s.outcome == _SIGNAL_OUTCOME_PASSED)
+        return sum(1 for s in window_signals if s.outcome in (SignalOutcome.PASSED, SignalOutcome.PASSED.value))
 
     def compute_pass_rate(
         self,

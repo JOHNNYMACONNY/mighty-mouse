@@ -11,11 +11,11 @@
 | Metric | Before (Raw Model) | **After (Mighty Mouse Swarm v2.0)** | Impact |
 | --- | ---: | ---: | --- |
 | **Local Model Accuracy** | `28.0%` | **`90.3%`** | **+222% Net Accuracy Gain** across all benchmark tasks |
-| **Tier 7 Challenge Pass Rate** | `20.0%` | **`100.0%`** | **5.0x Jump** on multi-step complex reasoning challenges |
+| **Tier 7 Challenge Pass Rate** | `20.0%` | **`100.0%`** | **5.0x Jump** on complex reasoning challenges ([evidence: `logs/metric_telemetry.json`](logs/metric_telemetry.json)) |
 | **Overnight Pass Consistency** | High Variance | **`0% Variance`** | 16 consecutive overnight runs holding `12/15` pass rate |
 | **Scope Drift & Rogue Deletes** | High Drift | **`0 Violations`** | 100% adherence to zero-footprint scope constraints |
 
-*Evidence Note*: The prospective real-project study is complete at 10 paired tasks. Mighty Mouse used 4 retry rounds vs 6 for the control and received 4.60 vs 4.30 mean blind-review quality. No generalized improvement was demonstrated on timing. See the [`real-project study report`](data/evidence/real_project_report.md).
+*Evidence Note*: Benchmark claims are backed by frozen Signal telemetry records in `logs/metric_telemetry.json`. The prospective real-project study is complete at 10 paired tasks. Mighty Mouse used 4 retry rounds vs 6 for the control and received 4.60 vs 4.30 mean blind-review quality. No generalized improvement was demonstrated on timing. See the [`real-project study report`](data/evidence/real_project_report.md).
 
 ---
 

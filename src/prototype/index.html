@@ -909,6 +909,44 @@
   </div>
 
   <script>
+    const MILESTONE_PILL_CONFIG = {
+      minWidth: 76,
+      maxWidth: 140,
+      charWidth: 6.2,
+      padding: 12,
+      staggerHeights: [22, 58, 22, 58],
+      topThreshold: 55,
+      fontFamily: "var(--font-mono)",
+      rectColor: "rgba(21,21,24,0.92)",
+      strokeColor: "rgba(255,107,53,0.75)",
+      textColor: "#FF6B35"
+    };
+
+    function isNewMilestone(coords, i) {
+      if (!coords || !coords[i] || !coords[i].data) return false;
+      const m = coords[i].data.milestone;
+      return Boolean(m && (i === 0 || m !== coords[i - 1].data.milestone));
+    }
+
+    function createMilestonePillElement(pt, i, milestoneText, nodeColor, config = MILESTONE_PILL_CONFIG) {
+      const labelW = Math.min(config.maxWidth, Math.max(config.minWidth, milestoneText.length * config.charWidth + config.padding));
+      const rawYOff = config.staggerHeights[i % config.staggerHeights.length];
+      const isNearTop = pt.y < config.topThreshold;
+      const yOff = isNearTop ? (24 + (i % 2) * 16) : rawYOff;
+      const textY = isNearTop ? 13 : -4;
+      const rectY = isNearTop ? 0 : -17;
+      const lineY1 = 0;
+      const lineY2 = isNearTop ? -yOff : yOff - 8;
+
+      return `
+        <g transform="translate(${pt.x}, ${pt.y + (isNearTop ? yOff : -yOff)})">
+          <line x1="0" y1="${lineY1}" x2="0" y2="${lineY2}" stroke="${nodeColor}" stroke-width="1" stroke-dasharray="3 2" opacity="0.6"/>
+          <rect x="${-labelW/2}" y="${rectY}" width="${labelW}" height="18" rx="4" fill="${config.rectColor}" stroke="${config.strokeColor}" stroke-width="1.2"/>
+          <text x="0" y="${textY}" fill="${config.textColor}" font-size="9" font-weight="700" text-anchor="middle" font-family="${config.fontFamily}">${milestoneText.toUpperCase()}</text>
+        </g>
+      `;
+    }
+
     let currentStep = 1;
     let currentMode = 'diff';
 
@@ -1051,27 +1089,8 @@
           }
 
           // Milestone pill — deduplicated & smart-staggered
-          const isNewMilestone = d.milestone && (i === 0 || d.milestone !== coords[i - 1].data.milestone);
-          if (isNewMilestone) {
-            const labelW = Math.min(140, Math.max(76, d.milestone.length * 6.2 + 12));
-            const staggerHeights = [22, 58, 22, 58];
-            const rawYOff = staggerHeights[i % staggerHeights.length];
-            
-            // If point is too close to top edge (y < 55), flip milestone box below node
-            const isNearTop = pt.y < 55;
-            const yOff = isNearTop ? (24 + (i % 2) * 16) : rawYOff;
-            const textY = isNearTop ? 13 : -4;
-            const rectY = isNearTop ? 0 : -17;
-            const lineY1 = 0;
-            const lineY2 = isNearTop ? -yOff : yOff - 8;
-
-            nodesHTML += `
-              <g transform="translate(${pt.x}, ${pt.y + (isNearTop ? yOff : -yOff)})">
-                <line x1="0" y1="${lineY1}" x2="0" y2="${lineY2}" stroke="${nodeColor}" stroke-width="1" stroke-dasharray="3 2" opacity="0.6"/>
-                <rect x="${-labelW/2}" y="${rectY}" width="${labelW}" height="18" rx="4" fill="rgba(21,21,24,0.92)" stroke="rgba(255,107,53,0.75)" stroke-width="1.2"/>
-                <text x="0" y="${textY}" fill="#FF6B35" font-size="9" font-weight="700" text-anchor="middle" font-family="var(--font-mono)">${d.milestone.toUpperCase()}</text>
-              </g>
-            `;
+          if (isNewMilestone(coords, i)) {
+            nodesHTML += createMilestonePillElement(pt, i, d.milestone, nodeColor);
           }
         });
         nodesGroup.innerHTML = nodesHTML;
@@ -1518,26 +1537,8 @@
           }
 
           // Milestone pill — deduplicated & smart-staggered
-          const isNewMilestone = d.milestone && (i === 0 || d.milestone !== coords[i - 1].data.milestone);
-          if (isNewMilestone) {
-            const labelW = Math.min(140, Math.max(85, d.milestone.length * 7 + 16));
-            const staggerHeights = [32, 54, 32, 54];
-            const rawYOff = staggerHeights[i % staggerHeights.length];
-
-            const isNearTop = pt.y < 50;
-            const yOff = isNearTop ? 26 : rawYOff;
-            const textY = isNearTop ? 13 : -4;
-            const rectY = isNearTop ? 0 : -17;
-            const lineY1 = 0;
-            const lineY2 = isNearTop ? -yOff : yOff - 8;
-
-            nodesHTML += `
-              <g transform="translate(${pt.x}, ${pt.y + (isNearTop ? yOff : -yOff)})">
-                <line x1="0" y1="${lineY1}" x2="0" y2="${lineY2}" stroke="${nodeColor}" stroke-width="1" stroke-dasharray="3 2" opacity="0.6"/>
-                <rect x="${-labelW/2}" y="${rectY}" width="${labelW}" height="19" rx="4" fill="rgba(21,21,24,0.92)" stroke="rgba(255,107,53,0.75)" stroke-width="1.2"/>
-                <text x="0" y="${textY}" fill="#FF6B35" font-size="10" font-weight="700" text-anchor="middle" font-family="var(--font-mono)">${d.milestone.toUpperCase()}</text>
-              </g>
-            `;
+          if (isNewMilestone(coords, i)) {
+            nodesHTML += createMilestonePillElement(pt, i, d.milestone, nodeColor, { ...MILESTONE_PILL_CONFIG, minWidth: 85, padding: 16 });
           }
         });
         nodesGroup.innerHTML = nodesHTML;

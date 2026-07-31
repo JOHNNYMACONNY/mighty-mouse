@@ -243,8 +243,8 @@ Output your response in this JSON format:
             return record
 
         segment_path = os.path.join(self.segments_dir, segment_file)
-        backup_path = segment_path + ".bak"
-        shutil.copy2(segment_path, backup_path)
+        with open(segment_path, 'r') as f:
+            original_content = f.read()
         
         print(f"[*] Applying mutation to {segment_file}...")
         print(f"[*] Hypothesis: {attempt.hypothesis}")
@@ -281,13 +281,12 @@ Output your response in this JSON format:
         
         if decision == "REJECT":
             print("[!] Mutation REJECTED. Restoring segment.")
-            shutil.copy2(backup_path, segment_path)
+            with open(segment_path, 'w') as f:
+                f.write(original_content)
         else:
             print("[+] Mutation PROMOTED.")
         
         self.log_mutation(record)
-        if os.path.exists(backup_path):
-            os.remove(backup_path)
 
         return record
 

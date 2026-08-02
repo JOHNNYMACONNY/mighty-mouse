@@ -132,6 +132,15 @@ def main():
                             "raw_stdout": dec_res.stdout,
                             "raw_stderr": dec_res.stderr
                         }
+                except (OSError, subprocess.SubprocessError) as exc:
+                    res = {
+                        "status": "fail",
+                        "category": "SUBPROCESS",
+                        "reason": f"Decomposed subprocess failed: {exc}",
+                        "wall_clock_time": 0,
+                        "raw_stdout": "",
+                        "raw_stderr": str(exc),
+                    }
 
             res["variant"] = variant["name"]
             res["task_id"] = task_id

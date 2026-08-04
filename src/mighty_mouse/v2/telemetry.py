@@ -21,8 +21,8 @@ class SignalOutcome(str, Enum):
     FAILED = "failed"
 
 
-class TelemetryAggregator:
-    """Aggregates execution Signals from ImmutableStateStore and SignalLifecycle to compute windowed metrics."""
+class SignalAggregator:
+    """Compatibility adapter over SignalLifecycle with a legacy-store fallback."""
 
     def __init__(
         self,
@@ -36,6 +36,10 @@ class TelemetryAggregator:
 
     def get_signals_for_scope(self, scope: Scope) -> List[Signal]:
         """Fetch all recorded signals matching the exact given Scope."""
+        if self.signal_lifecycle is not None:
+            # SignalLifecycle owns canonical Signal persistence. The adapter's
+            # legacy raw-record view is intentionally unavailable in this mode.
+            return []
         matched: List[Signal] = []
         for record in self.store.records():
             if isinstance(record.value, Signal) and record.value.scope == scope:
@@ -54,6 +58,8 @@ class TelemetryAggregator:
 
     def signal_count_for_scope(self, scope: Scope, window_size: Optional[int] = None) -> int:
         """Return the count of recorded signals matching the given Scope within optional sliding window."""
+        if self.signal_lifecycle is not None:
+            return int(self.signal_lifecycle.get_signal_summary(scope, window_size=window_size)["total_signals"])
         if window_size is not None:
             window_signals, _ = self._get_window_signals(scope, window_size)
             return len(window_signals)
@@ -84,6 +90,8 @@ class TelemetryAggregator:
         
         Returns None if no signals exist for the scope or window_size <= 0.
         """
+        if self.signal_lifecycle is not None:
+            return self.signal_lifecycle.compute_pass_rate(scope, window_size=window_size)
         window_signals, _ = self._get_window_signals(scope, window_size)
         if not window_signals:
             return None
@@ -91,12 +99,14 @@ class TelemetryAggregator:
         passed_count = self._count_passed_signals(window_signals)
         return passed_count / len(window_signals)
 
-    def get_telemetry_summary(
+    def get_signal_summary(
         self,
         scope: Scope,
         window_size: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Return structured summary metrics for a given Scope."""
+        if self.signal_lifecycle is not None:
+            return self.signal_lifecycle.get_signal_summary(scope, window_size=window_size)
         window_signals, effective_window_size = self._get_window_signals(scope, window_size)
         if not window_signals:
             return {
@@ -122,3 +132,9 @@ class TelemetryAggregator:
             "avg_duration_ms": total_duration / len(window_signals),
             "window_size": effective_window_size,
         }
+
+    get_telemetry_summary = get_signal_summary
+
+
+# Backwards compatibility alias conforming to domain terminology transition
+TelemetryAggregator = SignalAggregator

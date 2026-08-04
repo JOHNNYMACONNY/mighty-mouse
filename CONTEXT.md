@@ -12,6 +12,10 @@ _Avoid_: Profile, workflow type
 A versioned internal rule set that governs execution within a Mode; it is an advanced/recovery concept, not a peer user-facing choice.
 _Avoid_: Mode, preset
 
+**Policy Mutation Surface**:
+The declarative, controller-enforced boundary defining which elements of a Policy a Candidate is permitted to modify, prohibiting any change to controller logic, evaluators, sandboxes, or corpora.
+_Avoid_: Prompt surface, tweakable settings
+
 **Candidate**:
 An immutable proposed Policy version awaiting or undergoing evaluation for a defined Mode and scope.
 _Avoid_: Draft, experiment
@@ -35,6 +39,14 @@ _Avoid_: Version number, runtime session
 **Protocol Manifest**:
 An immutable, content-addressed declaration of one Generation's frozen inputs, including its compatible base Champion, Model Identity, Execution Profile, Signal aggregate, protocol version, budgets, seeds, task ordering, and allowed Policy mutation surface.
 _Avoid_: Mutable runtime settings, Candidate payload
+
+**Model Identity**:
+An exact, immutable declaration of the target model—including provider, version digest, artifact digest, and capability vector—required to match for Policy compatibility, Candidate generation, and Promotion.
+_Avoid_: Model name, LLM string, generic model class
+
+**Execution Profile**:
+The host environment execution constraints—including available tools, OS capabilities, compute bounds, and sandbox parameters—under which a Policy or Experiment runs.
+_Avoid_: System environment, host settings
 
 **Signal**:
 A content-free, structured observation from routine use, such as outcome, duration, retry count, verifier category, or environment metadata. It never contains source code, prompts, transcripts, or secrets.
@@ -64,9 +76,17 @@ _Avoid_: Marketing approval, timeless result
 The non-authoritative boundary for private holdouts and imported Improvement Bundle data. Quarantined material cannot tune, promote, or activate a Policy; imported material must pass local evaluation.
 _Avoid_: Trusted import, deployment channel
 
+**Improvement Bundle**:
+An explicit, signed, JCS-canonical export file containing Policy Candidates, metadata, schema versions, and optional Evidence references, which imports into non-executable Quarantine for local evaluation.
+_Avoid_: Export package, shared policy zip
+
 **Experiment**:
 A frozen evaluation that compares one or more Candidates against a baseline under a defined protocol. Its terminal outcome is completed, invalid, or failed.
 _Avoid_: Candidate, generation
+
+**Experiment Ledger**:
+An append-only, content-addressed record of all completed, invalid, or failed Experiment runs, including typed condition outcomes, Evidence Bundle hashes, gate results, and either no_change or a single Holdout Contender nomination.
+_Avoid_: Evaluation history, test log
 
 **Development Suite**:
 A versioned, local, access-controlled corpus with executable acceptance and adversarial checks, frozen by digest in a Protocol Manifest to compare a Candidate with its base Champion. It is reproducible evaluation input, never a source of fresh-holdout evidence.
@@ -119,3 +139,19 @@ _Avoid_: Full per-host settings console, a separate history
 **Effective Policy**:
 The Policy that Mighty Mouse will use for the current task after evaluating the current Mode, Scope, Model Identity, and Execution Profile. The user sees it in plain language as a project improvement, shared improvement, or safe starting settings, with a short reason and a path to the underlying record.
 _Avoid_: Hidden active configuration, unexplained default
+
+**Policy Engine**:
+A deep module with a compact public interface (`select_policy`, `record_signal`, `promote_candidate`, `get_status`, `pin`, `preview`, `rollback`) that encapsulates state persistence, policy resolution, restriction enforcement, user control actions, and promotion gates.
+_Avoid_: Raw state store, state manager, policy router
+
+**Policy Mutation Engine**:
+A deep module with a minimal public interface (`mutate_candidate`) that applies versioned policy mutations to a Candidate governed strictly by the Policy Mutation Surface.
+_Avoid_: Scatter-gather prompt tweak scripts, unstructured prompt edits
+
+**Autoresearch Harness**:
+The autonomous evaluation driver enforcing single-instance process locking and managing the Fail -> Mutate, Pass -> Expand candidate iteration loop.
+_Avoid_: Uncoordinated background loops, unverified background runners
+
+**Verifier Seam**:
+The external execution boundary through which all candidates and policies undergo empirical, deterministic testing.
+_Avoid_: Internal state inspections, unverified mock assertions

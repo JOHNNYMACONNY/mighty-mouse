@@ -2,9 +2,12 @@ import os
 import sys
 import json
 import subprocess
-import shutil
 from datetime import datetime
 from compute_scaler import invoke_with_scaling
+try:
+    from .runner_lock import SingleInstanceLock, SingleInstanceLockError
+except ImportError:
+    from runner_lock import SingleInstanceLock, SingleInstanceLockError
 
 def run_command(cmd, cwd="."):
     if isinstance(cmd, str):
@@ -113,6 +116,15 @@ def solve_tasks(tier="tier_1", mode="single", concurrency=1):
         
     print(f"Benchmark iteration complete. Results saved to {final_output}")
 
+def _run_cli(args) -> None:
+    if args.parallel:
+        print(f"[*] Switching to Parallel Execution Mode (Tier: {args.tier})...")
+        import run_parallel
+        run_parallel.main(args.tier)
+    else:
+        solve_tasks(args.tier, mode=args.mode, concurrency=args.concurrency)
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
@@ -122,9 +134,12 @@ if __name__ == "__main__":
     parser.add_argument("--parallel", action="store_true")
     args = parser.parse_args()
 
-    if args.parallel:
-        print(f"[*] Switching to Parallel Execution Mode (Tier: {args.tier})...")
-        import run_parallel
-        run_parallel.main(args.tier)
+    if os.getenv("MIGHTY_MOUSE_RUNNER_LOCK_HELD") == "1":
+        _run_cli(args)
     else:
-        solve_tasks(args.tier, mode=args.mode, concurrency=args.concurrency)
+        try:
+            with SingleInstanceLock():
+                _run_cli(args)
+        except SingleInstanceLockError as exc:
+            print(f"[!] {exc}", file=sys.stderr)
+            raise SystemExit(1) from exc

@@ -1,0 +1,58 @@
+from pathlib import Path
+from datetime import datetime
+
+import pytest
+
+from eval.autoresearch_harness import SingleInstanceLock as LegacyLock
+from eval.mutation_engine import MutationLogRecord
+from eval.perpetual_loop import AutoresearchLoop, CycleResult
+from eval.runner_lock import SingleInstanceLock, SingleInstanceLockError
+from mighty_mouse.v2.seams import VerificationResult
+
+
+def test_loop_cycle_uses_injected_benchmark_verifier_and_mutation_adapters(tmp_path: Path) -> None:
+    mutations = []
+
+    def mutate(verification, tier, replay_tiers):
+        assert isinstance(verification, VerificationResult)
+        mutations.append((tier, replay_tiers))
+        return MutationLogRecord(
+            timestamp=datetime.now().isoformat(),
+            failure_category="LOGIC",
+            segment_changed="none",
+            hypothesis="test",
+            before=None,
+            after=None,
+            replay_tiers_tested=replay_tiers,
+            decision="REJECT",
+        )
+
+    loop = AutoresearchLoop(
+        state_path=str(tmp_path / "state.json"),
+        telemetry_path=str(tmp_path / "telemetry.json"),
+        benchmark_results_path=str(tmp_path / "results.json"),
+        state_dir=str(tmp_path / "v2-state"),
+        benchmark_adapter=lambda tier: {"summary": {"success_rate": "1/4"}},
+        verifier_adapter=lambda result: VerificationResult(
+            passed=False,
+            score=0.25,
+            details={"verifier_category": "LOGIC"},
+            verdict_category="FAIL",
+        ),
+        mutation_adapter=mutate,
+    )
+    result = loop.run_single_cycle()
+    assert isinstance(result, CycleResult)
+    assert result.pass_rate == 25.0
+    assert result.signal_receipt is not None
+    assert mutations
+    assert result.mutation_decision == "REJECT"
+
+
+def test_harness_adapters_share_one_lock_implementation(tmp_path: Path) -> None:
+    assert LegacyLock is SingleInstanceLock
+    lock_path = tmp_path / "runner.lock"
+    with SingleInstanceLock(lock_path):
+        with pytest.raises(SingleInstanceLockError):
+            with SingleInstanceLock(lock_path):
+                pass

@@ -7,15 +7,14 @@ from uuid import uuid4
 
 from mighty_mouse.v2.foundation import (
     ExecutionProfile,
-    ImmutableStateStore,
     Mode,
     Pin,
-    PromotionController,
     Preview,
     Scope,
     TaskCategory,
     resolve_model_identity,
 )
+from mighty_mouse.v2.engine import PolicyEngine
 
 
 def _inputs(*, mode: str, repository: str, task_category: str, model_class: str, model_digest: str | None, model_artifact: str | None, execution_profile: str, capabilities: list[str] | None):
@@ -28,7 +27,8 @@ def _inputs(*, mode: str, repository: str, task_category: str, model_class: str,
 
 def run_preview(*, state_dir: str, candidate_id: str, evidence_bundle_id: str, mode: str, repository: str, task_category: str, model_class: str, model_digest: str | None, model_artifact: str | None, execution_profile: str, capabilities: list[str] | None, json_output: bool) -> None:
     scope, identity, profile = _inputs(mode=mode, repository=repository, task_category=task_category, model_class=model_class, model_digest=model_digest, model_artifact=model_artifact, execution_profile=execution_profile, capabilities=capabilities)
-    selection = ImmutableStateStore(state_dir).preview(
+    engine = PolicyEngine(state_dir)
+    selection = engine.preview(
         Preview(f"preview-{uuid4().hex}", scope, candidate_id, evidence_bundle_id, identity.artifact_digest or "", profile.profile_id),
         model_identity=identity,
         execution_profile=profile,
@@ -39,7 +39,7 @@ def run_preview(*, state_dir: str, candidate_id: str, evidence_bundle_id: str, m
 
 def run_pin(*, state_dir: str, candidate_id: str, mode: str, repository: str, task_category: str, model_class: str, model_digest: str | None, model_artifact: str | None, execution_profile: str, capabilities: list[str] | None, json_output: bool) -> None:
     scope, identity, profile = _inputs(mode=mode, repository=repository, task_category=task_category, model_class=model_class, model_digest=model_digest, model_artifact=model_artifact, execution_profile=execution_profile, capabilities=capabilities)
-    stored = ImmutableStateStore(state_dir).pin(
+    stored = PolicyEngine(state_dir).pin(
         Pin(f"pin-{uuid4().hex}", scope, candidate_id, identity.artifact_digest or "", profile.profile_id),
         model_identity=identity,
         execution_profile=profile,
@@ -50,7 +50,7 @@ def run_pin(*, state_dir: str, candidate_id: str, mode: str, repository: str, ta
 
 def run_rollback(*, state_dir: str, reason: str, mode: str, repository: str, task_category: str, model_class: str, model_digest: str | None, model_artifact: str | None, execution_profile: str, capabilities: list[str] | None, json_output: bool) -> None:
     scope, identity, profile = _inputs(mode=mode, repository=repository, task_category=task_category, model_class=model_class, model_digest=model_digest, model_artifact=model_artifact, execution_profile=execution_profile, capabilities=capabilities)
-    notice = PromotionController(ImmutableStateStore(state_dir)).recover(
+    notice = PolicyEngine(state_dir).rollback(
         scope=scope, model_identity=identity, execution_profile=profile, reason=reason,
     )
     document = {"interface": "rollback", "action": notice.action, "candidate_id": notice.candidate_id, "reason": notice.reason}

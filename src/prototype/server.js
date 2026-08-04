@@ -7,7 +7,7 @@ const APP_PATH = path.join(__dirname, 'index.html');
 const CONFIG_PATH = path.join(__dirname, '..', '..', 'eval', 'evaluation_config.json');
 const LOGS_DIR = path.join(__dirname, '..', '..', 'logs');
 const STATE_PATH = path.join(LOGS_DIR, 'perpetual_state.json');
-const SIGNAL_AGGREGATE_PATH = path.join(LOGS_DIR, 'metric_telemetry.json');
+const SIGNAL_AGGREGATE_PATH = path.join(LOGS_DIR, 'metric_signals.json');
 
 // In-memory fallback state for live triggers
 let state = {
@@ -19,6 +19,25 @@ let state = {
   shieldVersion: 'V9.1 FORENSIC SHIELD+'
 };
 
+function extractRecordPassRate(record) {
+  if (!record) return null;
+  if (typeof record.pass_rate === 'number') {
+    return parseFloat((record.pass_rate * (record.pass_rate <= 1.0 ? 100 : 1)).toFixed(1));
+  }
+  const passed = record.passed_signals ?? record.pass_count;
+  const total = record.total_signals ?? record.total_count;
+  if (typeof passed === 'number' && typeof total === 'number' && total > 0) {
+    return parseFloat(((passed / total) * 100).toFixed(1));
+  }
+  if (record.success_rate) {
+    const match = String(record.success_rate).match(/^(\d+)\s*\/\s*(\d+)$/);
+    if (match && parseInt(match[2], 10) > 0) {
+      return parseFloat(((parseInt(match[1], 10) / parseInt(match[2], 10)) * 100).toFixed(1));
+    }
+  }
+  return null;
+}
+
 function getLiveStatusMetrics() {
   let taskCount = 55;
   let currentTier = 'Tier 2';
@@ -27,34 +46,27 @@ function getLiveStatusMetrics() {
 
   try {
     if (fs.existsSync(CONFIG_PATH)) {
-      const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-      if (cfg.tiers) {
-        taskCount = Object.values(cfg.tiers).reduce((acc, arr) => Array.isArray(arr) ? acc + arr.length : acc, 0);
+      const evalConfig = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      if (evalConfig.tiers) {
+        taskCount = Object.values(evalConfig.tiers).reduce((acc, arr) => Array.isArray(arr) ? acc + arr.length : acc, 0);
       }
     }
     if (fs.existsSync(STATE_PATH)) {
-      const st = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
-      if (st.current_tier) {
-        currentTier = st.current_tier.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const perpetualState = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+      if (perpetualState.current_tier) {
+        currentTier = perpetualState.current_tier.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
       }
-      if (st.total_iterations) totalIterations = st.total_iterations;
+      if (perpetualState.total_iterations) totalIterations = perpetualState.total_iterations;
     }
     if (fs.existsSync(SIGNAL_AGGREGATE_PATH)) {
-      const tel = JSON.parse(fs.readFileSync(SIGNAL_AGGREGATE_PATH, 'utf8'));
-      if (Array.isArray(tel) && tel.length > 0) {
-        const last = tel[tel.length - 1];
-        if (last && last.success_rate) {
-          const match = String(last.success_rate).match(/^(\d+)\s*\/\s*(\d+)$/);
-          if (match) {
-            const p = parseInt(match[1], 10);
-            const t = parseInt(match[2], 10);
-            if (t > 0) latestPassRate = parseFloat(((p / t) * 100).toFixed(1));
-          }
-        }
+      const signalData = JSON.parse(fs.readFileSync(SIGNAL_AGGREGATE_PATH, 'utf8'));
+      if (Array.isArray(signalData) && signalData.length > 0) {
+        const parsed = extractRecordPassRate(signalData[signalData.length - 1]);
+        if (parsed !== null) latestPassRate = parsed;
       }
     }
-  } catch (e) {
-    console.error('Error reading live stats:', e.message);
+  } catch (err) {
+    console.error('Error reading live stats:', err.message);
   }
 
   return {

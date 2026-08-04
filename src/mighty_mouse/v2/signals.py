@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import json
@@ -11,6 +10,14 @@ from pathlib import Path
 from typing import Any
 
 from mighty_mouse.v2.foundation import Mode, Scope, Signal, TaskCategory, _to_json_value
+
+
+class SignalReceipt(str):
+    """String-compatible receipt hash retaining the old ``record_hash`` affordance."""
+
+    @property
+    def record_hash(self) -> str:
+        return str(self)
 
 
 class SignalLifecycle:
@@ -36,7 +43,7 @@ class SignalLifecycle:
         document = {"schema_version": self.schema_version, "recorded_at": self._timestamp(now), "signal": _to_json_value(signal)}
         document["receipt_hash"] = self._hash(document)
         self._write_immutable(self.receipt_dir / f"{document['receipt_hash']}.json", document)
-        return document["receipt_hash"]
+        return SignalReceipt(document["receipt_hash"])
 
     def pause(self) -> None:
         self._append_control("paused")
@@ -99,6 +106,74 @@ class SignalLifecycle:
             and (execution_profile_id is None or aggregate["aggregate"].get("execution_profile_id") == execution_profile_id)
         ]
         return {"collection_paused": self.collection_paused, "receipt_count": len(receipts), "aggregates": self._combine_aggregates([*aggregates, *self._aggregate(receipts)])}
+
+    def compute_pass_rate(
+        self,
+        scope: Scope,
+        window_size: int | None = None,
+        model_digest: str | None = None,
+        execution_profile_id: str | None = None,
+    ) -> float | None:
+        """Return the recent or retained pass rate for one exact scope."""
+        summary = self.get_signal_summary(
+            scope,
+            window_size=window_size,
+            model_digest=model_digest,
+            execution_profile_id=execution_profile_id,
+        )
+        return summary["pass_rate"]
+
+    def get_signal_summary(
+        self,
+        scope: Scope,
+        window_size: int | None = None,
+        model_digest: str | None = None,
+        execution_profile_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Return bounded aggregate facts for policy decisions and telemetry."""
+        receipts = self._matching_receipts(
+            scope=scope,
+            model_digest=model_digest,
+            execution_profile_id=execution_profile_id,
+        )
+        if window_size is not None:
+            receipts = receipts[-window_size:] if window_size > 0 else []
+            durable_aggregates: list[dict[str, Any]] = []
+        else:
+            durable_aggregates = [
+                document["aggregate"] for document in self._aggregates()
+                if self._aggregate_matches_scope(document, scope)
+                and (model_digest is None or document["aggregate"].get("model_digest") == model_digest)
+                and (execution_profile_id is None or document["aggregate"].get("execution_profile_id") == execution_profile_id)
+            ]
+        aggregates = self._combine_aggregates([*durable_aggregates, *self._aggregate(receipts)])
+        total = sum(int(bucket["count"]) for bucket in aggregates)
+        passed = sum(int(bucket["count"]) for bucket in aggregates if bucket["outcome"] == "passed")
+        duration = sum(int(bucket["total_duration_ms"]) for bucket in aggregates)
+        return {
+            "scope": scope,
+            "pass_rate": passed / total if total else None,
+            "total_signals": total,
+            "passed_signals": passed,
+            "failed_signals": total - passed,
+            "avg_duration_ms": duration / total if total else 0.0,
+            "window_size": window_size,
+            "collection_paused": self.collection_paused,
+        }
+
+    def _matching_receipts(
+        self,
+        *,
+        scope: Scope,
+        model_digest: str | None,
+        execution_profile_id: str | None,
+    ) -> list[dict[str, Any]]:
+        return [
+            receipt for receipt in self._receipts()
+            if self._scope(receipt["signal"]) == scope
+            and (model_digest is None or receipt["signal"]["model_digest"] == model_digest)
+            and (execution_profile_id is None or receipt["signal"]["execution_profile_id"] == execution_profile_id)
+        ]
 
     def _receipts(self) -> list[dict[str, Any]]:
         receipts = self._documents(self.receipt_dir)
@@ -168,7 +243,11 @@ class SignalLifecycle:
     @staticmethod
     def _documents(path: Path) -> list[dict[str, Any]]:
         if path.is_dir():
-            return [json.loads(item.read_text(encoding="utf-8")) for item in sorted(path.glob("*.json"))]
+            return [
+                json.loads(item.read_text(encoding="utf-8"))
+                for item in sorted(path.glob("*.json"))
+                if not item.name.startswith("._")
+            ]
         if not path.exists():
             return []
         return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]

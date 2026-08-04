@@ -15,6 +15,7 @@ from mighty_mouse.v2.foundation import (
     Scope,
     TaskCategory,
 )
+from mighty_mouse.v2.engine import PolicyEngine
 
 
 @dataclass(frozen=True)
@@ -45,9 +46,10 @@ class AutopilotRunResult:
     routing_record_hash: str | None = None
 
 
-def run_autopilot(request: AutopilotRunRequest, store: ImmutableStateStore) -> AutopilotRunResult:
+def run_autopilot(request: AutopilotRunRequest, store: ImmutableStateStore | PolicyEngine) -> AutopilotRunResult:
     """Choose a user-facing Mode, then resolve its scoped Effective Policy."""
 
+    engine = store if isinstance(store, PolicyEngine) else PolicyEngine(store.state_dir)
     handoff_record_hash = None
     if request.user_mode is not None:
         mode = request.user_mode
@@ -72,13 +74,13 @@ def run_autopilot(request: AutopilotRunRequest, store: ImmutableStateStore) -> A
             raise ValueError("a durable Hybrid handoff is required before Coding begins")
         if request.hybrid_handoff.scope != scope:
             raise ValueError("Hybrid handoff Scope must match the selected run Scope")
-        handoff_record_hash = store.append_hybrid_handoff(request.hybrid_handoff).record_hash
-    selection = store.select_policy(
+        handoff_record_hash = engine.append_hybrid_handoff(request.hybrid_handoff).record_hash
+    selection = engine.select_policy(
         scope=scope,
         model_identity=request.model_identity,
         execution_profile=request.execution_profile,
     )
-    routing_record = store.append_routing_decision(RoutingDecision(
+    routing_record = engine.append_routing_decision(RoutingDecision(
         scope=scope, inferred_mode=request.inferred_mode, confidence_percent=request.confidence_percent,
         selected_mode=mode, reason=routing_reason, model_digest=request.model_identity.artifact_digest,
         execution_profile_id=request.execution_profile.profile_id,

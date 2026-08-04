@@ -928,6 +928,51 @@
       return Boolean(m && (i === 0 || m !== coords[i - 1].data.milestone));
     }
 
+    function computeXAxisStep(dataLength, maxTicks = 8) {
+      return Math.max(1, Math.ceil(dataLength / maxTicks));
+    }
+
+    function formatShortTaskLabel(label) {
+      return label ? String(label).replace(/^Task\s+/, '') : '';
+    }
+
+    function createSvgXAxisLabelElement(x, y, label, options = {}) {
+      const fontSize = options.fontSize || 10;
+      const rotation = options.rotation || -35;
+      const shortLabel = formatShortTaskLabel(label);
+      return `<text x="${x}" y="${y}" fill="var(--color-text-secondary)" font-size="${fontSize}" text-anchor="end" font-family="var(--font-mono)" transform="rotate(${rotation}, ${x}, ${y})">${shortLabel}</text>`;
+    }
+
+    function renderChartNodesGroupHtml(coords, height, options = {}) {
+      const dotClass = options.dotClass || 'chart-node-dot';
+      const strokeWidth = options.strokeWidth || '2.5';
+      const maxTicks = options.maxTicks || 8;
+      const labelYOffset = options.labelYOffset || 8;
+      const fontSize = options.fontSize || 10;
+      const rotation = options.rotation || -35;
+      const pillConfig = options.pillConfig || MILESTONE_PILL_CONFIG;
+
+      let nodesHTML = '';
+      const xLabelStep = computeXAxisStep(coords.length, maxTicks);
+
+      coords.forEach((pt, i) => {
+        const d = pt.data;
+        const nodeColor = d.passRate >= 95 ? '#FF6B35' : (d.passRate >= 80 ? '#FCA311' : '#FF453A');
+
+        nodesHTML += `<circle cx="${pt.x}" cy="${pt.y}" r="6" fill="${nodeColor}" stroke="#151518" stroke-width="${strokeWidth}" class="${dotClass}" data-idx="${i}" style="cursor:pointer; transition:all 0.2s;" />`;
+
+        if (i % xLabelStep === 0 || i === coords.length - 1) {
+          nodesHTML += createSvgXAxisLabelElement(pt.x, height - labelYOffset, d.label, { fontSize, rotation });
+        }
+
+        if (isNewMilestone(coords, i)) {
+          nodesHTML += createMilestonePillElement(pt, i, d.milestone, nodeColor, pillConfig);
+        }
+      });
+
+      return nodesHTML;
+    }
+
     function createMilestonePillElement(pt, i, milestoneText, nodeColor, config = MILESTONE_PILL_CONFIG) {
       const labelW = Math.min(config.maxWidth, Math.max(config.minWidth, milestoneText.length * config.charWidth + config.padding));
       const rawYOff = config.staggerHeights[i % config.staggerHeights.length];
@@ -1073,27 +1118,14 @@
       // Render Nodes, Labels & Milestones
       const nodesGroup = document.getElementById('chart-nodes-group');
       if (nodesGroup) {
-        let nodesHTML = '';
-        coords.forEach((pt, i) => {
-          const d = pt.data;
-          const nodeColor = d.passRate >= 95 ? '#FF6B35' : (d.passRate >= 80 ? '#FCA311' : '#FF453A');
-
-          // Dot — larger, crisp
-          nodesHTML += `<circle cx="${pt.x}" cy="${pt.y}" r="6" fill="${nodeColor}" stroke="#151518" stroke-width="2.5" class="chart-node-dot" data-idx="${i}" style="cursor:pointer; transition:all 0.2s;" />`;
-
-          // X Label — max 8 evenly spaced to prevent dense overlap
-          const xLabelStep = Math.ceil(coords.length / 8);
-          if (i % xLabelStep === 0 || i === coords.length - 1) {
-            const shortLabel = d.label.replace('Task ', '');
-            nodesHTML += `<text x="${pt.x}" y="${height - 8}" fill="var(--color-text-secondary)" font-size="10" text-anchor="end" font-family="var(--font-mono)" transform="rotate(-35, ${pt.x}, ${height - 8})">${shortLabel}</text>`;
-          }
-
-          // Milestone pill — deduplicated & smart-staggered
-          if (isNewMilestone(coords, i)) {
-            nodesHTML += createMilestonePillElement(pt, i, d.milestone, nodeColor);
-          }
+        nodesGroup.innerHTML = renderChartNodesGroupHtml(coords, height, {
+          dotClass: 'chart-node-dot',
+          strokeWidth: '2.5',
+          maxTicks: 8,
+          labelYOffset: 8,
+          fontSize: 10,
+          rotation: -35
         });
-        nodesGroup.innerHTML = nodesHTML;
 
         // Hover Tooltip logic
         const tooltip = document.getElementById('chart-tooltip');
@@ -1522,26 +1554,15 @@
       // Nodes & Milestones
       const nodesGroup = document.getElementById('modal-nodes-group');
       if (nodesGroup) {
-        let nodesHTML = '';
-        coords.forEach((pt, i) => {
-          const d = pt.data;
-          const nodeColor = d.passRate >= 95 ? '#FF6B35' : (d.passRate >= 80 ? '#FCA311' : '#FF453A');
-
-          nodesHTML += `<circle cx="${pt.x}" cy="${pt.y}" r="6" fill="${nodeColor}" stroke="#151518" stroke-width="3" class="modal-node-dot" data-idx="${i}" style="cursor:pointer; transition:transform 0.2s;" />`;
-
-          // X Label — max 10 evenly spaced to prevent overlap
-          const xLabelStep = Math.ceil(coords.length / 10);
-          if (i % xLabelStep === 0 || i === coords.length - 1) {
-            const shortLabel = d.label.replace('Task ', '');
-            nodesHTML += `<text x="${pt.x}" y="${height - 18}" fill="var(--color-text-secondary)" font-size="10.5" text-anchor="end" font-family="var(--font-mono)" transform="rotate(-30, ${pt.x}, ${height - 18})">${shortLabel}</text>`;
-          }
-
-          // Milestone pill — deduplicated & smart-staggered
-          if (isNewMilestone(coords, i)) {
-            nodesHTML += createMilestonePillElement(pt, i, d.milestone, nodeColor, { ...MILESTONE_PILL_CONFIG, minWidth: 85, padding: 16 });
-          }
+        nodesGroup.innerHTML = renderChartNodesGroupHtml(coords, height, {
+          dotClass: 'modal-node-dot',
+          strokeWidth: '3',
+          maxTicks: 10,
+          labelYOffset: 18,
+          fontSize: 10.5,
+          rotation: -30,
+          pillConfig: { ...MILESTONE_PILL_CONFIG, minWidth: 85, padding: 16 }
         });
-        nodesGroup.innerHTML = nodesHTML;
 
         // Node click listener to populate inspector
         const dots = nodesGroup.querySelectorAll('.modal-node-dot');

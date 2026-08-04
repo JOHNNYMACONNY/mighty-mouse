@@ -13,9 +13,11 @@ import yaml
 
 try:
     from mighty_mouse.orchestrator.gemini_client import GeminiClient
+    from mighty_mouse.orchestrator.model_engine import ModelExecutionEngine
     from mighty_mouse.orchestrator.response_parser import ResponseParser
 except ImportError:
     from gemini_client import GeminiClient
+    from model_engine import ModelExecutionEngine
     from response_parser import ResponseParser
 
 
@@ -136,8 +138,8 @@ def _hygiene_audit(workspace_root, task_data=None):
             if f.startswith("._") or f == ".DS_Store":
                 try:
                     os.remove(os.path.join(root, f))
-                except OSError:
-                    pass
+                except OSError as exc:
+                    logger.debug(f"[hygiene] Could not remove hidden artifact ({f}): {exc}")
     
     # 2. Metadata-driven Pre-run Cleanup
     allowed_paths = set()
@@ -168,8 +170,8 @@ def _hygiene_audit(workspace_root, task_data=None):
                     os.remove(os.path.join(workspace_root, f))
                     print(f"[hygiene] Purged stale ghost: {f}", file=sys.stderr)
                     removed_count += 1
-                except OSError:
-                    pass
+                except OSError as exc:
+                    logger.debug(f"[hygiene] Could not remove stale file ({f}): {exc}")
     return removed_count
 
 
@@ -211,13 +213,14 @@ def solve(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_sk
 
 def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_skills=None, temperature=None, stage="unified", plan_file=None):
     task_data = None
+    raw_task_str = None
     if os.path.exists(task_input):
         try:
             with open(task_input, 'r') as f:
-                task_data = json.load(f)
+                raw_task_str = f.read()
+            task_data = json.loads(raw_task_str)
         except (json.JSONDecodeError, OSError) as exc:
             logger.debug(f"[agent] Could not parse task file as JSON ({task_input}): {exc}")
-            task_data = None
 
     stale_removed = _hygiene_audit(os.getcwd(), task_data=task_data)
 
@@ -255,17 +258,12 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
     if overlay_block:
         full_sys += overlay_block
 
-    if os.path.exists(task_input):
-        with open(task_input, 'r') as f:
-            try:
-                task_data = json.load(f)
-                task_str = json.dumps(task_data, indent=2)
-            except json.JSONDecodeError:
-                # Task file is not JSON; read as raw text
-                with open(task_input, 'r') as f2:
-                    task_str = f2.read()
+    if task_data is not None:
+        task_str = json.dumps(task_data, indent=2)
+    elif raw_task_str is not None:
+        task_str = raw_task_str
     else:
-        task_str = task_input
+        task_str = str(task_input)
 
     FORMAT_REMINDER = (
         "\n⚠️ MANDATORY OUTPUT FORMAT ⚠️\n"
@@ -326,6 +324,7 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
     user_prompt += DISALLOWED_PATTERNS
 
     client = GeminiClient(config=p_cfg)
+    engine = ModelExecutionEngine(config=p_cfg, client=client)
     allowed_delete_paths = []
     if isinstance(task_data, dict):
         allowed_delete_paths = task_data.get("deletable_files", [])

@@ -2,11 +2,9 @@ import json
 import os
 import subprocess
 import sys
-import shutil
-import time
-from dataclasses import dataclass, asdict, field
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Tuple, Literal
+from typing import TYPE_CHECKING, Dict, Any, List, Mapping, Optional, Tuple, Literal
 import yaml
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -17,6 +15,9 @@ sys.path.append(os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator"))
 
 from gemini_client import GeminiClient
 from tier_utils import load_tier_sequence, get_current_tier as utils_get_current_tier, parse_pass_rate
+
+if TYPE_CHECKING:
+    from mighty_mouse.v2.seams import Candidate, VerificationResult
 
 # Default Configuration Constants
 RESULTS_PATH = "eval/results/benchmark_results.json"
@@ -35,6 +36,14 @@ CATEGORY_TO_SEGMENT = {
     "PARSER": "constraints.txt",
     "TIMEOUT": "timeout_policy"
 }
+
+
+def _allowed_segments(mutation_surface: object) -> frozenset[str] | None:
+    if mutation_surface is None:
+        return None
+    if isinstance(mutation_surface, Mapping):
+        return mutation_surface.get("allowed_segments")
+    return getattr(mutation_surface, "allowed_segments", None)
 
 def get_current_tier() -> str:
     return utils_get_current_tier()
@@ -179,7 +188,11 @@ Output your response in this JSON format:
     def run_tier(self, tier: str) -> Optional[Dict[str, Any]]:
         print(f"[*] Testing tier: {tier}...")
         cmd = [sys.executable, "eval/solve_benchmark.py", "--tier", tier]
-        subprocess.run(cmd, capture_output=True)
+        subprocess.run(
+            cmd,
+            capture_output=True,
+            env={**os.environ, "MIGHTY_MOUSE_RUNNER_LOCK_HELD": "1"},
+        )
         if os.path.exists(self.results_path):
             with open(self.results_path, 'r') as f:
                 return json.load(f).get("summary")
@@ -199,17 +212,33 @@ Output your response in this JSON format:
         self,
         current_tier: Optional[str] = None,
         replay_tiers: Optional[List[str]] = None,
+        mutation_surface: Optional[Dict[str, Any]] = None,
+        verification_result: Optional["VerificationResult"] = None,
     ) -> Optional[MutationLogRecord]:
         print("=== Mighty Mouse Mutation Engine Starting ===")
-        analysis = self.analyze_failures()
-        if not analysis:
-            print("[*] No failures to analyze. Exiting.")
-            return None
-
         if current_tier is None:
             current_tier = get_current_tier()
         if replay_tiers is None:
             replay_tiers = get_replay_tiers(current_tier)
+        if verification_result is not None:
+            category = str(verification_result.details.get("verifier_category", "LOGIC")).upper()
+            analysis = FailureAnalysis(
+                dominant_category=category,
+                is_timeout_dominant=category == "TIMEOUT",
+                failures=[
+                    {
+                        "task_id": current_tier,
+                        "reason": "typed verification failure",
+                        "category": category,
+                    }
+                ],
+                original_summary={"success_rate": f"{round(verification_result.score * 100)}/100"},
+            ) if not verification_result.passed else None
+        else:
+            analysis = self.analyze_failures()
+        if not analysis:
+            print("[*] No failures to analyze. Exiting.")
+            return None
 
         if analysis.is_timeout_dominant:
             print("[!] TIMEOUT detected as dominant failure mode (Gemma 4 Reasoning Horizon reached).")
@@ -243,6 +272,20 @@ Output your response in this JSON format:
             return record
 
         segment_path = os.path.join(self.segments_dir, segment_file)
+        allowed_segments = _allowed_segments(mutation_surface)
+        if allowed_segments is not None and segment_file not in allowed_segments:
+            record = MutationLogRecord(
+                timestamp=datetime.now().isoformat(),
+                failure_category=analysis.dominant_category,
+                segment_changed=segment_file,
+                hypothesis="Mutation rejected because the segment is outside the Policy Mutation Surface.",
+                before=analysis.original_summary,
+                after=None,
+                replay_tiers_tested=replay_tiers,
+                decision="REJECT",
+            )
+            self.log_mutation(record)
+            return record
         with open(segment_path, 'r') as f:
             original_content = f.read()
         
@@ -289,6 +332,48 @@ Output your response in this JSON format:
         self.log_mutation(record)
 
         return record
+
+    def mutate_candidate(
+        self,
+        candidate: "Candidate",
+        verification: "VerificationResult",
+        mutation_surface: Optional[Dict[str, Any]] = None,
+    ) -> "Candidate":
+        """Deep seam interface implementation of PolicyMutationAdapter."""
+        from mighty_mouse.v2.seams import Candidate as V2Candidate
+
+        policy_data = dict(candidate.policy_data)
+        if hasattr(verification, "details"):
+            category = str(verification.details.get("verifier_category", "LOGIC"))
+            failures = [] if verification.passed else [{"task_id": candidate.candidate_id, "reason": "typed verification failure"}]
+        else:
+            category = str(getattr(verification, "verifier_category", "LOGIC"))
+            failures = []
+
+        segment_file, attempt = (None, None)
+        if failures:
+            segment_file, attempt = self.generate_mutation(category, failures)
+        if attempt:
+            # Respect mutation_surface if provided
+            allowed_segments = _allowed_segments(mutation_surface)
+            if allowed_segments is None or segment_file in allowed_segments:
+                policy_data[segment_file] = attempt.new_content
+                policy_data["mutation_hypothesis"] = attempt.hypothesis
+
+        cand_id = f"{candidate.candidate_id}_m"
+        return V2Candidate(
+            candidate_id=cand_id,
+            generation_id=candidate.generation_id,
+            mode=candidate.mode,
+            policy_data=policy_data,
+            status="pending",
+        )
+
+
+# Class alias for Spec compliance
+PolicyMutationEngine = MutationEngine
+
+
 
 
 # Module-level convenience functions for backward compatibility

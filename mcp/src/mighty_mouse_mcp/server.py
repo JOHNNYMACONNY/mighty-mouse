@@ -4,23 +4,24 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from hashlib import sha256
-import inspect
 from pathlib import Path
 import secrets
 
 from mcp.server.fastmcp import FastMCP
 
+from mighty_mouse.host.adapter import (
+    ADAPTER_CONFIG_FILENAME,
+    MCP_ADAPTER_CONFIG_SCHEMA_VERSION,
+    MCP_TOOL_CONTRACT_VERSION,
+    SUPPORTED_RUNTIME_KINDS,
+    HostAdapter,
+)
 from mighty_mouse.protocols import PROTOCOL_VERSION, get_protocol
-from mighty_mouse.verifier import verify as verify_workspace
-from mighty_mouse.v2.foundation import Mode, Scope, Signal, TaskCategory, resolve_execution_profile
+from mighty_mouse.v2.foundation import Mode, Scope, Signal, TaskCategory
 from mighty_mouse.v2.signals import SignalLifecycle
+from mighty_mouse.verifier import verify as verify_workspace
 
 mcp = FastMCP("mighty-mouse")
-ADAPTER_CONFIG_FILENAME = "mcp-adapter.json"
-SUPPORTED_RUNTIME_KINDS = frozenset({"cline", "claude-code", "codex", "cursor", "antigravity", "hermes", "windsurf"})
-MCP_TOOL_CONTRACT_VERSION = 1
-MCP_ADAPTER_CONFIG_SCHEMA_VERSION = 2
 
 
 def run_verify(
@@ -66,124 +67,65 @@ def _verifier_category(result: dict) -> str:
     return {"tests": "tests", "lint": "lint", "build": "build", "scope": "manual"}.get(selected["name"], "manual")
 
 
-def _adapter_scope(workspace: str, state_dir: str | None, task_category: str) -> tuple[Path, Scope, str, str]:
-    resolved_state_dir = Path(state_dir) if state_dir else Path(workspace) / ".mighty-mouse"
-    path = resolved_state_dir / ADAPTER_CONFIG_FILENAME
-    if not path.is_file():
-        raise ValueError(f"MCP adapter identity is not configured: {path}; run setup_workspace")
-    try:
-        config = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError("Cline adapter identity configuration is invalid JSON") from exc
-    base_scope = _adapter_scope_from_config(config)
-    scope = Scope(Mode.CODING, base_scope.repository, TaskCategory(task_category), base_scope.model_class)
-    return resolved_state_dir, scope, config["model_digest"], config["execution_profile_id"]
-
-
-def _ollama_model_digest(model: str) -> str:
-    name, separator, tag = model.rpartition(":")
-    if not separator:
-        name, tag = model, "latest"
-    if not name or not tag or any(part in {"", ".", ".."} for part in name.split("/")):
-        raise ValueError("Ollama model must be a model name with an optional tag")
-    manifest_path = Path.home() / ".ollama" / "models" / "manifests" / "registry.ollama.ai" / "library" / name / tag
-    if not manifest_path.is_file():
-        raise ValueError(f"Ollama manifest is unavailable for {model}")
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Ollama manifest is invalid for {model}") from exc
-    digest = next((layer.get("digest") for layer in manifest.get("layers", []) if layer.get("mediaType") == "application/vnd.ollama.image.model"), None)
-    if not isinstance(digest, str):
-        raise ValueError(f"Ollama model-layer digest is unavailable for {model}")
-    return digest
-
-
-def _mcp_tool_contract() -> dict[str, str]:
+def _get_mcp_tool_signatures() -> dict:
     return {
-        "contract_version": str(MCP_TOOL_CONTRACT_VERSION),
-        "protocol": str(inspect.signature(run_protocol)),
-        "verify": str(inspect.signature(run_verify)),
-        "setup_workspace": str(inspect.signature(run_setup_workspace)),
-        "verify_and_record": str(inspect.signature(run_verify_and_record)),
-        "recording_audit": str(inspect.signature(run_recording_audit)),
+        "protocol": run_protocol,
+        "verify": run_verify,
+        "setup_workspace": run_setup_workspace,
+        "verify_and_record": run_verify_and_record,
+        "recording_audit": run_recording_audit,
     }
 
 
-def _current_execution_profile(*, runtime_kind: str, runtime_version: str, effective_context_limit: int):
-    if runtime_kind not in SUPPORTED_RUNTIME_KINDS or not runtime_version or runtime_version == "unknown":
-        raise ValueError("Workspace setup requires a supported runtime kind and exact runtime version")
-    tool_contract = _mcp_tool_contract()
-    tool_contract_digest = "sha256:" + sha256(
-        json.dumps(tool_contract, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
-    prompt_template_digest = "sha256:" + sha256(
-        "\n".join(get_protocol(complexity) for complexity in ("low", "medium", "high")).encode()
-    ).hexdigest()
-    profile = resolve_execution_profile(
-        runtime_kind=runtime_kind, runtime_version=runtime_version,
-        effective_context_limit=effective_context_limit,
-        tool_contract_digest=tool_contract_digest, prompt_template_digest=prompt_template_digest,
-        sampling_settings={}, resource_limits={}, capabilities=frozenset({"mcp", *tool_contract}),
+def _mcp_tool_contract() -> dict[str, str]:
+    return HostAdapter.get_tool_contract(_get_mcp_tool_signatures(), contract_version=MCP_TOOL_CONTRACT_VERSION)
+
+
+def _adapter_scope(workspace: str, state_dir: str | None, task_category: str) -> tuple[Path, Scope, str, str]:
+    return HostAdapter.resolve_adapter_scope(
+        workspace, state_dir, task_category,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
     )
-    return profile, tool_contract_digest, prompt_template_digest
+
+
+def _ollama_model_digest(model: str) -> str:
+    return HostAdapter.resolve_ollama_model_digest(model)
+
+
+def _current_execution_profile(*, runtime_kind: str, runtime_version: str, effective_context_limit: int):
+    return HostAdapter.build_execution_profile(
+        runtime_kind=runtime_kind,
+        runtime_version=runtime_version,
+        effective_context_limit=effective_context_limit,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
+    )
 
 
 def _adapter_config(
     *, repository: str, model_digest: str, model_class: str, effective_context_limit: int,
     runtime_kind: str, runtime_version: str, ollama_model: str | None,
 ) -> dict[str, str | int]:
-    profile, tool_contract_digest, prompt_template_digest = _current_execution_profile(
-        runtime_kind=runtime_kind, runtime_version=runtime_version,
+    return HostAdapter.build_adapter_config(
+        repository=repository,
+        model_digest=model_digest,
+        model_class=model_class,
         effective_context_limit=effective_context_limit,
+        runtime_kind=runtime_kind,
+        runtime_version=runtime_version,
+        ollama_model=ollama_model,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
     )
-    config = {
-        "schema_version": MCP_ADAPTER_CONFIG_SCHEMA_VERSION,
-        "repository": repository, "model_digest": model_digest, "model_class": model_class,
-        "model_source": "ollama" if ollama_model else "host", "ollama_model": ollama_model,
-        "execution_profile_id": profile.profile_id, "runtime_kind": runtime_kind,
-        "runtime_version": runtime_version, "effective_context_limit": effective_context_limit,
-        "tool_contract_digest": tool_contract_digest, "prompt_template_digest": prompt_template_digest,
-    }
-    _adapter_scope_from_config(config)
-    return config
 
 
-def _adapter_scope_from_config(config: dict[str, str | int]) -> Scope:
-    required = {
-        "schema_version", "repository", "model_digest", "model_class", "execution_profile_id",
-        "model_source", "ollama_model", "runtime_kind", "runtime_version", "effective_context_limit", "tool_contract_digest",
-        "prompt_template_digest",
-    }
-    if set(config) != required:
-        raise ValueError("MCP adapter identity configuration is stale or invalid; run setup_workspace")
-    if config["schema_version"] != MCP_ADAPTER_CONFIG_SCHEMA_VERSION:
-        raise ValueError("MCP adapter identity configuration is stale; run setup_workspace")
-    if config["model_source"] not in {"ollama", "host"}:
-        raise ValueError("MCP adapter identity configuration is stale or invalid; run setup_workspace")
-    if config["model_source"] == "ollama":
-        ollama_model = config["ollama_model"]
-        if not isinstance(ollama_model, str) or _ollama_model_digest(ollama_model) != config["model_digest"]:
-            raise ValueError("MCP adapter model identity changed; run setup_workspace")
-    elif config["ollama_model"] is not None:
-        raise ValueError("MCP adapter identity configuration is stale or invalid; run setup_workspace")
-    profile, tool_contract_digest, prompt_template_digest = _current_execution_profile(
-        runtime_kind=str(config["runtime_kind"]), runtime_version=str(config["runtime_version"]),
-        effective_context_limit=int(config["effective_context_limit"]),
+def _adapter_scope_from_config(config: dict[str, Any]) -> Scope:
+    return HostAdapter.validate_adapter_config(
+        config,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
     )
-    if (
-        config["execution_profile_id"] != profile.profile_id
-        or config["tool_contract_digest"] != tool_contract_digest
-        or config["prompt_template_digest"] != prompt_template_digest
-    ):
-        raise ValueError("MCP adapter identity configuration is stale; run setup_workspace")
-    scope = Scope(Mode.CODING, config["repository"], TaskCategory.UNKNOWN, config["model_class"])
-    Signal(
-        signal_id="signal-000", scope=scope, model_digest=config["model_digest"],
-        execution_profile_id=str(config["execution_profile_id"]), outcome="passed", duration_ms=0,
-        retry_count=0, verifier_category="none", verifier_result="not_run",
-    )
-    return scope
 
 
 def run_setup_workspace(

@@ -1,0 +1,54 @@
+{
+  "tier": "tier_9",
+  "generated_at": "2026-08-01T23:49:54.907558",
+  "spec": {
+    "tier_name": "tier_9",
+    "description": "Ultra-complex distributed consensus, LSM storage engines, multi-region CRDTs, 2PC coordinators, and vector indexing.",
+    "capability_categories": [
+      "RAFT_CONSENSUS",
+      "LSM_TREE_STORAGE",
+      "CRDT_SYNC",
+      "TWO_PHASE_COMMIT",
+      "VECTOR_INDEX"
+    ]
+  },
+  "total_tasks": 5,
+  "manifest_hash": "5942423cf574152b84f60e99916a23b1f2488ba5333eae8ada84305c8e79aa2b",
+  "tasks": [
+    {
+      "task_id": "task_3000",
+      "filename": "task_3000_raft_consensus_state_machine.json",
+      "test_script_sha256": "accd3970bf47fcc15d685982765456906d90d72d69a1f0a3ccd42152255ac2ea",
+      "reference_sha256": "d2d6214553be36483effd185a82e871cf56761352c4ff2d9fe37dda10a2de9f6",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_3001",
+      "filename": "task_3001_log_structured_merge_tree.json",
+      "test_script_sha256": "20c45a89b6b852877db6d50a12775bd85992272544d0e4eaabda60b9c4e740ab",
+      "reference_sha256": "2d984da5e7feb4587825fe022093719624086c78a49eae4a7ddf776696f83166",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_3002",
+      "filename": "task_3002_multi_region_crdt_sync.json",
+      "test_script_sha256": "0abbb3ff892f2ea60b44ef9164f0d65404aea46ca793781920d0f37e4e30e8dc",
+      "reference_sha256": "bc50f9a3c27a30f7ff178a236a7fbcf3fba57511b2f496f409cc3a9c38f33c0b",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_3003",
+      "filename": "task_3003_two_phase_commit_coordinator.json",
+      "test_script_sha256": "4be1c6c4e8c9b0c9bfad83e39929a1ac9174dac3bfef93b6e420aca6fcaf6b76",
+      "reference_sha256": "efed4d3d5b98d1a168da37cf71cc9ef1d37b072041106f2d8908ccffb29da88b",
+      "status": "VALIDATED_AND_PASSED"
+    },
+    {
+      "task_id": "task_3004",
+      "filename": "task_3004_vector_hnsw_index_search.json",
+      "test_script_sha256": "cfa2040058d6844dce3e70bfdf4ebadb0d53015e5d651f1382867e8b51af363d",
+      "reference_sha256": "a809a0d6ca1ba9d49599cb47b89a7533fd2006d0025c45b787d24504a2be1ae7",
+      "status": "VALIDATED_AND_PASSED"
+    }
+  ]
+}

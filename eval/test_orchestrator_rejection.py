@@ -6,7 +6,8 @@ def run_test(checklist_content):
         f.write(checklist_content)
     
     result = subprocess.run(["python3", "src/mighty_mouse/orchestrator/enforce_workflow.py", "TEMP_CHECKLIST.md"], capture_output=True, text=True)
-    os.remove("TEMP_CHECKLIST.md")
+    if os.path.exists("TEMP_CHECKLIST.md"):
+        os.remove("TEMP_CHECKLIST.md")
     return result.returncode == 0, result.stdout
 
 def test_rejection():

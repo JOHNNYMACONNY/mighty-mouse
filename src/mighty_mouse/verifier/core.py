@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 import os
 import shlex
 import subprocess
+import sys
 import time
 from typing import Sequence
 
@@ -22,6 +23,7 @@ class CheckResult:
     passed: bool
     output: str
     duration_sec: float
+    details: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -110,7 +112,7 @@ def verify(
         commands.append(("lint", lint_command))
     if build_command is not None:
         commands.append(("build", build_command))
-    if not commands:
+    if not commands and not (task_config is not None and task_config.get("test_script")):
         detected_projects = detect_projects(workspace)
         detected, warnings = detect_checks(workspace)
         commands.extend(detected)
@@ -136,15 +138,21 @@ def verify(
 
     if task_config is not None:
         started = time.monotonic()
-        task_passed, task_msg, _ = verify_task_scope(task_config, workspace=workspace)
+        task_passed, task_msg, scope_details = verify_task_scope(task_config, workspace=workspace)
         checks.append(
             CheckResult(
                 name="task-scope",
                 passed=task_passed,
-                output=task_msg,
+                output=_truncate(task_msg),
                 duration_sec=round(time.monotonic() - started, 3),
+                details=scope_details,
             )
         )
+        task_script = task_config.get("test_script")
+        if task_script:
+            script_path = task_script if os.path.isabs(str(task_script)) else os.path.join(workspace, str(task_script))
+            command = [sys.executable, script_path] if os.path.isfile(script_path) else [sys.executable, "-c", str(task_script)]
+            checks.append(_run_check("task-tests", command, workspace, timeout_sec))
         checklist_path = task_config.get("checklist_path", "CHECKLIST.md")
         abs_checklist_path = checklist_path if os.path.isabs(checklist_path) else os.path.join(workspace, checklist_path)
         if "checklist_path" in task_config or task_config.get("require_adherence"):

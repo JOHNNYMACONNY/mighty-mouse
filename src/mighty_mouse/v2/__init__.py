@@ -5,12 +5,15 @@ from mighty_mouse.v2.policy import (
     PolicyLifecycle,
     resolve_effective_policy,
 )
+from mighty_mouse.v2.engine import PolicyEngine
+from mighty_mouse.v2.signals import SignalLifecycle
 from mighty_mouse.v2.telemetry import TelemetryAggregator
 
 __all__ = [
     "PolicyState",
     "PolicyLifecycle",
     "resolve_effective_policy",
+    "PolicyEngine",
+    "SignalLifecycle",
     "TelemetryAggregator",
 ]
-

@@ -9,9 +9,8 @@ from mighty_mouse.v2.foundation import (
     Scope,
     TaskCategory,
     resolve_model_identity,
-    status_document,
 )
-from mighty_mouse.v2.signals import SignalLifecycle
+from mighty_mouse.v2.engine import PolicyEngine
 
 
 def run_status(
@@ -30,23 +29,15 @@ def run_status(
     scope = Scope(
         mode=Mode(mode), repository=repository, task_category=TaskCategory(task_category), model_class=model_class,
     )
-    document = status_document(
-        state_dir=state_dir,
-        scope=scope,
-        model_identity=resolve_model_identity(
-            artifact_path=model_artifact,
-            artifact_digest=model_digest,
-        ),
-        execution_profile=ExecutionProfile(
-            profile_id=execution_profile,
-            capabilities=frozenset(capabilities or []),
-        ),
+    identity = resolve_model_identity(
+        artifact_path=model_artifact,
+        artifact_digest=model_digest,
     )
-    selected_scope = Scope(
-        mode=Mode(document["scope"]["mode"]), repository=repository,
-        task_category=TaskCategory(task_category), model_class=model_class,
+    profile = ExecutionProfile(
+        profile_id=execution_profile,
+        capabilities=frozenset(capabilities or []),
     )
-    document["signals"] = SignalLifecycle(state_dir).history(scope=selected_scope)
+    document = PolicyEngine(state_dir).get_status(scope, identity, profile)
     if json_output:
         print(json.dumps(document, sort_keys=True))
         return

@@ -4,7 +4,8 @@ from typing import Dict, Any, Optional
 
 DEFAULT_CONFIG_PATH = "eval/evaluation_config.json"
 DEFAULT_STATE_PATH = "logs/perpetual_state.json"
-FALLBACK_TIERS = ["tier_1", "tier_overnight", "tier_3", "tier_4", "tier_5", "tier_6", "tier_7", "tier_8"]
+FALLBACK_TIERS = ["tier_1", "tier_overnight", "tier_3", "tier_4", "tier_5", "tier_6", "tier_7", "tier_8", "tier_9"]
+
 
 def load_tier_config(config_path=DEFAULT_CONFIG_PATH):
     if os.path.exists(config_path):

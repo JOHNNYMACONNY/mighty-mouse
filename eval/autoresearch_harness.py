@@ -1,15 +1,39 @@
 import argparse
 import sys
 import os
-import json
 import tempfile
 import shutil
 import subprocess
 import traceback
+from datetime import datetime
 from pathlib import Path
+
+import logging
+from typing import Literal
+try:
+    from .runner_lock import SingleInstanceLock, SingleInstanceLockError
+except ImportError:
+    from runner_lock import SingleInstanceLock, SingleInstanceLockError
+
+logger = logging.getLogger(__name__)
+
+def evaluate_candidate_lifecycle(pass_rate: float, current_tier: str) -> Literal["EXPAND", "MUTATE"]:
+    """
+    State transition logic for candidate evaluation:
+    - If pass_rate == 1.0 (clean pass): 'EXPAND' (expand benchmark suite to next tier)
+    - If pass_rate < 1.0 (failures detected): 'MUTATE' (trigger policy mutation cycle)
+    """
+    logger.info("Evaluating candidate lifecycle for tier '%s' with pass_rate %.2f", current_tier, pass_rate)
+    if pass_rate >= 1.0:
+        return "EXPAND"
+    return "MUTATE"
+
 
 from mighty_mouse.experiments.local_agent import OllamaChatClient
 from mighty_mouse.orchestrator.response_parser import ResponseParser
+from mighty_mouse.v2.seams import Candidate, PolicyMutationSurface, VerificationResult
+from eval.mutation_engine import CATEGORY_TO_SEGMENT, MutationLogRecord, PolicyMutationEngine
+from eval.perpetual_loop import AutoresearchLoop
 from eval.run_local_model_pilot import load_task
 
 
@@ -108,7 +132,7 @@ def run_task(task_path: Path, model: str, host: str) -> bool:
                 env=env,
             )
             if result.returncode == 0:
-                print(f"Result: PASS", file=sys.stderr)
+                print("Result: PASS", file=sys.stderr)
                 return True
             else:
                 print(f"Result: FAIL (exit code {result.returncode})", file=sys.stderr)
@@ -124,39 +148,113 @@ def run_task(task_path: Path, model: str, host: str) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Autoresearch evaluation harness bridge")
-    parser.add_argument("--tasks-dir", type=Path, default=Path("eval/local_model_pilot"))
-    parser.add_argument("--model", default="gemma4:e4b")
-    parser.add_argument("--host", default="http://localhost:11434")
-    parser.add_argument("--fast", action="store_true", help="Run only the 3 original pilot tasks (*-1)")
-    args = parser.parse_args()
+    try:
+        with SingleInstanceLock():
+            parser = argparse.ArgumentParser(description="Autoresearch evaluation harness bridge")
+            parser.add_argument("--tasks-dir", type=Path, default=Path("eval/local_model_pilot"))
+            parser.add_argument("--model", default="gemma4:e4b")
+            parser.add_argument("--host", default="http://localhost:11434")
+            parser.add_argument("--mode", default="hybrid", choices=["coding", "agentic", "hybrid"], help="Execution mode for policy evaluation")
+            parser.add_argument("--max-iterations", type=int, default=1, help="Maximum iteration count for evaluation harness")
+            parser.add_argument("--fast", action="store_true", help="Run only the 3 original pilot tasks (*-1)")
+            args = parser.parse_args()
 
-    tasks_dir = args.tasks_dir.resolve()
-    if not tasks_dir.is_dir():
-        print(f"Tasks directory not found: {tasks_dir}", file=sys.stderr)
+            tasks_dir = args.tasks_dir.resolve()
+            if not tasks_dir.is_dir():
+                print(f"Tasks directory not found: {tasks_dir}", file=sys.stderr)
+                return 1
+
+            # Find task.json in all subdirectories
+            task_files = sorted(tasks_dir.glob("**/task.json"))
+            if not task_files:
+                print(f"No tasks found in {tasks_dir}", file=sys.stderr)
+                return 1
+
+            # Filter by fast mode
+            if args.fast:
+                # Keep only low-1, medium-1, high-1
+                task_files = [t for t in task_files if t.parent.name in ("low-1", "medium-1", "high-1")]
+
+            print(f"Found {len(task_files)} tasks to run (mode: {args.mode}, max_iterations: {args.max_iterations}).", file=sys.stderr)
+
+            def benchmark_adapter(_tier: str) -> dict:
+                results = []
+                for task_file in task_files:
+                    passed = run_task(task_file, args.model, args.host)
+                    results.append({"task_id": task_file.parent.name, "passed": passed})
+                passed_count = sum(result["passed"] for result in results)
+                return {
+                    "summary": {
+                        "success_rate": f"{passed_count}/{len(results)}",
+                        "mode": args.mode,
+                    },
+                    "results": results,
+                }
+
+            def verifier_adapter(benchmark: dict) -> VerificationResult:
+                rate = benchmark["summary"]["success_rate"]
+                passed, total = (int(value) for value in rate.split("/"))
+                score = passed / total if total else 0.0
+                return VerificationResult(
+                    passed=score >= 1.0,
+                    score=score,
+                    details={"verifier_category": "LOGIC"},
+                    verdict_category="PASS" if score >= 1.0 else "FAIL",
+                )
+
+            surface = PolicyMutationSurface(frozenset(CATEGORY_TO_SEGMENT.values()))
+            harness_state_dir = tasks_dir / ".mighty-mouse-state"
+
+            def mutation_adapter(verification: VerificationResult, tier: str, replay_tiers: list[str]):
+                print("[*] Triggering PolicyMutationEngine for candidate mutation cycle...", file=sys.stderr)
+                engine = PolicyMutationEngine()
+                candidate = Candidate(
+                    candidate_id=f"c_harness_{tier}",
+                    generation_id="g_1",
+                    mode=args.mode,
+                    policy_data={},
+                )
+                mutated = engine.mutate_candidate(candidate, verification, surface)
+                print(f"[+] Produced mutated candidate: {mutated.candidate_id}", file=sys.stderr)
+                decision = "PROMOTE" if mutated.policy_data != candidate.policy_data else "REJECT"
+                return MutationLogRecord(
+                    timestamp=datetime.now().isoformat(),
+                    failure_category="LOGIC",
+                    segment_changed="none",
+                    hypothesis="typed harness mutation",
+                    before=None,
+                    after=None,
+                    replay_tiers_tested=replay_tiers,
+                    decision=decision,
+                )
+
+            loop = AutoresearchLoop(
+                state_path=str(harness_state_dir / "perpetual_state.json"),
+                telemetry_path=str(harness_state_dir / "metric_telemetry.json"),
+                benchmark_results_path=str(harness_state_dir / "benchmark_results.json"),
+                state_dir=str(harness_state_dir / "v2-state"),
+                benchmark_adapter=benchmark_adapter,
+                verifier_adapter=verifier_adapter,
+                mutation_adapter=mutation_adapter,
+                mutation_surface=surface,
+            )
+            for iteration in range(1, args.max_iterations + 1):
+                print(f"=== Starting Iteration {iteration}/{args.max_iterations} ===", file=sys.stderr)
+                result = loop.run_single_cycle()
+                pass_rate = (result.pass_rate or 0.0) / 100.0
+                next_action = evaluate_candidate_lifecycle(pass_rate, result.tier)
+                print(f"pass_rate: {pass_rate:.2f}")
+                print(f"lifecycle_action: {next_action}")
+                if next_action == "EXPAND":
+                    print(f"[+] Pass rate 100% achieved! Expanding benchmark suite beyond {result.tier}...", file=sys.stderr)
+
+            return 0
+
+    except SingleInstanceLockError as err:
+        print(f"[!] {err}", file=sys.stderr)
         return 1
 
-    # Find task.json in all subdirectories
-    task_files = sorted(tasks_dir.glob("**/task.json"))
-    if not task_files:
-        print(f"No tasks found in {tasks_dir}", file=sys.stderr)
-        return 1
 
-    # Filter by fast mode
-    if args.fast:
-        # Keep only low-1, medium-1, high-1
-        task_files = [t for t in task_files if t.parent.name in ("low-1", "medium-1", "high-1")]
-
-    print(f"Found {len(task_files)} tasks to run.", file=sys.stderr)
-
-    passed_count = 0
-    for task_file in task_files:
-        if run_task(task_file, args.model, args.host):
-            passed_count += 1
-
-    pass_rate = passed_count / len(task_files) if task_files else 0.0
-    print(f"pass_rate: {pass_rate:.2f}")
-    return 0
 
 
 if __name__ == "__main__":

@@ -243,3 +243,54 @@ def test_each_condition_outcome_links_to_its_immutable_evidence_bundle(tmp_path,
     assert captured_evidence_payloads
     assert all(payload["protocol_manifest_digest"] == generation.protocol_manifest_digest for payload in captured_evidence_payloads)
     assert all(payload["model_digest"] == generation.model_digest and payload["execution_profile_id"] == generation.execution_profile_id for payload in captured_evidence_payloads)
+
+
+def test_evaluation_seams_and_lifecycle_transitions():
+    from eval.autoresearch_harness import evaluate_candidate_lifecycle
+    from mighty_mouse.v2.seams import Candidate, VerificationResult
+
+    res_mutate = evaluate_candidate_lifecycle(0.85, "tier-1")
+    assert res_mutate == "MUTATE"
+
+    res_expand = evaluate_candidate_lifecycle(1.0, "tier-1")
+    assert res_expand == "EXPAND"
+
+    v = VerificationResult(passed=True, score=1.0, details={"tasks": 5}, verdict_category="PASS")
+    assert v.passed is True
+    assert v.score == 1.0
+
+
+def test_autoresearch_harness_end_to_end_lifecycle(tmp_path, monkeypatch):
+    from eval.autoresearch_harness import main as harness_main
+    from mighty_mouse.v2.seams import Candidate
+    from unittest.mock import patch, MagicMock
+
+    task_dir = tmp_path / "pilot" / "low-1"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    (task_dir / "task.json").write_text('{"id": "t1", "description": "test task"}')
+
+    test_args = ["autoresearch_harness.py", "--tasks-dir", str(tmp_path / "pilot"), "--mode", "coding", "--max-iterations", "1"]
+    monkeypatch.setattr("sys.argv", test_args)
+
+    mock_mutated = Candidate(candidate_id="c_mutated_test", generation_id="g_1", mode="coding", policy_data={})
+
+    with patch("eval.autoresearch_harness.run_task", return_value=False), \
+         patch("eval.mutation_engine.PolicyMutationEngine.mutate_candidate", return_value=mock_mutated):
+        exit_code = harness_main()
+        assert exit_code == 0
+
+
+def test_autoresearch_harness_pass_to_expand_lifecycle(tmp_path, monkeypatch):
+    from eval.autoresearch_harness import main as harness_main
+    from unittest.mock import patch
+
+    task_dir = tmp_path / "pilot" / "low-1"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    (task_dir / "task.json").write_text('{"id": "t1", "description": "test task"}')
+
+    test_args = ["autoresearch_harness.py", "--tasks-dir", str(tmp_path / "pilot"), "--mode", "coding", "--max-iterations", "2"]
+    monkeypatch.setattr("sys.argv", test_args)
+
+    with patch("eval.autoresearch_harness.run_task", return_value=True):
+        exit_code = harness_main()
+        assert exit_code == 0

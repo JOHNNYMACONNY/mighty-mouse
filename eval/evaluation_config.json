@@ -8,7 +8,8 @@
     "tier_5",
     "tier_6",
     "tier_7",
-    "tier_8"
+    "tier_8",
+    "tier_9"
   ],
   "tiers": {
     "tier_1": [
@@ -122,6 +123,13 @@
       "task_2012_micro-batch_pipeline_aggregator.json",
       "task_2013_quorum_replica_synchronization.json",
       "task_2014_token_bucket_dynamic_refill.json"
+    ],
+    "tier_9": [
+      "task_3000_raft_consensus_state_machine.json",
+      "task_3001_log_structured_merge_tree.json",
+      "task_3002_multi_region_crdt_sync.json",
+      "task_3003_two_phase_commit_coordinator.json",
+      "task_3004_vector_hnsw_index_search.json"
     ]
   },
   "agent_cmd": [

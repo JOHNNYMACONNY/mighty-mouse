@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import subprocess
 import time
@@ -6,7 +7,11 @@ import signal
 import sys
 import hashlib
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Callable, Dict, Any, Optional, List
+
+logger = logging.getLogger(__name__)
 
 # Configuration
 CONFIG_PATH = "eval/evaluation_config.json"
@@ -24,7 +29,7 @@ if _REPO_ROOT not in sys.path:
 
 
 from tier_utils import load_tier_sequence, parse_pass_rate
-from mutation_engine import MutationEngine, MutationLogRecord, get_replay_tiers
+from mutation_engine import CATEGORY_TO_SEGMENT, MutationEngine, MutationLogRecord, get_replay_tiers
 from mighty_mouse.v2.foundation import (
     ImmutableStateStore,
     Mode,
@@ -32,7 +37,13 @@ from mighty_mouse.v2.foundation import (
     Signal,
     TaskCategory,
 )
+from mighty_mouse.v2.signals import SignalLifecycle
+from mighty_mouse.v2.seams import PolicyMutationSurface, VerificationResult
 from mighty_mouse.v2.telemetry import TelemetryAggregator
+try:
+    from .runner_lock import LOCK_FILE_PATH, SingleInstanceLock, SingleInstanceLockError
+except ImportError:
+    from runner_lock import LOCK_FILE_PATH, SingleInstanceLock, SingleInstanceLockError
 
 def load_tiers() -> List[str]:
     return load_tier_sequence(CONFIG_PATH)
@@ -67,6 +78,42 @@ class AtomicState:
         os.replace(temp_path, self.path)
 
 
+@dataclass(frozen=True)
+class CycleResult:
+    """Typed result for one Harness cycle, with legacy mapping access."""
+
+    status: str
+    tier: str
+    pass_rate: float | None = None
+    benchmark: Dict[str, Any] | None = None
+    verification: VerificationResult | None = None
+    signal_receipt: str | None = None
+    mutation_decision: str | None = None
+    circuit_breaker_open: bool = False
+    state: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "status": self.status,
+            "tier": self.tier,
+            "pass_rate": self.pass_rate,
+            "benchmark": self.benchmark,
+            "verification": None if self.verification is None else {
+                "passed": self.verification.passed,
+                "score": self.verification.score,
+                "details": dict(self.verification.details),
+                "verdict_category": self.verification.verdict_category,
+            },
+            "signal_receipt": self.signal_receipt,
+            "mutation_decision": self.mutation_decision,
+            "circuit_breaker_open": self.circuit_breaker_open,
+            "state": dict(self.state),
+        }
+
+    def __getitem__(self, key: str) -> Any:
+        return self.to_dict()[key]
+
+
 def get_config_hash() -> str:
     if not os.path.exists(AGENT_CONFIG_PATH):
         return "unknown"
@@ -84,6 +131,10 @@ class AutoresearchLoop:
         benchmark_results_path: str = BENCHMARK_RESULTS_PATH,
         mutation_engine: Optional[MutationEngine] = None,
         state_dir: str = "logs/v2-state",
+        benchmark_adapter: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None,
+        verifier_adapter: Optional[Callable[[Dict[str, Any]], VerificationResult]] = None,
+        mutation_adapter: Optional[Callable[[VerificationResult, str, List[str]], Optional[MutationLogRecord]]] = None,
+        mutation_surface: Optional[PolicyMutationSurface] = None,
     ):
         self.state_path = state_path
         self.telemetry_path = telemetry_path
@@ -92,7 +143,14 @@ class AutoresearchLoop:
         self.mutation_engine = mutation_engine or MutationEngine(results_path=benchmark_results_path)
         self.tiers = load_tiers()
         self.store = ImmutableStateStore(state_dir=state_dir)
-        self.telemetry_aggregator = TelemetryAggregator(store=self.store)
+        self.signal_lifecycle = SignalLifecycle(state_dir)
+        self.telemetry_aggregator = TelemetryAggregator(store=self.store, signal_lifecycle=self.signal_lifecycle)
+        self.benchmark_adapter = benchmark_adapter
+        self.verifier_adapter = verifier_adapter
+        self.mutation_adapter = mutation_adapter
+        self.mutation_surface = mutation_surface or PolicyMutationSurface(
+            frozenset(CATEGORY_TO_SEGMENT.values())
+        )
 
     def record_signal(
         self,
@@ -106,7 +164,7 @@ class AutoresearchLoop:
         execution_profile_id: str = "codex-local",
         signal_counter: int = 100,
     ) -> Any:
-        """Log a structured v2 Signal into ImmutableStateStore."""
+        """Collect a structured v2 Signal through the canonical SignalLifecycle."""
         signal_id = f"signal-{signal_counter:03d}"
         signal = Signal(
             signal_id=signal_id,
@@ -119,7 +177,7 @@ class AutoresearchLoop:
             verifier_category=verifier_category,
             verifier_result=verifier_result,
         )
-        return self.store.append(signal)
+        return self.signal_lifecycle.collect(signal)
 
 
     @property
@@ -135,7 +193,7 @@ class AutoresearchLoop:
             except (OSError, json.JSONDecodeError) as exc:
                 print(f"[!] Warning: could not load telemetry history ({self.telemetry_path}): {exc}. Starting fresh.")
 
-        
+
         history.append({
             "timestamp": datetime.now().isoformat(),
             "tier": tier,
@@ -153,12 +211,15 @@ class AutoresearchLoop:
             json.dump(history, f, indent=2)
 
     def run_benchmark(self, tier: str) -> Optional[Dict[str, Any]]:
+        if self.benchmark_adapter is not None:
+            return self.benchmark_adapter(tier)
         print(f"[*] Starting benchmark for {tier}...")
         start_time = time.time()
         swarm_mode = os.getenv("MIGHTY_MOUSE_SWARM_MODE", "swarm")
         concurrency = os.getenv("MIGHTY_MOUSE_CONCURRENCY", "2")
         cmd = [sys.executable, "eval/solve_benchmark.py", "--tier", tier, "--mode", swarm_mode, "--concurrency", concurrency]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        env = {**os.environ, "MIGHTY_MOUSE_RUNNER_LOCK_HELD": "1"}
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env)
         
         if result.returncode != 0:
             print(f"[!] Benchmark runner failed for {tier}:")
@@ -176,7 +237,7 @@ class AutoresearchLoop:
                 return json.load(f)
         return None
 
-    def run_single_cycle(self) -> Dict[str, Any]:
+    def run_single_cycle(self) -> CycleResult:
         current_tier = self.state["current_tier"]
         config_hash = get_config_hash()
         
@@ -189,12 +250,22 @@ class AutoresearchLoop:
         bench_data = self.run_benchmark(current_tier)
         if not bench_data:
             print("[!] No benchmark data received.")
-            return {"status": "retry_needed", "tier": current_tier}
+            return CycleResult(status="retry_needed", tier=current_tier, state=dict(self.state))
 
         self.state["total_iterations"] += 1
         summary = bench_data.get("summary", {})
         success_rate_str = summary.get("success_rate", "0/0")
-        pass_rate = parse_pass_rate(summary) * 100.0
+        if self.verifier_adapter is not None:
+            verification = self.verifier_adapter(bench_data)
+            pass_rate = verification.score * 100.0
+        else:
+            pass_rate = parse_pass_rate(summary) * 100.0
+            verification = VerificationResult(
+                passed=pass_rate >= 100.0,
+                score=pass_rate / 100.0,
+                details={"verifier_category": "LOGIC"},
+                verdict_category="PASS" if pass_rate >= 100.0 else "FAIL",
+            )
 
         print(f"[*] Results: {success_rate_str} ({pass_rate:.1f}%)")
         self.update_telemetry(current_tier, summary, config_hash)
@@ -206,13 +277,20 @@ class AutoresearchLoop:
             model_class="local-small",
         )
         cycle_outcome = "passed" if pass_rate >= 50.0 else "failed"
-        self.record_signal(
+        signal_receipt = self.record_signal(
             scope=cycle_scope,
             outcome=cycle_outcome,
             signal_counter=max(1, self.state["total_iterations"]),
         )
 
-        if pass_rate >= 90:
+        pinned_tier = os.getenv("MIGHTY_MOUSE_PIN_TIER")
+        mutation_decision = None
+        circuit_breaker_open = False
+        if pinned_tier and pinned_tier in self.tiers:
+            self.state["current_tier"] = pinned_tier
+            print(f"[!] Tier Pinned: maintaining {pinned_tier} per user Pin override.")
+            self.state["mutation_count"] = 0
+        elif pass_rate >= 90:
             print("[+] Escalation criteria met (>=90%).")
             self.state["mutation_count"] = 0
             current_idx = self.tiers.index(current_tier) if current_tier in self.tiers else 0
@@ -226,6 +304,7 @@ class AutoresearchLoop:
             self.state["mutation_count"] += 1
             
             if self.state["mutation_count"] >= 3:
+                circuit_breaker_open = True
                 print("[!] Circuit breaker triggered: 3 consecutive failing mutation cycles.")
                 current_idx = self.tiers.index(current_tier) if current_tier in self.tiers else 0
                 if current_idx > 0:
@@ -238,25 +317,47 @@ class AutoresearchLoop:
                 print(f"[*] Triggering in-process mutation cycle (Attempt {self.state['mutation_count']}/3)...")
                 # Direct typed in-process execution instead of subprocess
                 replay_tiers = get_replay_tiers(current_tier)
-                record = self.mutation_engine.execute_mutation_cycle(current_tier=current_tier, replay_tiers=replay_tiers)
-                print(f"[*] Mutation cycle finished. Record decision: {record.decision if record else 'None'}")
+                if self.mutation_adapter is not None:
+                    record = self.mutation_adapter(verification, current_tier, replay_tiers)
+                else:
+                    record = self.mutation_engine.execute_mutation_cycle(
+                        current_tier=current_tier,
+                        replay_tiers=replay_tiers,
+                        mutation_surface=self.mutation_surface,
+                        verification_result=verification,
+                    )
+                mutation_decision = getattr(record, "decision", None)
+                print(f"[*] Mutation cycle finished. Record decision: {getattr(record, 'decision', record if record else 'None')}")
         else:
             print("[*] Performance in stable range (50% - 90%). Maintaining current tier.")
             self.state["mutation_count"] = 0
 
         self.state_manager.save()
 
+
         try:
             print("[*] Generating parity report...")
             subprocess.run([sys.executable, "eval/parity_report.py"], capture_output=True)
         except Exception as e:
-            print(f"[!] Failed to generate parity report: {e}")
+            logger.warning(f"Failed to generate parity report: {e}")
 
-        return {"status": "success", "tier": current_tier, "pass_rate": pass_rate}
+        return CycleResult(
+            status="success",
+            tier=current_tier,
+            pass_rate=pass_rate,
+            benchmark=bench_data,
+            verification=verification,
+            signal_receipt=signal_receipt,
+            mutation_decision=mutation_decision,
+            circuit_breaker_open=circuit_breaker_open,
+            state=dict(self.state),
+        )
 
-    def run_forever(self, sleep_sec: int = 30) -> None:
+    def run_forever(self, sleep_sec: int = 10) -> None:
+        print("[*] Mighty Mouse perpetual loop initiated. Press Ctrl+C to interrupt gracefully.")
+
         def signal_handler(sig, frame):
-            print("\n[!] Signal received. Saving state and exiting...")
+            print("\n[!] Graceful shutdown signal received. Saving state...")
             self.state_manager.save()
             sys.exit(0)
 
@@ -265,18 +366,47 @@ class AutoresearchLoop:
 
         while True:
             result = self.run_single_cycle()
-            if result.get("status") == "retry_needed":
-                print(f"[!] Cycle retry needed. Sleeping for 60s...")
+            if result["status"] == "retry_needed":
+                print("[!] Cycle retry needed. Sleeping for 60s...")
                 time.sleep(60)
             else:
                 print(f"[*] Cycle complete. Sleeping for {sleep_sec}s...")
                 time.sleep(sleep_sec)
 
 
+EVAL_RUNNER_PID_FILE = str(LOCK_FILE_PATH)
+PID_FILE = EVAL_RUNNER_PID_FILE
+_ACTIVE_LOCK: SingleInstanceLock | None = None
+
+
+def _acquire_pid_lock(pid_path: str = EVAL_RUNNER_PID_FILE) -> None:
+    """Compatibility wrapper around the shared Harness lock."""
+    global _ACTIVE_LOCK
+    _ACTIVE_LOCK = SingleInstanceLock(Path(pid_path))
+    try:
+        _ACTIVE_LOCK.__enter__()
+    except SingleInstanceLockError as exc:
+        logger.error("Failed to acquire single-instance lock (%s): %s", pid_path, exc)
+        _ACTIVE_LOCK = None
+        sys.exit(1)
+
+
+def _release_pid_lock(pid_path: str = EVAL_RUNNER_PID_FILE) -> None:
+    """Release the shared Harness lock."""
+    global _ACTIVE_LOCK
+    if _ACTIVE_LOCK is not None:
+        _ACTIVE_LOCK.__exit__(None, None, None)
+        _ACTIVE_LOCK = None
+
+
 def main() -> None:
+    _acquire_pid_lock()
     print("=== Mighty Mouse Perpetual Loop Starting ===")
-    loop = AutoresearchLoop()
-    loop.run_forever()
+    try:
+        loop = AutoresearchLoop()
+        loop.run_forever()
+    finally:
+        _release_pid_lock()
 
 
 if __name__ == "__main__":

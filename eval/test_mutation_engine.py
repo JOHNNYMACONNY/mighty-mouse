@@ -57,7 +57,7 @@ def test_timeout_dominance_freeze(tmp_path):
 
     engine = MutationEngine(results_path=results_path, mutation_log_path=mutation_log_path)
     record = engine.execute_mutation_cycle(current_tier="tier-1", replay_tiers=[])
-    
+
     assert record is not None
     assert record.decision == "FROZEN_TIMEOUT"
     assert os.path.exists(mutation_log_path)
@@ -164,3 +164,28 @@ def test_autoresearch_loop_initialization(tmp_path):
     )
     assert loop.state["mutation_count"] == 0
     assert "current_tier" in loop.state
+
+
+def test_mutate_candidate_seam():
+    from mighty_mouse.v2.seams import Candidate, Signal
+    engine = MutationEngine()
+
+    candidate = Candidate(
+        candidate_id="c_base",
+        generation_id="g_1",
+        mode="coding",
+        policy_data={"rules": "base_rules"},
+        status="evaluating"
+    )
+    signal = Signal(
+        signal_id="sig_1",
+        candidate_id="c_base",
+        outcome="fail",
+        duration_ms=120.0,
+        verifier_category="LOGIC"
+    )
+
+    mutated = engine.mutate_candidate(candidate, signal)
+    assert mutated.candidate_id == "c_base_m"
+    assert mutated.status == "pending"
+    assert mutated.generation_id == "g_1"

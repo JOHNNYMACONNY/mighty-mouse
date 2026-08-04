@@ -125,10 +125,17 @@ Every run MUST record a `conversationId`-to-`run-id` mapping file at `.autonomou
 
 ## 6. Code-Review Baseline & Diff Verification
 
-1. Freeze `baseline_revision` (git SHA via `git rev-parse HEAD`) during initialization (Stage A).
-2. When running `code-review`, compare `HEAD` against that exact `baseline_revision` SHA (e.g. `git diff <baseline_revision>...HEAD`), NOT the symbolic ref `HEAD`.
-3. Verify that the reviewed diff contains the intended implementation changes.
-4. If `implement` leaves uncommitted changes that the installed `code-review` skill cannot inspect, do NOT claim successful review. Resolve the uncommitted changes or return `BLOCKED_ENVIRONMENT`.
+1. **Flexible Baseline Selection**: Determine `baseline_revision` during initialization (Stage A):
+   - If `--baseline <ref>` is specified explicitly, use `<ref>`.
+   - If on a feature branch, default to `git merge-base HEAD origin/main` (or `HEAD~5` fallback) so all working-branch changes are audited.
+   - Otherwise, fallback to `git rev-parse HEAD`.
+2. When running `code-review`, compare `HEAD` against that exact `baseline_revision` SHA (e.g. `git diff <baseline_revision>...HEAD`), NOT symbolic `HEAD`.
+3. **Mandatory Pre-Flight Static Audits (Stage K/L)**:
+   - **Workspace Domain Vocabulary Audit**: Dynamically inspect local domain documents (`CONTEXT.md`, `AGENTS.md`, `docs/agents/domain.md`, `CONTRIBUTING.md`) for banned or preferred terms, and scan all modified/created files for compliance.
+   - **Process & Resource Enforcement Audit**: Inspect local guidelines (`AGENTS.md`, `CONTRIBUTING.md`, `README.md`) for process table inspection, single-instance concurrency, or lockfile rules, and verify runner scripts comply.
+   - **Language-Agnostic Code Safety Audit**: Perform AST or regex pattern checks across modified files for swallowed exceptions (`except ...: pass`, empty `catch {}`), unlogged error suppressions, or dangling resources.
+4. Verify that the reviewed diff contains the intended implementation changes.
+5. If `implement` leaves uncommitted changes that the installed `code-review` skill cannot inspect, do NOT claim successful review. Resolve the uncommitted changes or return `BLOCKED_ENVIRONMENT`.
 
 ---
 
@@ -141,12 +148,14 @@ Every run MUST record a `conversationId`-to-`run-id` mapping file at `.autonomou
   - User decision / irreversible action needed -> `BLOCKED_NEEDS_USER`
   - Missing environment / missing required tool -> `BLOCKED_ENVIRONMENT`
 
-### False-Positive Review Finding Closure
-A code-review finding may be closed without code changes ONLY when `.autonomous-delivery/runs/<run-id>/findings.yaml` records:
+### False-Positive & Repair Finding Persistence
+Every code-review finding MUST be recorded in `.autonomous-delivery/runs/<run-id>/findings.yaml` with explicit dispositions:
 - `finding_id`: Unique identifier
-- `counter_evidence`: Explicit technical justification
-- `verification_command_or_source`: Exact command or repo file proving false positive
-- `disposition`: `FALSE_POSITIVE`
+- `counter_evidence`: Technical justification or fix description
+- `verification_command_or_source`: Exact test command or file reference
+- `disposition`: `RESOLVED` or `FALSE_POSITIVE`
+
+A finding may be closed without code changes ONLY when recorded as `FALSE_POSITIVE` with explicit counter-evidence.
 
 ### Concrete No-Progress Definition
 A repair cycle counts as **no progress** when ALL of the following remain unchanged from the previous cycle:
@@ -165,8 +174,10 @@ Two consecutive no-progress cycles (or 6 total repair cycles) map directly to `F
 - Explicit acceptance criteria satisfied.
 - Required deterministic test checks passing (`combined_test_suite`).
 - Required UI/browser verification checks passing (`browser_verification`, if UI task).
+- Pre-flight domain vocabulary and process lock audits passed cleanly.
 - Zero unresolved actionable spec findings.
 - Zero unresolved critical or major standards findings.
+- All findings recorded with `RESOLVED` or `FALSE_POSITIVE` dispositions in `findings.yaml`.
 - Intended git diff reviewed against frozen `baseline_revision`.
 - Applicable authorized tracker work updated.
 

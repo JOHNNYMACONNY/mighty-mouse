@@ -17,8 +17,9 @@ from mighty_mouse.host.adapter import (
     HostAdapter,
 )
 from mighty_mouse.protocols import PROTOCOL_VERSION, get_protocol
-from mighty_mouse.v2.foundation import Mode, Scope, Signal, TaskCategory
+from mighty_mouse.v2.foundation import Scope
 from mighty_mouse.v2.signals import SignalLifecycle
+from mighty_mouse.v2.telemetry import SignalTelemetry
 from mighty_mouse.verifier import verify as verify_workspace
 
 mcp = FastMCP("mighty-mouse")
@@ -193,7 +194,9 @@ def run_verify_and_record(
         workspace, test_command, lint_command, build_command, allowed_paths, timeout_sec
     )
     category = _verifier_category(verification)
-    signal = Signal(
+    lifecycle = SignalLifecycle(resolved_state_dir)
+    telemetry = SignalTelemetry(lifecycle)
+    receipt_hash = telemetry.record(
         signal_id=f"signal-{secrets.randbelow(10**30):030d}",
         scope=scope,
         model_digest=model_digest,
@@ -204,8 +207,6 @@ def run_verify_and_record(
         verifier_category=category,
         verifier_result="passed" if verification["passed"] else "failed",
     )
-    lifecycle = SignalLifecycle(resolved_state_dir)
-    receipt_hash = lifecycle.collect(signal)
     return {
         "verification": verification,
         "signal_recorded": receipt_hash is not None,

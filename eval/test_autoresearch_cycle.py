@@ -1,0 +1,233 @@
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
+
+from eval.autoresearch_cycle import AutoresearchCycle, CycleResult
+from eval import perpetual_loop as perpetual_loop_module
+from eval.perpetual_loop import (
+    AutoresearchLoop,
+    CycleResult as LoopCycleResult,
+)
+from mighty_mouse.v2.seams import PolicyMutationSurface, VerificationResult
+
+
+def _state(*, mutation_count: int = 0) -> dict:
+    return {
+        "current_tier": "tier-1",
+        "mutation_count": mutation_count,
+        "total_iterations": 0,
+        "history": [],
+    }
+
+
+def _verification(score: float) -> VerificationResult:
+    return VerificationResult(
+        passed=score >= 1.0,
+        score=score,
+        details={"verifier_category": "LOGIC"},
+        verdict_category="PASS" if score >= 1.0 else "FAIL",
+    )
+
+
+def _cycle(
+    state: dict,
+    benchmark: dict | None,
+    *,
+    events: list[str],
+    verifier_adapter=None,
+    mutation_adapter=None,
+    mutation_engine=None,
+) -> AutoresearchCycle:
+    return AutoresearchCycle(
+        state=state,
+        tiers=["tier-1", "tier-2"],
+        run_benchmark=lambda _tier: benchmark,
+        update_telemetry=lambda *_args: events.append("telemetry"),
+        record_signal=lambda **_kwargs: events.append("signal") or "signal-1",
+        save_state=lambda: events.append("save"),
+        run_parity_report=lambda: events.append("parity"),
+        config_hash_provider=lambda: "config-hash",
+        replay_tiers_provider=lambda _tier: ["tier-0"],
+        mutation_engine=mutation_engine or Mock(),
+        verifier_adapter=verifier_adapter,
+        mutation_adapter=mutation_adapter,
+        mutation_surface=PolicyMutationSurface(frozenset({"reasoning.txt"})),
+    )
+
+
+def test_cycle_success_escalates_and_preserves_side_effect_order() -> None:
+    state = _state()
+    events: list[str] = []
+    cycle = _cycle(
+        state,
+        {"summary": {"success_rate": "4/4"}},
+        events=events,
+    )
+
+    result = cycle.run()
+
+    assert result.status == "success"
+    assert result.pass_rate == 100.0
+    assert result.signal_receipt == "signal-1"
+    assert result.state["current_tier"] == "tier-2"
+    assert events == ["telemetry", "signal", "save", "parity"]
+
+
+def test_cycle_rejection_runs_mutation_and_persists_state() -> None:
+    state = _state()
+    events: list[str] = []
+    mutation = Mock(return_value=SimpleNamespace(decision="REJECT"))
+    cycle = _cycle(
+        state,
+        {"summary": {"success_rate": "1/4"}},
+        events=events,
+        verifier_adapter=lambda _benchmark: _verification(0.25),
+        mutation_adapter=mutation,
+    )
+
+    result = cycle.run()
+
+    assert result.mutation_decision == "REJECT"
+    assert result.circuit_breaker_open is False
+    assert result.state["mutation_count"] == 1
+    mutation.assert_called_once()
+    assert events == ["telemetry", "signal", "save", "parity"]
+
+
+def test_cycle_mutation_noop_preserves_existing_result_shape() -> None:
+    state = _state()
+    events: list[str] = []
+    mutation_engine = Mock()
+    mutation_engine.execute_mutation_cycle.return_value = None
+    cycle = _cycle(
+        state,
+        {"summary": {"success_rate": "1/4"}},
+        events=events,
+        verifier_adapter=lambda _benchmark: _verification(0.25),
+        mutation_engine=mutation_engine,
+    )
+
+    result = cycle.run()
+
+    assert result.mutation_decision is None
+    assert result.state["mutation_count"] == 1
+    mutation_engine.execute_mutation_cycle.assert_called_once()
+
+
+def test_cycle_benchmark_failure_requests_retry_without_side_effects() -> None:
+    state = _state()
+    events: list[str] = []
+    cycle = _cycle(state, None, events=events)
+
+    result = cycle.run()
+
+    assert result == CycleResult(
+        status="retry_needed", tier="tier-1", state=state
+    )
+    assert events == []
+
+
+def test_cycle_evaluator_failure_preserves_exception_boundary() -> None:
+    state = _state()
+    events: list[str] = []
+
+    def fail_verification(_benchmark: dict) -> VerificationResult:
+        raise RuntimeError("evaluator unavailable")
+
+    cycle = _cycle(
+        state,
+        {"summary": {"success_rate": "1/4"}},
+        events=events,
+        verifier_adapter=fail_verification,
+    )
+
+    with pytest.raises(RuntimeError, match="evaluator unavailable"):
+        cycle.run()
+
+    assert state["total_iterations"] == 1
+    assert events == []
+
+
+def test_loop_cycle_state_write_and_restore(tmp_path: Path) -> None:
+    state_path = tmp_path / "state.json"
+    telemetry_path = tmp_path / "telemetry.json"
+    results_path = tmp_path / "results.json"
+    state_dir = tmp_path / "v2-state"
+    loop = AutoresearchLoop(
+        state_path=str(state_path),
+        telemetry_path=str(telemetry_path),
+        benchmark_results_path=str(results_path),
+        state_dir=str(state_dir),
+        benchmark_adapter=lambda _tier: {
+            "summary": {"success_rate": "4/4"}
+        },
+        verifier_adapter=lambda _benchmark: _verification(1.0),
+    )
+    loop._run_parity_report = Mock()
+
+    result = loop.run_single_cycle()
+
+    restored = AutoresearchLoop(
+        state_path=str(state_path),
+        telemetry_path=str(telemetry_path),
+        benchmark_results_path=str(results_path),
+        state_dir=str(state_dir),
+        benchmark_adapter=lambda _tier: None,
+    )
+    assert result.state["total_iterations"] == 1
+    assert result.state["current_tier"] == loop.tiers[1]
+    assert restored.state == result.state
+
+
+def test_run_forever_delegates_repeated_cycles(
+    monkeypatch, tmp_path: Path
+) -> None:
+    loop = AutoresearchLoop(
+        state_path=str(tmp_path / "state.json"),
+        telemetry_path=str(tmp_path / "telemetry.json"),
+        benchmark_results_path=str(tmp_path / "results.json"),
+        state_dir=str(tmp_path / "v2-state"),
+    )
+    run_cycle = Mock(
+        side_effect=[
+            CycleResult(status="success", tier="tier-1"),
+            CycleResult(status="success", tier="tier-1"),
+        ]
+    )
+    loop.run_single_cycle = run_cycle
+    monkeypatch.setattr(
+        perpetual_loop_module.signal, "signal", lambda *_args: None
+    )
+
+    def stop_after_two(_sleep_seconds: int) -> None:
+        if run_cycle.call_count == 2:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(perpetual_loop_module.time, "sleep", stop_after_two)
+
+    with pytest.raises(KeyboardInterrupt):
+        loop.run_forever(sleep_sec=0)
+
+    assert run_cycle.call_count == 2
+
+
+def test_loop_single_cycle_delegates_to_bounded_cycle(tmp_path: Path) -> None:
+    loop = AutoresearchLoop(
+        state_path=str(tmp_path / "state.json"),
+        telemetry_path=str(tmp_path / "telemetry.json"),
+        benchmark_results_path=str(tmp_path / "results.json"),
+        state_dir=str(tmp_path / "v2-state"),
+    )
+    expected = LoopCycleResult(status="retry_needed", tier="tier-1")
+    bounded_cycle = Mock()
+    bounded_cycle.run.return_value = expected
+    loop.build_cycle = Mock(return_value=bounded_cycle)
+
+    result = loop.run_single_cycle()
+
+    assert result is expected
+    loop.build_cycle.assert_called_once_with()
+    bounded_cycle.run.assert_called_once_with()
+    assert LoopCycleResult is CycleResult

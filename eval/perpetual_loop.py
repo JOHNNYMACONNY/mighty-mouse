@@ -8,7 +8,6 @@ import sys
 import hashlib
 from datetime import datetime
 from pathlib import Path
-from dataclasses import dataclass, field
 from typing import Callable, Dict, Any, Optional, List
 
 logger = logging.getLogger(__name__)
@@ -28,18 +27,26 @@ if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 
 
-from tier_utils import load_tier_sequence, parse_pass_rate
-from mutation_engine import CATEGORY_TO_SEGMENT, MutationEngine, MutationLogRecord, get_replay_tiers
+from tier_utils import load_tier_sequence  # noqa: E402
+from mutation_engine import (  # noqa: E402
+    CATEGORY_TO_SEGMENT,
+    MutationEngine,
+    MutationLogRecord,
+    get_replay_tiers,
+)
+try:
+    from .autoresearch_cycle import AutoresearchCycle, CycleResult
+except ImportError:
+    from autoresearch_cycle import AutoresearchCycle, CycleResult
 from mighty_mouse.v2.foundation import (
     ImmutableStateStore,
-    Mode,
-    Scope,
-    Signal,
-    TaskCategory,
 )
 from mighty_mouse.v2.signals import SignalLifecycle
 from mighty_mouse.v2.seams import PolicyMutationSurface, VerificationResult
-from mighty_mouse.v2.telemetry import TelemetryAggregator
+from mighty_mouse.v2.telemetry import (  # noqa: E402
+    SignalAggregator,
+    SignalTelemetry,
+)
 try:
     from .runner_lock import LOCK_FILE_PATH, SingleInstanceLock, SingleInstanceLockError
 except ImportError:
@@ -78,42 +85,6 @@ class AtomicState:
         os.replace(temp_path, self.path)
 
 
-@dataclass(frozen=True)
-class CycleResult:
-    """Typed result for one Harness cycle, with legacy mapping access."""
-
-    status: str
-    tier: str
-    pass_rate: float | None = None
-    benchmark: Dict[str, Any] | None = None
-    verification: VerificationResult | None = None
-    signal_receipt: str | None = None
-    mutation_decision: str | None = None
-    circuit_breaker_open: bool = False
-    state: Dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "status": self.status,
-            "tier": self.tier,
-            "pass_rate": self.pass_rate,
-            "benchmark": self.benchmark,
-            "verification": None if self.verification is None else {
-                "passed": self.verification.passed,
-                "score": self.verification.score,
-                "details": dict(self.verification.details),
-                "verdict_category": self.verification.verdict_category,
-            },
-            "signal_receipt": self.signal_receipt,
-            "mutation_decision": self.mutation_decision,
-            "circuit_breaker_open": self.circuit_breaker_open,
-            "state": dict(self.state),
-        }
-
-    def __getitem__(self, key: str) -> Any:
-        return self.to_dict()[key]
-
-
 def get_config_hash() -> str:
     if not os.path.exists(AGENT_CONFIG_PATH):
         return "unknown"
@@ -144,7 +115,10 @@ class AutoresearchLoop:
         self.tiers = load_tiers()
         self.store = ImmutableStateStore(state_dir=state_dir)
         self.signal_lifecycle = SignalLifecycle(state_dir)
-        self.telemetry_aggregator = TelemetryAggregator(store=self.store, signal_lifecycle=self.signal_lifecycle)
+        self.signal_telemetry = SignalTelemetry(self.signal_lifecycle)
+        self.telemetry_aggregator = SignalAggregator(
+            store=self.store, signal_lifecycle=self.signal_lifecycle
+        )
         self.benchmark_adapter = benchmark_adapter
         self.verifier_adapter = verifier_adapter
         self.mutation_adapter = mutation_adapter
@@ -164,10 +138,9 @@ class AutoresearchLoop:
         execution_profile_id: str = "codex-local",
         signal_counter: int = 100,
     ) -> Any:
-        """Collect a structured v2 Signal through the canonical SignalLifecycle."""
-        signal_id = f"signal-{signal_counter:03d}"
-        signal = Signal(
-            signal_id=signal_id,
+        """Record a structured v2 Signal through canonical SignalTelemetry."""
+        return self.signal_telemetry.record(
+            signal_id=f"signal-{signal_counter:03d}",
             scope=scope,
             model_digest=model_digest,
             execution_profile_id=execution_profile_id,
@@ -177,7 +150,6 @@ class AutoresearchLoop:
             verifier_category=verifier_category,
             verifier_result=verifier_result,
         )
-        return self.signal_lifecycle.collect(signal)
 
 
     @property
@@ -237,121 +209,36 @@ class AutoresearchLoop:
                 return json.load(f)
         return None
 
+    def build_cycle(self) -> AutoresearchCycle:
+        """Build one independently callable cycle over current loop state."""
+        return AutoresearchCycle(
+            state=self.state,
+            tiers=self.tiers,
+            run_benchmark=self.run_benchmark,
+            update_telemetry=self.update_telemetry,
+            record_signal=self.record_signal,
+            save_state=self.state_manager.save,
+            run_parity_report=self._run_parity_report,
+            config_hash_provider=get_config_hash,
+            replay_tiers_provider=get_replay_tiers,
+            mutation_engine=self.mutation_engine,
+            verifier_adapter=self.verifier_adapter,
+            mutation_adapter=self.mutation_adapter,
+            mutation_surface=self.mutation_surface,
+        )
+
     def run_single_cycle(self) -> CycleResult:
-        current_tier = self.state["current_tier"]
-        config_hash = get_config_hash()
-        
-        print(f"\n--- Cycle Start: {datetime.now().isoformat()} ---")
-        print(f"[*] Iteration: {self.state['total_iterations'] + 1}")
-        print(f"[*] Current Tier: {current_tier}")
-        print(f"[*] Config Hash: {config_hash}")
-        print(f"[*] Mutation Count: {self.state['mutation_count']}")
-        
-        bench_data = self.run_benchmark(current_tier)
-        if not bench_data:
-            print("[!] No benchmark data received.")
-            return CycleResult(status="retry_needed", tier=current_tier, state=dict(self.state))
+        """Run one bounded cycle through canonical AutoresearchCycle."""
+        return self.build_cycle().run()
 
-        self.state["total_iterations"] += 1
-        summary = bench_data.get("summary", {})
-        success_rate_str = summary.get("success_rate", "0/0")
-        if self.verifier_adapter is not None:
-            verification = self.verifier_adapter(bench_data)
-            pass_rate = verification.score * 100.0
-        else:
-            pass_rate = parse_pass_rate(summary) * 100.0
-            verification = VerificationResult(
-                passed=pass_rate >= 100.0,
-                score=pass_rate / 100.0,
-                details={"verifier_category": "LOGIC"},
-                verdict_category="PASS" if pass_rate >= 100.0 else "FAIL",
-            )
-
-        print(f"[*] Results: {success_rate_str} ({pass_rate:.1f}%)")
-        self.update_telemetry(current_tier, summary, config_hash)
-        
-        cycle_scope = Scope(
-            mode=Mode.AGENTIC,
-            repository="JOHNNYMACONNY/mighty-mouse",
-            task_category=TaskCategory.MAINTENANCE,
-            model_class="local-small",
-        )
-        cycle_outcome = "passed" if pass_rate >= 50.0 else "failed"
-        signal_receipt = self.record_signal(
-            scope=cycle_scope,
-            outcome=cycle_outcome,
-            signal_counter=max(1, self.state["total_iterations"]),
-        )
-
-        pinned_tier = os.getenv("MIGHTY_MOUSE_PIN_TIER")
-        mutation_decision = None
-        circuit_breaker_open = False
-        if pinned_tier and pinned_tier in self.tiers:
-            self.state["current_tier"] = pinned_tier
-            print(f"[!] Tier Pinned: maintaining {pinned_tier} per user Pin override.")
-            self.state["mutation_count"] = 0
-        elif pass_rate >= 90:
-            print("[+] Escalation criteria met (>=90%).")
-            self.state["mutation_count"] = 0
-            current_idx = self.tiers.index(current_tier) if current_tier in self.tiers else 0
-            if current_idx < len(self.tiers) - 1:
-                self.state["current_tier"] = self.tiers[current_idx + 1]
-                print(f"[+] Escalating to {self.state['current_tier']}")
-            else:
-                print("[*] Already at highest tier. Maintaining.")
-        elif pass_rate < 50:
-            print("[-] Mutation criteria met (<50%).")
-            self.state["mutation_count"] += 1
-            
-            if self.state["mutation_count"] >= 3:
-                circuit_breaker_open = True
-                print("[!] Circuit breaker triggered: 3 consecutive failing mutation cycles.")
-                current_idx = self.tiers.index(current_tier) if current_tier in self.tiers else 0
-                if current_idx > 0:
-                    self.state["current_tier"] = self.tiers[current_idx - 1]
-                    print(f"[!] Dropping back to {self.state['current_tier']}")
-                else:
-                    print("[!] Already at lowest tier. Staying here.")
-                self.state["mutation_count"] = 0
-            else:
-                print(f"[*] Triggering in-process mutation cycle (Attempt {self.state['mutation_count']}/3)...")
-                # Direct typed in-process execution instead of subprocess
-                replay_tiers = get_replay_tiers(current_tier)
-                if self.mutation_adapter is not None:
-                    record = self.mutation_adapter(verification, current_tier, replay_tiers)
-                else:
-                    record = self.mutation_engine.execute_mutation_cycle(
-                        current_tier=current_tier,
-                        replay_tiers=replay_tiers,
-                        mutation_surface=self.mutation_surface,
-                        verification_result=verification,
-                    )
-                mutation_decision = getattr(record, "decision", None)
-                print(f"[*] Mutation cycle finished. Record decision: {getattr(record, 'decision', record if record else 'None')}")
-        else:
-            print("[*] Performance in stable range (50% - 90%). Maintaining current tier.")
-            self.state["mutation_count"] = 0
-
-        self.state_manager.save()
-
-
+    def _run_parity_report(self) -> None:
         try:
             print("[*] Generating parity report...")
-            subprocess.run([sys.executable, "eval/parity_report.py"], capture_output=True)
-        except Exception as e:
-            logger.warning(f"Failed to generate parity report: {e}")
-
-        return CycleResult(
-            status="success",
-            tier=current_tier,
-            pass_rate=pass_rate,
-            benchmark=bench_data,
-            verification=verification,
-            signal_receipt=signal_receipt,
-            mutation_decision=mutation_decision,
-            circuit_breaker_open=circuit_breaker_open,
-            state=dict(self.state),
-        )
+            subprocess.run(
+                [sys.executable, "eval/parity_report.py"], capture_output=True
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to generate parity report: {exc}")
 
     def run_forever(self, sleep_sec: int = 10) -> None:
         print("[*] Mighty Mouse perpetual loop initiated. Press Ctrl+C to interrupt gracefully.")

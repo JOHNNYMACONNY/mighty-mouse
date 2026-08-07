@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 
-from mighty_mouse.v2.foundation import Mode, Scope, Signal, TaskCategory
+from mighty_mouse.v2.foundation import Mode, Scope, TaskCategory
 from mighty_mouse.v2.signals import SignalLifecycle
+from mighty_mouse.v2.telemetry import SignalTelemetry
 
 
 def run_signals(
@@ -16,6 +17,7 @@ def run_signals(
     verifier_result: str | None, rating: int | None, json_output: bool,
 ) -> None:
     lifecycle = SignalLifecycle(state_dir)
+    telemetry = SignalTelemetry(lifecycle)
     if action == "pause":
         lifecycle.pause()
         document = {"interface": "signals", "action": action, "collection_paused": True}
@@ -38,13 +40,23 @@ def run_signals(
         missing = [name for name, value in required.items() if value is None]
         if missing:
             raise ValueError(f"Signal collection requires: {', '.join(missing)}")
-        signal = Signal(
-            signal_id=signal_id, scope=Scope(Mode(mode), repository, TaskCategory(task_category), model_class),
-            model_digest=model_digest, execution_profile_id=execution_profile, outcome=outcome,
-            duration_ms=duration_ms, retry_count=retry_count, verifier_category=verifier_category,
-            verifier_result=verifier_result, rating=rating,
+        receipt_hash = telemetry.record(
+            signal_id=signal_id,
+            scope=Scope(
+                Mode(mode),
+                repository,
+                TaskCategory(task_category),
+                model_class,
+            ),
+            model_digest=model_digest,
+            execution_profile_id=execution_profile,
+            outcome=outcome,
+            duration_ms=duration_ms,
+            retry_count=retry_count,
+            verifier_category=verifier_category,
+            verifier_result=verifier_result,
+            rating=rating,
         )
-        receipt_hash = lifecycle.collect(signal)
         document = {"interface": "signals", "action": "collect", "collected": receipt_hash is not None}
 
     if json_output:

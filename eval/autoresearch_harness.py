@@ -32,7 +32,11 @@ def evaluate_candidate_lifecycle(pass_rate: float, current_tier: str) -> Literal
 from mighty_mouse.experiments.local_agent import OllamaChatClient
 from mighty_mouse.orchestrator.response_parser import ResponseParser
 from mighty_mouse.v2.seams import Candidate, PolicyMutationSurface, VerificationResult
-from eval.mutation_engine import CATEGORY_TO_SEGMENT, MutationLogRecord, PolicyMutationEngine
+from eval.mutation_engine import (  # noqa: E402
+    CATEGORY_TO_SEGMENT,
+    MutationLogRecord,
+)
+from eval.policy_mutation_engine import PolicyMutationEngine  # noqa: E402
 from eval.perpetual_loop import AutoresearchLoop
 from eval.run_local_model_pilot import load_task
 

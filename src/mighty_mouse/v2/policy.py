@@ -30,7 +30,7 @@ def _build_scope_key(scope: Scope) -> str:
 
 
 class PolicyLifecycle:
-    """Manages Policy state transitions, pin overrides, degraded quality flags, and rollbacks."""
+    """Legacy threshold-policy adapter; unsafe to contract until migrated."""
 
     def __init__(
         self,
@@ -107,6 +107,8 @@ class PolicyLifecycle:
         if execution_profile is None:
             execution_profile = ExecutionProfile(profile_id="default", capabilities=frozenset())
 
+        # Keep legacy threshold and degradation behavior while routing durable
+        # selection through the canonical PolicyEngine compatibility seam.
         selection = self.store.select_policy(
             scope=scope,
             model_identity=model_identity,
@@ -135,7 +137,7 @@ def resolve_effective_policy(
     min_pass_rate_threshold: float = 0.50,
     degraded_pass_rate_threshold: float = 0.75,
 ) -> PolicySelection:
-    """High-level seam for resolving effective policy for a given run Scope."""
+    """Legacy compatibility seam; unsafe to contract until migrated."""
     lifecycle = PolicyLifecycle(
         store=store,
         pinned_policies=pinned_policies,
@@ -149,5 +151,3 @@ def resolve_effective_policy(
         execution_profile=execution_profile,
         recent_pass_rate=recent_pass_rate,
     )
-
-

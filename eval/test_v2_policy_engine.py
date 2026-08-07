@@ -4,6 +4,7 @@ import pytest
 from pathlib import Path
 
 from mighty_mouse.v2.engine import PolicyEngine
+from mighty_mouse.v2.foundation import ImmutableStateStore
 from mighty_mouse.v2.records import (
     Mode,
     Scope,
@@ -11,6 +12,7 @@ from mighty_mouse.v2.records import (
     ModelIdentity,
     ExecutionProfile,
     Policy,
+    PolicySelection,
     Candidate,
     Signal,
     EvidenceBundle,
@@ -20,6 +22,74 @@ from mighty_mouse.v2.records import (
     ExperimentOutcome,
     ExperimentDecision,
 )
+
+
+def test_state_store_selection_compatibility_delegates_to_policy_engine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "a" * 64)
+    profile = ExecutionProfile("codex-local", frozenset({"test"}))
+    expected = PolicySelection(
+        policy=Policy("compatibility-policy", Mode.CODING, "test"),
+        source="test",
+        reason="compatibility seam",
+        record_hash=None,
+    )
+    calls: list[tuple[Scope, ModelIdentity, ExecutionProfile]] = []
+
+    def select_policy(self, scope, model_identity, execution_profile):
+        calls.append((scope, model_identity, execution_profile))
+        return expected
+
+    monkeypatch.setattr(PolicyEngine, "select_policy", select_policy)
+
+    selection = ImmutableStateStore(tmp_path).select_policy(
+        scope=scope,
+        model_identity=model_id,
+        execution_profile=profile,
+    )
+
+    assert selection is expected
+    assert calls == [(scope, model_id, profile)]
+
+
+def test_status_selection_uses_policy_engine_seam(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "a" * 64)
+    profile = ExecutionProfile("codex-local", frozenset({"test"}))
+    expected = PolicySelection(
+        policy=Policy("status-policy", Mode.CODING, "test"),
+        source="test",
+        reason="status compatibility seam",
+        record_hash=None,
+    )
+    calls: list[tuple[Scope, ModelIdentity, ExecutionProfile]] = []
+
+    def select_policy(self, scope, model_identity, execution_profile):
+        calls.append((scope, model_identity, execution_profile))
+        return expected
+
+    monkeypatch.setattr(PolicyEngine, "select_policy", select_policy)
+
+    status = PolicyEngine(tmp_path).get_status(
+        scope, model_id, profile
+    )
+
+    assert status["selection"]["policy_id"] == "status-policy"
+    assert calls == [(scope, model_id, profile)]
 
 
 def test_policy_engine_lifecycle(tmp_path: Path) -> None:

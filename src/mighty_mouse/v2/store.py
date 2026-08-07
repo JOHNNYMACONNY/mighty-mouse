@@ -244,52 +244,21 @@ class ImmutableStateStore:
         if not value.eligible_successor.candidate.model_digest:
             raise ValueError("Promotion requires a complete Model Identity")
 
-    def select_policy(self, *, scope: Scope, model_identity: ModelIdentity, execution_profile: ExecutionProfile) -> PolicySelection:
-        if not model_identity.is_complete:
-            return self._safe_baseline(scope.mode, "model identity is incomplete")
-        if not execution_profile.is_complete:
-            return self._safe_baseline(scope.mode, "execution profile is incomplete")
+    def select_policy(
+        self,
+        *,
+        scope: Scope,
+        model_identity: ModelIdentity,
+        execution_profile: ExecutionProfile,
+    ) -> PolicySelection:
+        """Compatibility adapter for canonical PolicyEngine selection."""
+        from .engine import PolicyEngine
 
-        records = self.records()
-        pin = next((
-            record.value for record in reversed(records)
-            if isinstance(record.value, Pin)
-            and record.value.scope == scope
-            and record.value.model_digest == model_identity.artifact_digest
-            and record.value.execution_profile_id == execution_profile.profile_id
-        ), None)
-        if pin is not None:
-            pinned = self._promotion_candidate(pin.candidate_id, scope, model_identity, execution_profile, records)
-            if pinned is not None:
-                candidate, record_hash = pinned
-                return PolicySelection(candidate.policy, "project_improvement", "exact compatible pinned Champion", record_hash)
-            return self._safe_baseline(scope.mode, "pinned Champion is unavailable")
-        rolled_back_promotions = {
-            record.value.promotion_id for record in records if isinstance(record.value, Rollback)
-        }
-        restricted_candidates = {
-            record.value.candidate_id for record in records
-            if isinstance(record.value, Restriction)
-            and record.value.scope == scope
-            and record.value.model_digest == model_identity.artifact_digest
-            and record.value.execution_profile_id == execution_profile.profile_id
-        }
-        for record in reversed(records):
-            if not isinstance(record.value, Promotion):
-                continue
-            if record.record_hash in rolled_back_promotions:
-                continue
-            candidate = record.value.eligible_successor.candidate
-            if candidate.candidate_id in restricted_candidates:
-                continue
-            if candidate.scope != scope or candidate.model_digest != model_identity.artifact_digest:
-                continue
-            if not candidate.required_capabilities.issubset(execution_profile.capabilities):
-                continue
-            if execution_profile.profile_id not in candidate.compatible_execution_profiles:
-                continue
-            return PolicySelection(candidate.policy, "project_improvement", "exact compatible Champion", record.record_hash)
-        return self._safe_baseline(scope.mode, "no exact compatible Champion")
+        return PolicyEngine(self.state_dir).select_policy(
+            scope=scope,
+            model_identity=model_identity,
+            execution_profile=execution_profile,
+        )
 
     def _promotion_candidate(
         self,

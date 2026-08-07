@@ -144,9 +144,19 @@ _Avoid_: Hidden active configuration, unexplained default
 A deep module with a compact public interface (`select_policy`, `record_signal`, `promote_candidate`, `get_status`, `pin`, `preview`, `rollback`) that encapsulates state persistence, policy resolution, restriction enforcement, user control actions, and promotion gates.
 _Avoid_: Raw state store, state manager, policy router
 
+Policy selection ownership: `PolicyEngine.select_policy` owns canonical selection semantics and uses private store record queries only for persistence. `ImmutableStateStore.select_policy` remains temporary compatibility adapter. `PolicyLifecycle` and `resolve_effective_policy` retain legacy pass-rate and degradation semantics and remain unsafe to contract until separately migrated without output drift.
+
+Status projection ownership: `mighty_mouse.v2.status.build_status_document` serves as canonical status projection seam. `PolicyEngine.get_status` and `status_document` remain compatibility adapters; CLI and HostAdapter render or forward the canonical document, while MCP currently exposes no status tool.
+
 **Policy Mutation Engine**:
 A deep module with a minimal public interface (`mutate_candidate`) that applies versioned policy mutations to a Candidate governed strictly by the Policy Mutation Surface.
 _Avoid_: Scatter-gather prompt tweak scripts, unstructured prompt edits
+
+Mutation ownership: `eval.policy_mutation_engine.PolicyMutationEngine` owns canonical typed Candidate mutation and mutation generation. `eval.mutation_engine.MutationEngine` remains a compatibility/orchestration adapter; `execute_mutation_cycle` still owns failure analysis, direct segment writes/restores, benchmark/replay subprocesses, threshold decisions, and mutation-log persistence. Those legacy operations remain unsafe to contract until migrated with equivalent state, telemetry, runner-lock, and filesystem behavior.
+
+Signal telemetry ownership: `mighty_mouse.v2.telemetry.SignalTelemetry` owns lifecycle-backed Signal construction, emission, and aggregate queries. `SignalAggregator` and `TelemetryAggregator` remain compatibility facades; `_LegacyStoreSignalTelemetry` remains an internal raw-`ImmutableStateStore` fallback for legacy callers and tests. `SignalLifecycle.collect` remains the already-constructed Signal persistence adapter. `eval/perpetual_loop.py` legacy `metric_telemetry.json` remains a separate evaluator metric format and stays outside v2 Signal migration.
+
+Autoresearch cycle ownership: `eval.autoresearch_cycle.AutoresearchCycle` owns one bounded benchmark, verification, telemetry, Signal, threshold, mutation, state-save, and parity-report cycle. `AutoresearchLoop.build_cycle` and `run_single_cycle` remain compatibility adapters; `run_forever` and `autoresearch_harness` own repetition and entry-point lock scope. Policy selection and status projection remain external canonical seams because existing cycle behavior does not call either directly. Benchmark subprocesses, the no-adapter benchmark-summary verifier fallback, fixed legacy loop Signal metadata/scope, legacy `execute_mutation_cycle`, metric telemetry, parity subprocess, and runner lock remain intentionally outside contraction. Loop callers pass an explicit Policy Mutation Surface; direct legacy mutation calls may omit one until their compatibility contract is separately migrated.
 
 **Autoresearch Harness**:
 The autonomous evaluation driver enforcing single-instance process locking and managing the Fail -> Mutate, Pass -> Expand candidate iteration loop.

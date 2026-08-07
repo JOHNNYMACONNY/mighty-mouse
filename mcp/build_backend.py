@@ -11,7 +11,13 @@ from setuptools import build_meta as _setuptools
 
 
 _ROOT = Path(__file__).resolve().parent
-_RELEASE_INPUTS = ("pyproject.toml", "MANIFEST.in", "build_backend.py", "src")
+_RELEASE_INPUTS = (
+    "pyproject.toml",
+    "MANIFEST.in",
+    "build_backend.py",
+    "README.md",
+    "src",
+)
 
 
 def _ignore(_directory: str, names: list[str]) -> set[str]:

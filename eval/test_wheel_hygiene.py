@@ -40,6 +40,7 @@ def test_source_distributions_include_their_build_backends():
     assert "include build_backend.py" in Path("mcp/MANIFEST.in").read_text().splitlines()
     assert '"build_backend.py"' in Path("build_backend.py").read_text()
     assert '"build_backend.py"' in Path("mcp/build_backend.py").read_text()
+    assert '"README.md"' in Path("mcp/build_backend.py").read_text()
 
 
 @pytest.mark.parametrize("backend_path", [Path("build_backend.py"), Path("mcp/build_backend.py")])

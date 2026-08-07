@@ -13,6 +13,7 @@ from mighty_mouse.protocols import get_protocol
 
 MCP_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "mcp", "src"))
 sys.path.insert(0, MCP_SRC)
+GEMMA_MODEL = "gemma4:e4b"
 
 try:
     from mcp.server.fastmcp import FastMCP  # noqa: F401
@@ -145,15 +146,15 @@ def test_setup_workspace_pins_ollama_identity_without_manual_json(tmp_path, monk
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
     digest = "sha256:" + "f" * 64
-    write_ollama_manifest(home, "gpt-oss:20b", digest)
+    write_ollama_manifest(home, GEMMA_MODEL, digest)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
 
     result = run_setup_workspace(
         str(workspace),
         repository="JOHNNYMACONNY/mighty-mouse",
-        ollama_model="gpt-oss:20b",
-        model_class="local-large",
+        ollama_model=GEMMA_MODEL,
+        model_class="local-small",
         effective_context_limit=8192,
         runtime_kind="cline",
         runtime_version="3.32.2",
@@ -166,8 +167,8 @@ def test_setup_workspace_pins_ollama_identity_without_manual_json(tmp_path, monk
     assert run_setup_workspace(
         str(workspace),
         repository="JOHNNYMACONNY/mighty-mouse",
-        ollama_model="gpt-oss:20b",
-        model_class="local-large",
+        ollama_model=GEMMA_MODEL,
+        model_class="local-small",
         effective_context_limit=8192,
         runtime_kind="cline",
         runtime_version="3.32.2",
@@ -175,11 +176,15 @@ def test_setup_workspace_pins_ollama_identity_without_manual_json(tmp_path, monk
 
     with pytest.raises(ValueError, match="runtime kind"):
         run_setup_workspace(
-            str(workspace), repository="JOHNNYMACONNY/mighty-mouse", ollama_model="gpt-oss:20b",
-            model_class="local-large", runtime_kind="unknown", runtime_version="unknown",
+            str(workspace),
+            repository="JOHNNYMACONNY/mighty-mouse",
+            ollama_model=GEMMA_MODEL,
+            model_class="local-small",
+            runtime_kind="unknown",
+            runtime_version="unknown",
         )
 
-    write_ollama_manifest(home, "gpt-oss:20b", "sha256:" + "b" * 64)
+    write_ollama_manifest(home, GEMMA_MODEL, "sha256:" + "b" * 64)
     from mighty_mouse_mcp.server import run_verify_and_record
     with pytest.raises(ValueError, match="model identity changed"):
         run_verify_and_record(str(workspace))
@@ -277,38 +282,59 @@ def test_stdio_server_lists_and_calls_tools():
     from mcp.client.stdio import stdio_client
 
     async def exercise_server():
-        parameters = StdioServerParameters(
-            command=sys.executable,
-            args=["-m", "mighty_mouse_mcp.server"],
-            env={
-                **os.environ,
-                "PYTHONPATH": os.pathsep.join(
-                    filter(None, [os.path.abspath("src"), MCP_SRC, os.environ.get("PYTHONPATH", "")])
-                ),
-            },
-        )
-        async with stdio_client(parameters) as streams:
-            async with ClientSession(*streams) as session:
-                await session.initialize()
-                listed = await session.list_tools()
-                assert {tool.name for tool in listed.tools} == {
-                    "protocol", "verify", "verify_and_record", "setup_workspace", "recording_audit",
-                }
-                response = await session.call_tool(
-                    "protocol",
-                    {"task_description": "Change one label", "complexity": "low"},
-                )
-                assert not response.isError
-                payload = json.loads(response.content[0].text)
-                assert payload["protocol_version"] == "v9.1"
-                with tempfile.TemporaryDirectory() as workspace:
+        with (
+            tempfile.TemporaryDirectory() as home,
+            tempfile.TemporaryDirectory() as workspace,
+        ):
+            write_ollama_manifest(
+                Path(home), GEMMA_MODEL, "sha256:" + "c" * 64
+            )
+            parameters = StdioServerParameters(
+                command=sys.executable,
+                args=["-m", "mighty_mouse_mcp.server"],
+                env={
+                    **os.environ,
+                    "HOME": home,
+                    "PYTHONPATH": os.pathsep.join(
+                        filter(
+                            None,
+                            [
+                                os.path.abspath("src"),
+                                MCP_SRC,
+                                os.environ.get("PYTHONPATH", ""),
+                            ],
+                        )
+                    ),
+                },
+            )
+            async with stdio_client(parameters) as streams:
+                async with ClientSession(*streams) as session:
+                    await session.initialize()
+                    listed = await session.list_tools()
+                    assert {tool.name for tool in listed.tools} == {
+                        "protocol",
+                        "verify",
+                        "verify_and_record",
+                        "setup_workspace",
+                        "recording_audit",
+                    }
+                    response = await session.call_tool(
+                        "protocol",
+                        {
+                            "task_description": "Change one label",
+                            "complexity": "low",
+                        },
+                    )
+                    assert not response.isError
+                    payload = json.loads(response.content[0].text)
+                    assert payload["protocol_version"] == "v9.1"
                     setup = await session.call_tool(
                         "setup_workspace",
                         {
                             "workspace": workspace,
                             "repository": "JOHNNYMACONNY/mighty-mouse",
-                            "ollama_model": "gpt-oss:20b",
-                            "model_class": "local-large",
+                            "ollama_model": GEMMA_MODEL,
+                            "model_class": "local-small",
                             "effective_context_limit": 8192,
                             "runtime_kind": "cline",
                             "runtime_version": "3.32.2",

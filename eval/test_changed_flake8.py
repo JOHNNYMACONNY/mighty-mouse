@@ -68,7 +68,9 @@ def test_main_fails_when_flake8_process_fails(monkeypatch, capsys):
     monkeypatch.setattr(
         changed_flake8,
         "_run_flake8",
-        lambda _paths: subprocess.CompletedProcess([], 2, "", "flake8 crashed"),
+        lambda _paths: subprocess.CompletedProcess(
+            [], 2, "", "flake8 crashed"
+        ),
     )
 
     assert changed_flake8.main(["--base", "base"]) == 2
@@ -90,7 +92,9 @@ def test_main_fails_when_flake8_writes_stderr(monkeypatch, capsys):
     monkeypatch.setattr(
         changed_flake8,
         "_run_flake8",
-        lambda _paths: subprocess.CompletedProcess([], 0, "", "unexpected warning"),
+        lambda _paths: subprocess.CompletedProcess(
+            [], 0, "", "unexpected warning"
+        ),
     )
 
     assert changed_flake8.main(["--base", "base"]) == 2

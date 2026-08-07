@@ -44,11 +44,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Build both wheels and source distributions
+      - name: Build both wheels
         run: |
           python -m pip install build
-          python -m build --wheel --sdist --outdir dist .
-          python -m build --wheel --sdist --outdir dist ./mcp
+          python -m build --wheel --outdir dist .
+          python -m build --wheel --outdir dist ./mcp
+      - name: Build both source distributions
+        run: |
+          python -m build --sdist --outdir dist .
+          python -m build --sdist --outdir dist ./mcp
       - name: Check source distribution contents
         run: |
           python - <<'PY'

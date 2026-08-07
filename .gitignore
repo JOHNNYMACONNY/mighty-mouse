@@ -14,6 +14,7 @@ eval/mock_agent_for_test.py
 logs/
 workspaces/
 scratch/
+/CHECKLIST.md
 
 # Local run artifacts
 .autonomous-delivery/

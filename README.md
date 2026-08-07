@@ -263,10 +263,15 @@ The runner requires exactly 15 frozen tasks, makes one generation request per ta
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m pytest -q
-python -m build
+PYTHONPATH=eval:src:mcp/src .venv/bin/python scripts/check_changed_flake8.py --base HEAD^
+.venv/bin/python -m build
 ```
 
 The MCP package is built separately from `mcp/`. Release verification installs both wheels into a clean environment and exercises an actual stdio MCP session.
+
+Default Flake8 reports a pre-existing repository baseline. Changed-line lint
+checks run through `scripts/check_changed_flake8.py` and fail only for new
+violations introduced by a Git diff. See [`docs/agents/quality.md`](docs/agents/quality.md).
 
 GitHub Actions runs the complete test suite on every supported Python version
 for pull requests and pushes to `main`, with both the core and MCP packages

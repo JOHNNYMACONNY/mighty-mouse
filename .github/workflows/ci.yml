@@ -23,6 +23,15 @@ jobs:
           cache: pip
       - name: Install both distributions and test dependencies
         run: python -m pip install -e '.[dev]' -e ./mcp
+      - name: Check changed Python lint
+        env:
+          LINT_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          BASE="$LINT_BASE"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE="$(git rev-parse HEAD^)"
+          fi
+          python scripts/check_changed_flake8.py --base "$BASE"
       - name: Run complete test suite
         run: python -m pytest
 

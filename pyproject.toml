@@ -27,6 +27,7 @@ Issues = "https://github.com/JOHNNYMACONNY/mighty-mouse/issues"
 dev = [
     "pytest",
     "build",
+    "flake8",
     "mcp>=1.0,<2",
     "tomli>=2; python_version < '3.11'",
 ]

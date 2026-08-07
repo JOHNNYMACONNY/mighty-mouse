@@ -1,10 +1,12 @@
 from pathlib import Path
+import subprocess
 import sys
 
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
+import check_changed_flake8 as changed_flake8  # noqa: E402
 from check_changed_flake8 import (  # noqa: E402
     Violation,
     filter_changed_violations,
@@ -49,3 +51,47 @@ new file mode 100644
 """
 
     assert parse_changed_lines(diff) == {"new.py": {1, 2}}
+
+
+def test_main_fails_when_flake8_process_fails(monkeypatch, capsys):
+    diff = """diff --git a/example.py b/example.py
+--- a/example.py
++++ b/example.py
+@@ -0,0 +1 @@
++value = 1
+"""
+    monkeypatch.setattr(
+        changed_flake8,
+        "_git_diff",
+        lambda _base: subprocess.CompletedProcess([], 0, diff, ""),
+    )
+    monkeypatch.setattr(
+        changed_flake8,
+        "_run_flake8",
+        lambda _paths: subprocess.CompletedProcess([], 2, "", "flake8 crashed"),
+    )
+
+    assert changed_flake8.main(["--base", "base"]) == 2
+    assert "flake8 crashed" in capsys.readouterr().err
+
+
+def test_main_fails_when_flake8_writes_stderr(monkeypatch, capsys):
+    diff = """diff --git a/example.py b/example.py
+--- a/example.py
++++ b/example.py
+@@ -0,0 +1 @@
++value = 1
+"""
+    monkeypatch.setattr(
+        changed_flake8,
+        "_git_diff",
+        lambda _base: subprocess.CompletedProcess([], 0, diff, ""),
+    )
+    monkeypatch.setattr(
+        changed_flake8,
+        "_run_flake8",
+        lambda _paths: subprocess.CompletedProcess([], 0, "", "unexpected warning"),
+    )
+
+    assert changed_flake8.main(["--base", "base"]) == 2
+    assert "unexpected warning" in capsys.readouterr().err

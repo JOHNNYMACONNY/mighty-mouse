@@ -17,6 +17,8 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -42,11 +44,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Build both wheels
+      - name: Build both wheels and source distributions
         run: |
           python -m pip install build
-          python -m build --wheel --outdir dist .
-          python -m build --wheel --outdir dist ./mcp
+          python -m build --wheel --sdist --outdir dist .
+          python -m build --wheel --sdist --outdir dist ./mcp
+      - name: Check source distribution contents
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tarfile
+
+          for archive_path in sorted(Path("dist").glob("*.tar.gz")):
+              with tarfile.open(archive_path, "r:gz") as archive:
+                  names = archive.getnames()
+              assert not any(Path(name).name.startswith("._") for name in names)
+              if archive_path.name.startswith("mighty_mouse_mcp-"):
+                  assert any(name.endswith("/README.md") for name in names)
+          PY
       - name: Install only built wheels in a clean environment
         run: |
           python -m venv /tmp/mighty-mouse-wheel-venv
@@ -64,3 +79,35 @@ jobs:
           mkdir -p /tmp/mighty-mouse-verify-smoke
           "$CLI" verify /tmp/mighty-mouse-verify-smoke --test-command "$PY -c 'print(\"wheel smoke passed\")'" --json | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d['interface']=='verify' and d['passed'] is True"
           "$AUDIT" /tmp/mighty-mouse-verify-smoke --receipt-hash deadbeef --after 2026-01-01T00:00:00+00:00 >/dev/null || test $? -eq 1
+          "$PY" - <<'PY'
+          import asyncio
+          import os
+          import sys
+
+          from mcp import ClientSession, StdioServerParameters
+          from mcp.client.stdio import stdio_client
+
+
+          async def main():
+              parameters = StdioServerParameters(
+                  command=sys.executable,
+                  args=["-m", "mighty_mouse_mcp.server"],
+                  env=os.environ.copy(),
+              )
+              async with stdio_client(parameters) as streams:
+                  async with ClientSession(*streams) as session:
+                      await session.initialize()
+                      tools = await session.list_tools()
+                      names = {tool.name for tool in tools.tools}
+                      expected = {
+                          "protocol",
+                          "verify",
+                          "setup_workspace",
+                          "recording_audit",
+                          "verify_and_record",
+                      }
+                      assert expected.issubset(names), sorted(expected - names)
+
+
+          asyncio.run(main())
+          PY

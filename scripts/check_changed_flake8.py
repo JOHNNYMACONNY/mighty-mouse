@@ -166,6 +166,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     flake8_result = _run_flake8(paths)
+    if flake8_result.returncode not in (0, 1) or flake8_result.stderr:
+        print(
+            f"Flake8 failed with exit code {flake8_result.returncode}.",
+            file=sys.stderr,
+        )
+        if flake8_result.stderr:
+            print(flake8_result.stderr, file=sys.stderr, end="")
+        return 2
+
     violations, unparsed = parse_violations(flake8_result.stdout)
     if unparsed:
         print("Unable to parse Flake8 output:", file=sys.stderr)

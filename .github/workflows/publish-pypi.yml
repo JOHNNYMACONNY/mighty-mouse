@@ -1,0 +1,180 @@
+name: Publish packages to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Immutable release tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build and verify release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+
+      - name: Validate immutable release
+        env:
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_TAG" in
+            v*) ;;
+            *) echo "Release ref must start with v: $RELEASE_TAG" >&2; exit 1 ;;
+          esac
+          git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$(git rev-parse HEAD)"
+          python - "$RELEASE_TAG" <<'PY'
+          from pathlib import Path
+          import sys
+          import tomllib
+
+          tag = sys.argv[1]
+          expected = tag.removeprefix("v")
+          root = tomllib.loads(Path("pyproject.toml").read_text())
+          mcp = tomllib.loads(Path("mcp/pyproject.toml").read_text())
+          assert root["project"]["version"] == expected
+          assert mcp["project"]["version"] == expected
+          assert "pydantic-settings>=2.5.2,<2.15" in root["project"]["optional-dependencies"]["dev"]
+          assert "pydantic-settings>=2.5.2,<2.15" in mcp["project"]["dependencies"]
+          assert f"mighty-mouse>={expected},<0.3" in mcp["project"]["dependencies"]
+          print(f"release {tag} -> version {expected}")
+          PY
+
+      - name: Install build tools
+        run: python -m pip install build
+
+      - name: Build wheels and source distributions
+        run: |
+          set -euo pipefail
+          python -m build --wheel --sdist --outdir dist .
+          python -m build --wheel --sdist --outdir dist ./mcp
+
+      - name: Check distribution contents
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import tarfile
+
+          version = os.environ["RELEASE_TAG"].removeprefix("v")
+          expected = {
+              f"mighty_mouse-{version}-py3-none-any.whl",
+              f"mighty_mouse-{version}.tar.gz",
+              f"mighty_mouse_mcp-{version}-py3-none-any.whl",
+              f"mighty_mouse_mcp-{version}.tar.gz",
+          }
+          actual = {path.name for path in Path("dist").iterdir() if path.is_file()}
+          assert actual == expected, sorted(actual)
+          for archive_path in sorted(Path("dist").glob("*.tar.gz")):
+              with tarfile.open(archive_path, "r:gz") as archive:
+                  names = archive.getnames()
+              assert not any(Path(name).name.startswith("._") for name in names)
+              if archive_path.name.startswith("mighty_mouse_mcp-"):
+                  assert any(name.endswith("/README.md") for name in names)
+          print("distribution contents clean")
+          PY
+
+      - name: Smoke test built wheels outside checkout
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/mighty-mouse-wheel-venv
+          PY=/tmp/mighty-mouse-wheel-venv/bin/python
+          CLI=/tmp/mighty-mouse-wheel-venv/bin/mighty-mouse
+          AUDIT=/tmp/mighty-mouse-wheel-venv/bin/mighty-mouse-signal-audit
+          "$PY" -m pip install dist/mighty_mouse-*.whl dist/mighty_mouse_mcp-*.whl
+          VERIFY_DIR=/tmp/mighty-mouse-wheel-verify
+          mkdir -p "$VERIFY_DIR"
+          env PYTHONPATH="" PYTHONWARNINGS=error "$PY" -c 'import os; from importlib.metadata import version; import mighty_mouse, mighty_mouse_mcp.server, mighty_mouse_mcp.hooks; expected = os.environ["RELEASE_TAG"].removeprefix("v"); assert version("mighty-mouse") == expected; assert version("mighty-mouse-mcp") == expected'
+          env PYTHONPATH="" "$CLI" --help >/dev/null
+          protocol_json=$(env PYTHONPATH="" "$CLI" protocol "CI packaging smoke" --json)
+          printf '%s' "$protocol_json" | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d['interface']=='protocol' and d['schema_version']==1"
+          verify_json=$(env PYTHONPATH="" "$CLI" verify "$VERIFY_DIR" --test-command "$PY -c 'print(123)'" --json)
+          printf '%s' "$verify_json" | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d['interface']=='verify' and d['passed'] is True"
+          set +e
+          env PYTHONPATH="" "$AUDIT" "$VERIFY_DIR" --receipt-hash deadbeef --after 2026-01-01T00:00:00+00:00 >/dev/null
+          audit_status=$?
+          set -e
+          test "$audit_status" -eq 0 -o "$audit_status" -eq 1
+          env PYTHONPATH="" PYTHONWARNINGS=error "$PY" - <<'PY'
+          import asyncio
+          import os
+          import sys
+
+          from mcp import ClientSession, StdioServerParameters
+          from mcp.client.stdio import stdio_client
+
+          async def main():
+              parameters = StdioServerParameters(
+                  command=sys.executable,
+                  args=["-m", "mighty_mouse_mcp.server"],
+                  env=os.environ.copy(),
+              )
+              async with stdio_client(parameters) as streams:
+                  async with ClientSession(*streams) as session:
+                      await session.initialize()
+                      tools = await session.list_tools()
+                      names = {tool.name for tool in tools.tools}
+                      expected = {
+                          "protocol",
+                          "verify",
+                          "setup_workspace",
+                          "recording_audit",
+                          "verify_and_record",
+                      }
+                      assert expected.issubset(names), sorted(expected - names)
+
+          asyncio.run(main())
+          PY
+
+      - name: Upload verified distributions
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pypi-dist-${{ env.RELEASE_TAG }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download verified distributions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: pypi-dist-${{ env.RELEASE_TAG }}
+          path: dist
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Publish with PyPI Trusted Publishing
+        run: uv publish --trusted-publishing always dist/*

@@ -40,6 +40,7 @@ except ImportError:
     from autoresearch_cycle import AutoresearchCycle, CycleResult
 from mighty_mouse.v2.foundation import (
     ImmutableStateStore,
+    Scope,
 )
 from mighty_mouse.v2.signals import SignalLifecycle
 from mighty_mouse.v2.seams import PolicyMutationSurface, VerificationResult

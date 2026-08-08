@@ -33,13 +33,13 @@ except ImportError:
         _allowed_segments,
     )  # noqa: F401
 
-try:
+if __package__:
     from .mutation_cycle import (
         FailureAnalysis,
         MutationCycleCoordinator,
         MutationLogRecord,
     )
-except ImportError:
+else:
     from mutation_cycle import (
         FailureAnalysis,
         MutationCycleCoordinator,
@@ -164,7 +164,7 @@ class MutationEngine:
         self,
         current_tier: Optional[str] = None,
         replay_tiers: Optional[List[str]] = None,
-        mutation_surface: Optional[Dict[str, Any]] = None,
+        mutation_surface: Optional[object] = None,
         verification_result: Optional["VerificationResult"] = None,
     ) -> Optional[MutationLogRecord]:
         print("=== Mighty Mouse Mutation Engine Starting ===")
@@ -192,7 +192,7 @@ class MutationEngine:
         self,
         candidate: "Candidate",
         verification: "VerificationResult",
-        mutation_surface: Optional[Dict[str, Any]] = None,
+        mutation_surface: Optional[object] = None,
     ) -> "Candidate":
         """Delegate typed Candidate mutation to canonical engine."""
         return self.policy_mutation_engine.mutate_candidate(

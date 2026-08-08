@@ -76,7 +76,7 @@ class MutationCycleCoordinator:
         *,
         current_tier: str,
         replay_tiers: List[str],
-        mutation_surface: Optional[Dict[str, Any]] = None,
+        mutation_surface: Optional[object] = None,
         verification_result: Optional["VerificationResult"] = None,
     ) -> Optional[MutationLogRecord]:
         if verification_result is not None:

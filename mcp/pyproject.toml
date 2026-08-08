@@ -12,6 +12,7 @@ license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.0,<2",
+    "pydantic-settings>=2.5.2,<2.15",
     "mighty-mouse>=0.2.4,<0.3",
 ]
 

@@ -5,14 +5,14 @@ backend-path = ["."]
 
 [project]
 name = "mighty-mouse-mcp"
-version = "0.2.3"
+version = "0.2.4"
 description = "MCP transport for Mighty Mouse project verification and coding protocols"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.0,<2",
-    "mighty-mouse>=0.2.3,<0.3",
+    "mighty-mouse>=0.2.4,<0.3",
 ]
 
 [project.scripts]

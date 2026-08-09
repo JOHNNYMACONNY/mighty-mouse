@@ -177,4 +177,46 @@ jobs:
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
       - name: Publish with PyPI Trusted Publishing
-        run: uv publish --trusted-publishing always --check-url https://pypi.org/simple dist/*
+        run: |
+          set -euo pipefail
+          metadata_dir=$(mktemp -d)
+          trap 'find "$metadata_dir" -depth -delete 2>/dev/null || true' EXIT
+          declare -A metadata_files
+          missing=()
+
+          for artifact in dist/*; do
+            filename=${artifact##*/}
+            case "$filename" in
+              mighty_mouse_mcp-*) package=mighty-mouse-mcp ;;
+              mighty_mouse-*) package=mighty-mouse ;;
+              *) echo "Unexpected distribution: $filename" >&2; exit 1 ;;
+            esac
+
+            if [[ -z "${metadata_files[$package]+set}" ]]; then
+              metadata_file="$metadata_dir/$package.json"
+              http_status=$(curl --silent --show-error --location \
+                --output "$metadata_file" --write-out "%{http_code}" \
+                "https://pypi.org/pypi/$package/json")
+              case "$http_status" in
+                200) ;;
+                404) printf '{}\n' > "$metadata_file" ;;
+                *) echo "PyPI metadata request failed for $package: HTTP $http_status" >&2; exit 1 ;;
+              esac
+              metadata_files[$package]="$metadata_file"
+            fi
+
+            if jq -e --arg filename "$filename" \
+              'any(.releases[]?[]?; .filename == $filename)' \
+              "${metadata_files[$package]}" >/dev/null; then
+              echo "Already on PyPI: $filename"
+            else
+              missing+=("$artifact")
+            fi
+          done
+
+          if ((${#missing[@]} == 0)); then
+            echo "All distributions already exist on PyPI"
+          else
+            uv publish --trusted-publishing always \
+              --check-url https://pypi.org/simple "${missing[@]}"
+          fi

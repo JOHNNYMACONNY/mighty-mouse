@@ -30,6 +30,16 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0
 
+      - name: Pin build timestamp to release commit
+        run: |
+          set -euo pipefail
+          source_date_epoch="$(git show -s --format=%ct "${RELEASE_TAG}^{}")"
+          case "$source_date_epoch" in
+            ''|*[!0-9]*) echo "Release commit timestamp must be numeric: $source_date_epoch" >&2; exit 1 ;;
+          esac
+          echo "SOURCE_DATE_EPOCH=$source_date_epoch" >> "$GITHUB_ENV"
+          echo "Using reproducible build timestamp: $source_date_epoch"
+
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:

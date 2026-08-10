@@ -5,14 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 import os
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol
 
-try:
-    from .tier_utils import parse_pass_rate
-except ImportError:
-    from tier_utils import parse_pass_rate
+from mighty_mouse.v2.seams import VerificationResult
 
-from mighty_mouse.v2.seams import PolicyMutationSurface, VerificationResult
+if TYPE_CHECKING:
+    from mighty_mouse.v2.foundation import Scope
 
 
 @dataclass(frozen=True)
@@ -53,6 +51,54 @@ class CycleResult:
         return self.to_dict()[key]
 
 
+class AutoresearchCycleOperations(Protocol):
+    """Operational capabilities required by one bounded cycle."""
+
+    def config_hash(self) -> str:
+        ...
+
+    def run_benchmark(self, tier: str) -> Optional[Dict[str, Any]]:
+        ...
+
+    def verify_benchmark(
+        self, benchmark: Dict[str, Any]
+    ) -> VerificationResult:
+        ...
+
+    def update_telemetry(
+        self, tier: str, summary: Dict[str, Any], config_hash: str
+    ) -> None:
+        ...
+
+    def record_signal(
+        self, *, scope: Scope, outcome: str, signal_counter: int
+    ) -> Any:
+        ...
+
+    def replay_tiers(self, tier: str) -> List[str]:
+        ...
+
+    def execute_mutation(
+        self,
+        verification: VerificationResult,
+        current_tier: str,
+        replay_tiers: List[str],
+    ) -> Optional["MutationRecord"]:
+        ...
+
+    def save_state(self) -> None:
+        ...
+
+    def run_parity_report(self) -> None:
+        ...
+
+
+class MutationRecord(Protocol):
+    """Structural result needed by the cycle after mutation execution."""
+
+    decision: str
+
+
 class AutoresearchCycle:
     """Execute one bounded benchmark, verification, mutation, and save cycle.
     """
@@ -62,38 +108,16 @@ class AutoresearchCycle:
         *,
         state: Dict[str, Any],
         tiers: List[str],
-        run_benchmark: Callable[[str], Optional[Dict[str, Any]]],
-        update_telemetry: Callable[[str, Dict[str, Any], str], None],
-        record_signal: Callable[..., Any],
-        save_state: Callable[[], None],
-        run_parity_report: Callable[[], None],
-        config_hash_provider: Callable[[], str],
-        replay_tiers_provider: Callable[[str], List[str]],
-        mutation_engine: Any,
-        verifier_adapter: Optional[
-            Callable[[Dict[str, Any]], VerificationResult]
-        ],
-        mutation_adapter: Optional[Callable[..., Any]],
-        mutation_surface: PolicyMutationSurface,
+        operations: AutoresearchCycleOperations,
     ) -> None:
         self.state = state
         self.tiers = tiers
-        self.run_benchmark = run_benchmark
-        self.update_telemetry = update_telemetry
-        self.record_signal = record_signal
-        self.save_state = save_state
-        self.run_parity_report = run_parity_report
-        self.config_hash_provider = config_hash_provider
-        self.replay_tiers_provider = replay_tiers_provider
-        self.mutation_engine = mutation_engine
-        self.verifier_adapter = verifier_adapter
-        self.mutation_adapter = mutation_adapter
-        self.mutation_surface = mutation_surface
+        self.operations = operations
 
     def run(self) -> CycleResult:
         """Run exactly one existing AutoresearchLoop cycle."""
         current_tier = self.state["current_tier"]
-        config_hash = self.config_hash_provider()
+        config_hash = self.operations.config_hash()
 
         print(f"\n--- Cycle Start: {datetime.now().isoformat()} ---")
         print(f"[*] Iteration: {self.state['total_iterations'] + 1}")
@@ -101,7 +125,7 @@ class AutoresearchCycle:
         print(f"[*] Config Hash: {config_hash}")
         print(f"[*] Mutation Count: {self.state['mutation_count']}")
 
-        bench_data = self.run_benchmark(current_tier)
+        bench_data = self.operations.run_benchmark(current_tier)
         if not bench_data:
             print("[!] No benchmark data received.")
             return CycleResult(
@@ -113,24 +137,15 @@ class AutoresearchCycle:
         self.state["total_iterations"] += 1
         summary = bench_data.get("summary", {})
         success_rate_str = summary.get("success_rate", "0/0")
-        if self.verifier_adapter is not None:
-            verification = self.verifier_adapter(bench_data)
-            pass_rate = verification.score * 100.0
-        else:
-            pass_rate = parse_pass_rate(summary) * 100.0
-            verification = VerificationResult(
-                passed=pass_rate >= 100.0,
-                score=pass_rate / 100.0,
-                details={"verifier_category": "LOGIC"},
-                verdict_category="PASS" if pass_rate >= 100.0 else "FAIL",
-            )
+        verification = self.operations.verify_benchmark(bench_data)
+        pass_rate = verification.score * 100.0
 
         print(f"[*] Results: {success_rate_str} ({pass_rate:.1f}%)")
-        self.update_telemetry(current_tier, summary, config_hash)
+        self.operations.update_telemetry(current_tier, summary, config_hash)
 
         cycle_scope = self._cycle_scope()
         cycle_outcome = "passed" if pass_rate >= 50.0 else "failed"
-        signal_receipt = self.record_signal(
+        signal_receipt = self.operations.record_signal(
             scope=cycle_scope,
             outcome=cycle_outcome,
             signal_counter=max(1, self.state["total_iterations"]),
@@ -185,18 +200,10 @@ class AutoresearchCycle:
                     f"[*] Triggering in-process mutation cycle "
                     f"(Attempt {self.state['mutation_count']}/3)..."
                 )
-                replay_tiers = self.replay_tiers_provider(current_tier)
-                if self.mutation_adapter is not None:
-                    record = self.mutation_adapter(
-                        verification, current_tier, replay_tiers
-                    )
-                else:
-                    record = self.mutation_engine.execute_mutation_cycle(
-                        current_tier=current_tier,
-                        replay_tiers=replay_tiers,
-                        mutation_surface=self.mutation_surface,
-                        verification_result=verification,
-                    )
+                replay_tiers = self.operations.replay_tiers(current_tier)
+                record = self.operations.execute_mutation(
+                    verification, current_tier, replay_tiers
+                )
                 mutation_decision = getattr(record, "decision", None)
                 record_decision = getattr(
                     record, "decision", record if record else "None"
@@ -212,8 +219,8 @@ class AutoresearchCycle:
             )
             self.state["mutation_count"] = 0
 
-        self.save_state()
-        self.run_parity_report()
+        self.operations.save_state()
+        self.operations.run_parity_report()
 
         return CycleResult(
             status="success",

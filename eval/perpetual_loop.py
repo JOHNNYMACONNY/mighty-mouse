@@ -27,7 +27,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.append(_REPO_ROOT)
 
 
-from tier_utils import load_tier_sequence  # noqa: E402
+from tier_utils import load_tier_sequence, parse_pass_rate  # noqa: E402
 from mutation_engine import (  # noqa: E402
     CATEGORY_TO_SEGMENT,
     MutationEngine,
@@ -35,9 +35,15 @@ from mutation_engine import (  # noqa: E402
     get_replay_tiers,
 )
 try:
-    from .autoresearch_cycle import AutoresearchCycle, CycleResult
+    from .autoresearch_cycle import (
+        AutoresearchCycle,
+        CycleResult,
+    )
 except ImportError:
-    from autoresearch_cycle import AutoresearchCycle, CycleResult
+    from autoresearch_cycle import (
+        AutoresearchCycle,
+        CycleResult,
+    )
 from mighty_mouse.v2.foundation import (
     ImmutableStateStore,
     Scope,
@@ -91,6 +97,75 @@ def get_config_hash() -> str:
         return "unknown"
     with open(AGENT_CONFIG_PATH, "rb") as f:
         return hashlib.sha256(f.read()).hexdigest()[:8]
+
+
+class AutoresearchLoopOperations:
+    """Concrete operational seam for one AutoresearchLoop cycle."""
+
+    def __init__(self, loop: "AutoresearchLoop") -> None:
+        self._loop = loop
+
+    def config_hash(self) -> str:
+        return get_config_hash()
+
+    def run_benchmark(self, tier: str) -> Optional[Dict[str, Any]]:
+        return self._loop.run_benchmark(tier)
+
+    def verify_benchmark(
+        self, benchmark: Dict[str, Any]
+    ) -> VerificationResult:
+        if self._loop.verifier_adapter is not None:
+            return self._loop.verifier_adapter(benchmark)
+
+        summary = benchmark.get("summary", {})
+        pass_rate = parse_pass_rate(summary) * 100.0
+        return VerificationResult(
+            passed=pass_rate >= 100.0,
+            score=pass_rate / 100.0,
+            details={"verifier_category": "LOGIC"},
+            verdict_category="PASS" if pass_rate >= 100.0 else "FAIL",
+        )
+
+    def update_telemetry(
+        self, tier: str, summary: Dict[str, Any], config_hash: str
+    ) -> None:
+        self._loop.update_telemetry(tier, summary, config_hash)
+
+    def record_signal(
+        self, *, scope: Scope, outcome: str, signal_counter: int
+    ) -> Any:
+        return self._loop.record_signal(
+            scope=scope,
+            outcome=outcome,
+            signal_counter=signal_counter,
+        )
+
+    def replay_tiers(self, tier: str) -> List[str]:
+        return get_replay_tiers(tier)
+
+    def execute_mutation(
+        self,
+        verification: VerificationResult,
+        current_tier: str,
+        replay_tiers: List[str],
+    ) -> Any:
+        if self._loop.mutation_adapter is not None:
+            return self._loop.mutation_adapter(
+                verification, current_tier, replay_tiers
+            )
+
+        return self._loop.mutation_engine.execute_mutation_cycle(
+            current_tier=current_tier,
+            replay_tiers=replay_tiers,
+            mutation_surface=self._loop.mutation_surface,
+            verification_result=verification,
+        )
+
+    def save_state(self) -> None:
+        self._loop.state_manager.save()
+
+    def run_parity_report(self) -> None:
+        self._loop._run_parity_report()
 
 
 class AutoresearchLoop:
@@ -215,17 +290,7 @@ class AutoresearchLoop:
         return AutoresearchCycle(
             state=self.state,
             tiers=self.tiers,
-            run_benchmark=self.run_benchmark,
-            update_telemetry=self.update_telemetry,
-            record_signal=self.record_signal,
-            save_state=self.state_manager.save,
-            run_parity_report=self._run_parity_report,
-            config_hash_provider=get_config_hash,
-            replay_tiers_provider=get_replay_tiers,
-            mutation_engine=self.mutation_engine,
-            verifier_adapter=self.verifier_adapter,
-            mutation_adapter=self.mutation_adapter,
-            mutation_surface=self.mutation_surface,
+            operations=AutoresearchLoopOperations(self),
         )
 
     def run_single_cycle(self) -> CycleResult:

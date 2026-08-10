@@ -250,14 +250,11 @@ The runner requires exactly 15 frozen tasks, makes one generation request per ta
 
 ## Architecture
 
-- `src/mighty_mouse/verifier/`: generic project verification public API.
-- `src/mighty_mouse/protocols/`: versioned complexity-scaled protocols.
-- `mcp/`: separately installable MCP transport.
-- `skills/`: platform rules (`antigravity`, `claude-code`, `codex`, `cursor`, `windsurf`) and MCP configurations (`hermes.yaml`, `openclaw.yaml`, `codex.json`).
-- `src/mighty_mouse/orchestrator/`: original local-model agent loop and scaling engine.
-- `src/mighty_mouse/services/`: synthetic benchmark and legacy verification services.
-- `data/evidence/`: frozen historical, bare-control, and real-project study artifacts.
-- `eval/`: evidence runners, scaling suite, and automated tests.
+- `mighty-mouse` core distribution: verifier, protocols, host, CLI, and shipped adaptive v2 runtime.
+- `mighty-mouse-mcp`: separate MCP transport distribution; depends on core.
+- `eval/`: research/evaluation runners, mutation and autoresearch cycles, and tests; consumes shipped seams.
+- `src/mighty_mouse/orchestrator/` and `src/mighty_mouse/services/`: retained original execution and compatibility/service contexts.
+- [`docs/architecture.md`](docs/architecture.md): canonical current ownership and dependency map.
 
 ## Development
 

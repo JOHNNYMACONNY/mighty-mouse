@@ -10,6 +10,7 @@ from eval.perpetual_loop import (
     AutoresearchLoop,
     CycleResult as LoopCycleResult,
 )
+from eval.tier_utils import parse_pass_rate
 from mighty_mouse.v2.seams import PolicyMutationSurface, VerificationResult
 
 
@@ -31,6 +32,80 @@ def _verification(score: float) -> VerificationResult:
     )
 
 
+class FakeCycleOperations:
+    """Small behavioral collaborator for cycle state-machine tests."""
+
+    def __init__(
+        self,
+        benchmark: dict | None,
+        events: list[str],
+        *,
+        verifier_adapter=None,
+        mutation_adapter=None,
+        mutation_engine=None,
+    ) -> None:
+        self.benchmark = benchmark
+        self.events = events
+        self.verifier_adapter = verifier_adapter
+        self.mutation_adapter = mutation_adapter
+        self.mutation_engine = mutation_engine or Mock()
+        self.mutation_surface = PolicyMutationSurface(
+            frozenset({"reasoning.txt"})
+        )
+
+    def config_hash(self) -> str:
+        return "config-hash"
+
+    def run_benchmark(self, _tier: str) -> dict | None:
+        return self.benchmark
+
+    def verify_benchmark(self, benchmark: dict) -> VerificationResult:
+        if self.verifier_adapter is not None:
+            return self.verifier_adapter(benchmark)
+        return _verification(
+            parse_pass_rate(benchmark.get("summary", {}))
+        )
+
+    def update_telemetry(
+        self, _tier: str, _summary: dict, _config_hash: str
+    ) -> None:
+        self.events.append("telemetry")
+
+    def record_signal(
+        self, *, scope, outcome: str, signal_counter: int
+    ) -> str:
+        del scope, outcome, signal_counter
+        self.events.append("signal")
+        return "signal-1"
+
+    def replay_tiers(self, _tier: str) -> list[str]:
+        return ["tier-0"]
+
+    def execute_mutation(
+        self,
+        verification: VerificationResult,
+        current_tier: str,
+        replay_tiers: list[str],
+    ):
+        self.events.append("mutation")
+        if self.mutation_adapter is not None:
+            return self.mutation_adapter(
+                verification, current_tier, replay_tiers
+            )
+        return self.mutation_engine.execute_mutation_cycle(
+            current_tier=current_tier,
+            replay_tiers=replay_tiers,
+            mutation_surface=self.mutation_surface,
+            verification_result=verification,
+        )
+
+    def save_state(self) -> None:
+        self.events.append("save")
+
+    def run_parity_report(self) -> None:
+        self.events.append("parity")
+
+
 def _cycle(
     state: dict,
     benchmark: dict | None,
@@ -43,17 +118,13 @@ def _cycle(
     return AutoresearchCycle(
         state=state,
         tiers=["tier-1", "tier-2"],
-        run_benchmark=lambda _tier: benchmark,
-        update_telemetry=lambda *_args: events.append("telemetry"),
-        record_signal=lambda **_kwargs: events.append("signal") or "signal-1",
-        save_state=lambda: events.append("save"),
-        run_parity_report=lambda: events.append("parity"),
-        config_hash_provider=lambda: "config-hash",
-        replay_tiers_provider=lambda _tier: ["tier-0"],
-        mutation_engine=mutation_engine or Mock(),
-        verifier_adapter=verifier_adapter,
-        mutation_adapter=mutation_adapter,
-        mutation_surface=PolicyMutationSurface(frozenset({"reasoning.txt"})),
+        operations=FakeCycleOperations(
+            benchmark,
+            events,
+            verifier_adapter=verifier_adapter,
+            mutation_adapter=mutation_adapter,
+            mutation_engine=mutation_engine,
+        ),
     )
 
 
@@ -93,7 +164,7 @@ def test_cycle_rejection_runs_mutation_and_persists_state() -> None:
     assert result.circuit_breaker_open is False
     assert result.state["mutation_count"] == 1
     mutation.assert_called_once()
-    assert events == ["telemetry", "signal", "save", "parity"]
+    assert events == ["telemetry", "signal", "mutation", "save", "parity"]
 
 
 def test_cycle_mutation_noop_preserves_existing_result_shape() -> None:
@@ -114,6 +185,59 @@ def test_cycle_mutation_noop_preserves_existing_result_shape() -> None:
     assert result.mutation_decision is None
     assert result.state["mutation_count"] == 1
     mutation_engine.execute_mutation_cycle.assert_called_once()
+
+
+def test_cycle_stable_range_resets_mutation_count() -> None:
+    state = _state(mutation_count=2)
+    events: list[str] = []
+    cycle = _cycle(
+        state,
+        {"summary": {"success_rate": "2/4"}},
+        events=events,
+    )
+
+    result = cycle.run()
+
+    assert result.pass_rate == 50.0
+    assert result.state["current_tier"] == "tier-1"
+    assert result.state["mutation_count"] == 0
+    assert events == ["telemetry", "signal", "save", "parity"]
+
+
+def test_cycle_circuit_breaker_drops_tier_and_skips_mutation() -> None:
+    state = _state(mutation_count=2)
+    state["current_tier"] = "tier-2"
+    events: list[str] = []
+    cycle = _cycle(
+        state,
+        {"summary": {"success_rate": "1/4"}},
+        events=events,
+    )
+
+    result = cycle.run()
+
+    assert result.circuit_breaker_open is True
+    assert result.state["current_tier"] == "tier-1"
+    assert result.state["mutation_count"] == 0
+    assert events == ["telemetry", "signal", "save", "parity"]
+
+
+def test_cycle_pin_override_maintains_pinned_tier(monkeypatch) -> None:
+    monkeypatch.setenv("MIGHTY_MOUSE_PIN_TIER", "tier-2")
+    state = _state()
+    events: list[str] = []
+    cycle = _cycle(
+        state,
+        {"summary": {"success_rate": "1/4"}},
+        events=events,
+    )
+
+    result = cycle.run()
+
+    assert result.circuit_breaker_open is False
+    assert result.state["current_tier"] == "tier-2"
+    assert result.state["mutation_count"] == 0
+    assert events == ["telemetry", "signal", "save", "parity"]
 
 
 def test_cycle_benchmark_failure_requests_retry_without_side_effects() -> None:

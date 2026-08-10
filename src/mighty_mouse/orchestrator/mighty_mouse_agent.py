@@ -195,6 +195,35 @@ def _write_run_metadata(client, workspace, task_input, p_cfg, feedback_str=None,
         json.dump(metadata, f, indent=2)
 
 
+def _execute_generation_attempt(
+    client,
+    system_prompt,
+    user_prompt,
+    *,
+    task_id,
+    attempt,
+    usage_history,
+):
+    response = client.generate_content(system_prompt, user_prompt)
+    usage_history.append(dict(client.last_metadata))
+
+    # DEBUG: Save raw response to a permanent global log directory
+    global_logs_dir = os.path.join(_REPO_ROOT, "logs", "raw_responses")
+    os.makedirs(global_logs_dir, exist_ok=True)
+    task_id_str = task_id if task_id else "unknown"
+    ts = int(time.time())
+    with open(
+        os.path.join(
+            global_logs_dir,
+            f"raw_{task_id_str}_attempt_{attempt}_{ts}.txt",
+        ),
+        "w",
+    ) as f:
+        f.write(response)
+
+    return response
+
+
 def solve(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_skills=None, temperature=None, stage="unified", plan_file=None):
     p_cfg_path = os.path.abspath(p_cfg_path)
     task_input = os.path.abspath(task_input)
@@ -313,6 +342,7 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
             "3. <adversarial_plan>: Zero-deletion checks and risk analysis.\n"
             "4. <proposed_changes>: Concrete steps and file-by-file changes.\n\n"
         )
+
         user_prompt = f"{PLANNER_REMINDER}Create an execution blueprint for the following task:\n{task_str}\n"
     else:
         user_prompt = f"{FORMAT_REMINDER}Implement the following task:\n{task_str}\n"
@@ -368,16 +398,14 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
         print(f"[agent] Attempt {attempt}/{effective_max_attempts} starting...", file=sys.stderr)
         sys.stdout.flush()
         try:
-            response = client.generate_content(full_sys, current_user_prompt)
-            usage_history.append(dict(client.last_metadata))
-
-            # DEBUG: Save raw response to a permanent global log directory
-            global_logs_dir = os.path.join(_REPO_ROOT, "logs", "raw_responses")
-            os.makedirs(global_logs_dir, exist_ok=True)
-            task_id_str = task_id if task_id else 'unknown'
-            ts = int(time.time())
-            with open(os.path.join(global_logs_dir, f"raw_{task_id_str}_attempt_{attempt}_{ts}.txt"), "w") as f:
-                f.write(response)
+            response = _execute_generation_attempt(
+                client,
+                full_sys,
+                current_user_prompt,
+                task_id=task_id,
+                attempt=attempt,
+                usage_history=usage_history,
+            )
 
         except Exception as e:
             print(f"[agent] ERROR during generation: {e}", file=sys.stderr)
@@ -556,4 +584,3 @@ if __name__ == "__main__":
             stage=args.stage,
             plan_file=args.plan_file
         )
-

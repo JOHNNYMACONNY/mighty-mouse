@@ -14,9 +14,38 @@ from mutation_engine import (
 from perpetual_loop import AutoresearchLoop, AtomicState
 
 
+def _isolated_mutation_engine(tmp_path, **overrides):
+    segments_dir = tmp_path / "segments"
+    segments_dir.mkdir()
+    agent_config = tmp_path / "agent.yaml"
+    agent_config.write_text("model: gemma\n")
+    paths = {
+        "results_path": str(tmp_path / "benchmark_results.json"),
+        "mutation_log_path": str(tmp_path / "mutation_log.jsonl"),
+        "segments_dir": str(segments_dir),
+        "agent_config": str(agent_config),
+    }
+    paths.update(overrides)
+    engine = MutationEngine(**paths)
+
+    root = os.path.realpath(str(tmp_path))
+    for key in (
+        "results_path",
+        "mutation_log_path",
+        "segments_dir",
+        "agent_config",
+    ):
+        path = paths[key]
+        assert os.path.commonpath((root, os.path.realpath(path))) == root
+    return engine
+
+
 def test_failure_analysis_no_file(tmp_path):
     results_path = str(tmp_path / "nonexistent.json")
-    engine = MutationEngine(results_path=results_path)
+    engine = _isolated_mutation_engine(
+        tmp_path,
+        results_path=results_path,
+    )
     analysis = engine.analyze_failures()
     assert analysis is None
 
@@ -34,7 +63,10 @@ def test_failure_analysis_parsing(tmp_path):
     with open(results_path, "w") as f:
         json.dump(data, f)
 
-    engine = MutationEngine(results_path=results_path)
+    engine = _isolated_mutation_engine(
+        tmp_path,
+        results_path=results_path,
+    )
     analysis = engine.analyze_failures()
     assert analysis is not None
     assert analysis.dominant_category == "SCOPE"
@@ -55,7 +87,11 @@ def test_timeout_dominance_freeze(tmp_path):
     with open(results_path, "w") as f:
         json.dump(data, f)
 
-    engine = MutationEngine(results_path=results_path, mutation_log_path=mutation_log_path)
+    engine = _isolated_mutation_engine(
+        tmp_path,
+        results_path=results_path,
+        mutation_log_path=mutation_log_path,
+    )
     record = engine.execute_mutation_cycle(current_tier="tier-1", replay_tiers=[])
 
     assert record is not None
@@ -161,14 +197,16 @@ def test_autoresearch_loop_initialization(tmp_path):
         state_path=state_path,
         telemetry_path=telemetry_path,
         benchmark_results_path=bench_results_path,
+        mutation_engine=_isolated_mutation_engine(tmp_path),
+        state_dir=str(tmp_path / "state"),
     )
     assert loop.state["mutation_count"] == 0
     assert "current_tier" in loop.state
 
 
-def test_mutate_candidate_seam():
+def test_mutate_candidate_seam(tmp_path):
     from mighty_mouse.v2.seams import Candidate, Signal
-    engine = MutationEngine()
+    engine = _isolated_mutation_engine(tmp_path)
 
     candidate = Candidate(
         candidate_id="c_base",

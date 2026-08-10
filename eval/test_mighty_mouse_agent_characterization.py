@@ -176,6 +176,138 @@ def test_coverage_recovery_records_second_attempt_success(agent_env):
     assert set(result.metadata["output_files"]) == {"first.py", "second.py"}
 
 
+def test_empty_expected_files_follow_clean_no_recovery_path(agent_env):
+    result = agent_env.run(
+        {
+            "id": "empty_expected_files",
+            "expected_files": [],
+        },
+        ["```python:answer.py\nanswer = True\n```"],
+    )
+
+    assert result.client.generate_content.call_count == 1
+    assert result.metadata["pass_type"] == "clean"
+    assert result.metadata["output_files"] == ["answer.py"]
+    assert result.metadata["coverage_missing_files"] == []
+    assert result.metadata["coverage_recovery_attempts"] == 0
+    assert result.metadata["coverage_recovery_triggered"] is False
+    assert result.metadata["coverage_recovery_success"] is False
+    assert result.metadata["coverage_recovery_disallowed_reason"] is None
+
+
+def test_schema_failure_stops_before_coverage_policy(agent_env):
+    result = agent_env.run(
+        {
+            "id": "schema_before_coverage",
+            "expected_files": ["missing.py"],
+        },
+        ["plain response", "still plain"],
+    )
+
+    assert result.client.generate_content.call_count == 2
+    assert result.metadata["pass_type"] == "failed"
+    assert result.metadata["schema_error"] is True
+    assert result.metadata["coverage_missing_files"] == []
+    assert result.metadata["coverage_recovery_attempts"] == 0
+    assert result.metadata["coverage_recovery_triggered"] is False
+    assert result.metadata["coverage_recovery_disallowed_reason"] is None
+
+
+@pytest.mark.parametrize(
+    ("task_data", "skills_result", "reason"),
+    [
+        (
+            {
+                "id": "obs_task_conflict_overlap",
+                "tags": ["conflict"],
+                "expected_files": ["missing.py"],
+                "deletable_files": ["missing.py"],
+            },
+            (
+                [],
+                [],
+                {
+                    "conflict_detected": True,
+                    "conflicting_skill_ids": ["skill-a"],
+                },
+            ),
+            "CONFLICT_DETECTED",
+        ),
+        (
+            {
+                "id": "obs_task_rejected_overlap",
+                "tags": ["routing"],
+                "expected_files": ["missing.py"],
+                "deletable_files": ["missing.py"],
+            },
+            (
+                [],
+                [{"id": "skill-a", "injection_reason": "CONFLICT_REJECTED"}],
+                {"conflict_detected": False, "conflicting_skill_ids": []},
+            ),
+            "CONFLICT_REJECTED",
+        ),
+        (
+            {
+                "id": "obs_task_routing_overlap",
+                "tags": ["routing"],
+                "expected_files": ["missing.py"],
+                "deletable_files": ["missing.py"],
+            },
+            (
+                [],
+                [{"id": "skill-a"}],
+                {"conflict_detected": False, "conflicting_skill_ids": []},
+            ),
+            "CONFLICT_ROUTING_VALIDATION_TASK",
+        ),
+    ],
+)
+def test_coverage_rejection_precedence(
+    agent_env, task_data, skills_result, reason
+):
+    result = agent_env.run(
+        task_data,
+        ["```python:other.py\nvalue = 1\n```"],
+        skills_result=skills_result,
+    )
+
+    assert result.metadata["pass_type"] == "failed"
+    assert result.metadata["coverage_missing_files"] == ["missing.py"]
+    assert result.metadata["coverage_recovery_disallowed_reason"] == reason
+    assert result.metadata["coverage_recovery_attempts"] == 0
+
+
+def test_schema_retry_then_coverage_recovery_reaches_third_attempt(agent_env):
+    result = agent_env.run(
+        {
+            "id": "schema_then_coverage",
+            "expected_files": ["first.py", "second.py"],
+        },
+        [
+            "plain response",
+            "```python:first.py\nfirst = True\n```",
+            "```python:second.py\nsecond = True\n```",
+        ],
+    )
+
+    assert result.client.generate_content.call_count == 3
+    assert result.metadata["attempts"] == 3
+    assert result.metadata["pass_type"] == "recovered"
+    assert result.metadata["coverage_recovery_triggered"] is True
+    assert result.metadata["coverage_missing_files"] == ["second.py"]
+    assert result.metadata["coverage_recovery_attempts"] == 1
+    assert result.metadata["coverage_recovery_success"] is True
+    assert result.metadata["coverage_recovery_disallowed_reason"] is None
+    assert len(result.metadata["usage_history"]) == 3
+    assert set(result.metadata["output_files"]) == {"first.py", "second.py"}
+
+    recovery_prompt = result.client.generate_content.call_args_list[2].args[1]
+    assert "CRITICAL OMISSION DETECTED" in recovery_prompt
+    assert "- second.py" in recovery_prompt
+    assert "Only provide the missing file blocks." in recovery_prompt
+
+
 @pytest.mark.parametrize(
     ("task_data", "responses", "skills_result", "reason"),
     [

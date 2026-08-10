@@ -224,6 +224,39 @@ def _execute_generation_attempt(
     return response
 
 
+def _evaluate_output_coverage_policy(
+    expected_files,
+    cumulative_output_paths,
+    *,
+    conflict_detected,
+    injection_reason,
+    is_conflict_routing_validation,
+    allowed_delete_paths,
+    coverage_recovery_attempts,
+):
+    """Evaluate coverage and reachable recovery rejection policy."""
+    missing_files = [
+        path for path in expected_files if path not in cumulative_output_paths
+    ]
+    if not missing_files:
+        return [], None
+
+    if conflict_detected:
+        disallowed_reason = "CONFLICT_DETECTED"
+    elif injection_reason == "CONFLICT_REJECTED":
+        disallowed_reason = "CONFLICT_REJECTED"
+    elif is_conflict_routing_validation:
+        disallowed_reason = "CONFLICT_ROUTING_VALIDATION_TASK"
+    elif any(path in allowed_delete_paths for path in missing_files):
+        disallowed_reason = "DELETABLE_FILE_EXCLUSION"
+    elif coverage_recovery_attempts >= 1:
+        disallowed_reason = "MAX_ATTEMPTS_REACHED"
+    else:
+        disallowed_reason = None
+
+    return missing_files, disallowed_reason
+
+
 def solve(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_skills=None, temperature=None, stage="unified", plan_file=None):
     p_cfg_path = os.path.abspath(p_cfg_path)
     task_input = os.path.abspath(task_input)
@@ -450,24 +483,17 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
                 break
 
         # Strictly verify parsed files against expected implementation files
-        missing_files = [f for f in expected_files if f not in cumulative_output_paths]
+        missing_files, disallowed_reason = _evaluate_output_coverage_policy(
+            expected_files,
+            cumulative_output_paths,
+            conflict_detected=conflict_detected,
+            injection_reason=injection_reason,
+            is_conflict_routing_validation=is_conflict_routing_validation,
+            allowed_delete_paths=allowed_delete_paths,
+            coverage_recovery_attempts=coverage_recovery_attempts,
+        )
         if missing_files:
             coverage_missing_files = missing_files  # Record context immediately
-            disallowed_reason = None
-            if schema_error:
-                disallowed_reason = "SCHEMA_ERROR"
-            elif conflict_detected:
-                disallowed_reason = "CONFLICT_DETECTED"
-            elif injection_reason == "CONFLICT_REJECTED":
-                disallowed_reason = "CONFLICT_REJECTED"
-            elif is_conflict_routing_validation:
-                disallowed_reason = "CONFLICT_ROUTING_VALIDATION_TASK"
-            elif not expected_files:
-                disallowed_reason = "EMPTY_EXPECTED_FILES"
-            elif any(f in allowed_delete_paths for f in missing_files):
-                disallowed_reason = "DELETABLE_FILE_EXCLUSION"
-            elif coverage_recovery_attempts >= 1:
-                disallowed_reason = "MAX_ATTEMPTS_REACHED"
 
             if disallowed_reason:
                 coverage_recovery_disallowed_reason = disallowed_reason

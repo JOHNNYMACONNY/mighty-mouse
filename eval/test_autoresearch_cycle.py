@@ -283,6 +283,7 @@ def test_loop_cycle_state_write_and_restore(tmp_path: Path) -> None:
         state_path=str(state_path),
         telemetry_path=str(telemetry_path),
         benchmark_results_path=str(results_path),
+        mutation_engine=Mock(),
         state_dir=str(state_dir),
         benchmark_adapter=lambda _tier: {
             "summary": {"success_rate": "4/4"}
@@ -297,6 +298,7 @@ def test_loop_cycle_state_write_and_restore(tmp_path: Path) -> None:
         state_path=str(state_path),
         telemetry_path=str(telemetry_path),
         benchmark_results_path=str(results_path),
+        mutation_engine=Mock(),
         state_dir=str(state_dir),
         benchmark_adapter=lambda _tier: None,
     )
@@ -312,6 +314,7 @@ def test_run_forever_delegates_repeated_cycles(
         state_path=str(tmp_path / "state.json"),
         telemetry_path=str(tmp_path / "telemetry.json"),
         benchmark_results_path=str(tmp_path / "results.json"),
+        mutation_engine=Mock(),
         state_dir=str(tmp_path / "v2-state"),
     )
     run_cycle = Mock(
@@ -342,6 +345,7 @@ def test_loop_single_cycle_delegates_to_bounded_cycle(tmp_path: Path) -> None:
         state_path=str(tmp_path / "state.json"),
         telemetry_path=str(tmp_path / "telemetry.json"),
         benchmark_results_path=str(tmp_path / "results.json"),
+        mutation_engine=Mock(),
         state_dir=str(tmp_path / "v2-state"),
     )
     expected = LoopCycleResult(status="retry_needed", tier="tier-1")

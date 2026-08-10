@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import Mock
 
 from mighty_mouse.v2 import (
     PolicyLifecycle,
@@ -159,7 +160,13 @@ def test_policy_lifecycle_with_telemetry_rollback(store, scope_a):
 
 
 def test_autoresearch_loop_signal_recording(tmp_path, scope_a):
-    loop = AutoresearchLoop(state_dir=str(tmp_path))
+    loop = AutoresearchLoop(
+        state_path=str(tmp_path / "state.json"),
+        telemetry_path=str(tmp_path / "telemetry.json"),
+        benchmark_results_path=str(tmp_path / "results.json"),
+        mutation_engine=Mock(),
+        state_dir=str(tmp_path),
+    )
     loop.record_signal(scope=scope_a, outcome="passed", duration_ms=800, signal_counter=101)
     loop.record_signal(scope=scope_a, outcome="passed", duration_ms=900, signal_counter=102)
 

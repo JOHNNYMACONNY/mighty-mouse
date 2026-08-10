@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import datetime
+from unittest.mock import Mock
 
 import pytest
 
@@ -35,6 +36,7 @@ def test_loop_cycle_uses_injected_benchmark_verifier_and_mutation_adapters(tmp_p
         state_path=str(tmp_path / "state.json"),
         telemetry_path=str(tmp_path / "telemetry.json"),
         benchmark_results_path=str(tmp_path / "results.json"),
+        mutation_engine=Mock(),
         state_dir=str(tmp_path / "v2-state"),
         benchmark_adapter=lambda tier: {"summary": {"success_rate": "1/4"}},
         verifier_adapter=lambda result: VerificationResult(
@@ -60,6 +62,7 @@ def test_loop_operations_preserve_fallback_verification(
         state_path=str(tmp_path / "state.json"),
         telemetry_path=str(tmp_path / "telemetry.json"),
         benchmark_results_path=str(tmp_path / "results.json"),
+        mutation_engine=Mock(),
         state_dir=str(tmp_path / "v2-state"),
         benchmark_adapter=lambda _tier: {"summary": {"success_rate": "1/4"}},
         mutation_adapter=lambda *_args: None,

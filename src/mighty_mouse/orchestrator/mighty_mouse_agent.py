@@ -13,11 +13,9 @@ import yaml
 
 try:
     from mighty_mouse.orchestrator.gemini_client import GeminiClient
-    from mighty_mouse.orchestrator.model_engine import ModelExecutionEngine
     from mighty_mouse.orchestrator.response_parser import ResponseParser
 except ImportError:
     from gemini_client import GeminiClient
-    from model_engine import ModelExecutionEngine
     from response_parser import ResponseParser
 
 
@@ -387,7 +385,6 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
     user_prompt += DISALLOWED_PATTERNS
 
     client = GeminiClient(config=p_cfg)
-    engine = ModelExecutionEngine(config=p_cfg, client=client)
     allowed_delete_paths = []
     if isinstance(task_data, dict):
         allowed_delete_paths = task_data.get("deletable_files", [])

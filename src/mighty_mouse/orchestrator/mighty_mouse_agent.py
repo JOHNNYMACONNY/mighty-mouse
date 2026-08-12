@@ -14,9 +14,17 @@ import yaml
 try:
     from mighty_mouse.orchestrator.gemini_client import GeminiClient
     from mighty_mouse.orchestrator.response_parser import ResponseParser
+    from mighty_mouse.orchestrator.response_attempt import (
+        ResponseAttemptContext,
+        execute_response_attempt,
+    )
 except ImportError:
     from gemini_client import GeminiClient
     from response_parser import ResponseParser
+    from response_attempt import (
+        ResponseAttemptContext,
+        execute_response_attempt,
+    )
 
 
 _REPO_ROOT = str(Path(__file__).resolve().parents[3])
@@ -427,27 +435,49 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
     while attempt <= effective_max_attempts:
         print(f"[agent] Attempt {attempt}/{effective_max_attempts} starting...", file=sys.stderr)
         sys.stdout.flush()
-        try:
-            response = _execute_generation_attempt(
+        response_context = ResponseAttemptContext(
+            system_prompt=full_sys,
+            user_prompt=current_user_prompt,
+            task_id=task_id,
+            attempt=attempt,
+            max_attempts=effective_max_attempts,
+            workspace_root=workspace or os.getcwd(),
+            allowed_delete_paths=tuple(allowed_delete_paths),
+        )
+
+        def provider_adapter(context, attempt_usage_history):
+            return _execute_generation_attempt(
                 client,
-                full_sys,
-                current_user_prompt,
-                task_id=task_id,
-                attempt=attempt,
-                usage_history=usage_history,
+                context.system_prompt,
+                context.user_prompt,
+                task_id=context.task_id,
+                attempt=context.attempt,
+                usage_history=attempt_usage_history,
             )
 
-        except Exception as e:
-            print(f"[agent] ERROR during generation: {e}", file=sys.stderr)
-            if attempt < effective_max_attempts:
-                print("[agent] Retrying...", file=sys.stderr)
-                time.sleep(2)
-                attempt += 1
-                continue
-            else:
-                print("[agent] CRITICAL: Maximum attempts reached. Failing task.", file=sys.stderr)
-                pass_type = "failed"
-                break
+        def parser_adapter(response_text, context):
+            return ResponseParser.parse_and_write(
+                response_text,
+                workspace_root=context.workspace_root,
+                allowed_delete_paths=context.allowed_delete_paths,
+            )
+
+        attempt_result = execute_response_attempt(
+            response_context,
+            provider_adapter,
+            None if stage == "planner" else parser_adapter,
+            sleep_fn=time.sleep,
+        )
+        usage_history.extend(attempt_result.usage_history)
+        current_user_prompt = attempt_result.next_user_prompt
+        attempt = attempt_result.next_attempt
+        schema_error = attempt_result.schema_error
+
+        if attempt_result.failed:
+            pass_type = "failed"
+            break
+
+        response = attempt_result.response
 
         if stage == "planner":
             plan_dest = plan_file or os.path.join(_REPO_ROOT, "logs", "stage1_plan.md")
@@ -459,25 +489,8 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
             pass_type = "clean"
             break
 
-        output_paths = ResponseParser.parse_and_write(
-            response,
-            workspace_root=workspace or os.getcwd(),
-            allowed_delete_paths=allowed_delete_paths,
-        )
+        output_paths = attempt_result.output_paths
         cumulative_output_paths.extend(output_paths)
-
-        schema_error = False
-        if not output_paths:
-            schema_error = True
-            if attempt < effective_max_attempts:
-                print("[agent] SCHEMA ERROR: No file blocks found. Retrying with explicit schema correction...", file=sys.stderr)
-                current_user_prompt += "\n\nCRITICAL ERROR: No code blocks were found in your previous response. You MUST use the correct XML/Markdown format with file paths (e.g., ```python:path/to/file.py)."
-                attempt += 1
-                continue
-            else:
-                print("[agent] CRITICAL: Schema error persists after retry.", file=sys.stderr)
-                pass_type = "failed"
-                break
 
         # Strictly verify parsed files against expected implementation files
         missing_files, disallowed_reason = _evaluate_output_coverage_policy(
@@ -513,7 +526,6 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
                 )
                 current_user_prompt += recovery_prompt
                 effective_max_attempts = base_max_attempts + 1
-                attempt += 1
                 continue
         else:
             if coverage_recovery_triggered:

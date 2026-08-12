@@ -22,7 +22,7 @@ package boundaries, or dependency direction changes.
 | Adaptive v2 domain/runtime | `src/mighty_mouse/v2/` | Shipped core subsystem. Records, state store, policy engine, routing/runtime, research/evaluation models, promotion, signals, telemetry, claims, bundles, status, and migration. |
 | Compatibility seams | `src/mighty_mouse/v2/foundation.py`, `src/mighty_mouse/v2/seams.py`, `src/mighty_mouse/v2/__init__.py` | `foundation.py` re-export façade over deep v2 modules. `seams.py` typed Candidate, Signal, mutation-surface, verification-result, and mutation-adapter contracts. Public exports and import shape require compatibility review. |
 | MCP transport/integration | `mcp/`, `mcp/src/mighty_mouse_mcp/` | Separate `mighty-mouse-mcp` distribution. Stdio server, tool hooks, host setup, verification, protocol, and signal recording. MCP imports core packages. |
-| Research/evaluation | `eval/` | Repository research, benchmark, evaluator, mutation, autoresearch, local-model, and characterization context. `AutoresearchCycle` and `AutoresearchLoop` belong here. Eval consumes shipped core/v2/orchestrator seams; shipped core does not depend on eval. |
+| Research/evaluation | `eval/` | Repository research, benchmark, evaluator, mutation, autoresearch, local-model, and characterization context. `AutoresearchCycle` and `AutoresearchLoop` belong here. Eval consumes shipped core/v2/orchestrator seams; core source has no Python import dependency on eval, while repository-local benchmark paths may invoke eval runners/configuration. |
 | Original local-model execution | `src/mighty_mouse/orchestrator/` | Retained local-model agent subsystem: Gemini client, model execution engine, response parser, agent, and swarm orchestration. Current eval consumers exist. No deprecated/dead classification. |
 | Services and compatibility adapters | `src/mighty_mouse/services/` | Benchmark service plus verifier adapter shims. Command paths consume benchmark service; verifier shims delegate to `mighty_mouse.verifier`. Verifier authority remains in `src/mighty_mouse/verifier/`. |
 | Evidence and study data | `data/evidence/` | Frozen historical, bare-control, and real-project evidence. Research input/output; no runtime ownership. |
@@ -35,7 +35,9 @@ package boundaries, or dependency direction changes.
 2. MCP package metadata depends on `mighty-mouse`; MCP may import core verifier,
    protocol, host, and v2 modules. Core must not import MCP transport.
 3. `eval/` may consume core, v2, and orchestrator modules for research and
-   evaluation. Core and MCP source must not depend on `eval/`.
+   evaluation. Core and MCP source must not take Python import dependencies on
+   `eval/`; repository-local benchmark services may invoke eval subprocesses and
+   read eval configuration explicitly.
 4. `src/mighty_mouse/v2/` owns adaptive domain/runtime behavior. `foundation.py`
    and `seams.py` provide compatibility-sensitive paths consumed by host, MCP,
    eval, and v2 modules.

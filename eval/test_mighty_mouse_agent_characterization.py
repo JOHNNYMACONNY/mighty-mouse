@@ -380,6 +380,20 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
             2,
             True,
         ),
+        (
+            {
+                "id": "multiple_missing_files",
+                "expected_files": ["first.py", "second.py", "third.py"],
+            },
+            [
+                "```python:other.py\nvalue = 1\n```",
+                "```python:another.py\nvalue = 2\n```",
+            ],
+            None,
+            "MAX_ATTEMPTS_REACHED",
+            2,
+            True,
+        ),
     ],
 )
 def test_coverage_recovery_disallowed_cases(
@@ -630,9 +644,18 @@ def test_generation_attempt_raw_log_error_preserves_usage_append_order(
     client.generate_content.return_value = "successful response"
     client.last_metadata = {"usage": {"total_tokens": 7}}
     usage_history = []
+    events = []
+
+    class RecordingUsageHistory:
+        def append(self, metadata):
+            events.append(("usage_append", metadata["usage"]["total_tokens"]))
+            usage_history.append(metadata)
+
+    recorded_usage_history = RecordingUsageHistory()
 
     def fail_raw_log(path, mode="r", *args, **kwargs):
         if "raw_responses" in str(path):
+            events.append(("raw_log_open", Path(path).name))
             raise OSError("raw log unavailable")
         return open(path, mode, *args, **kwargs)
 
@@ -646,8 +669,12 @@ def test_generation_attempt_raw_log_error_preserves_usage_append_order(
             "user prompt",
             task_id="raw_log_error",
             attempt=1,
-            usage_history=usage_history,
+            usage_history=recorded_usage_history,
         )
 
     assert usage_history == [client.last_metadata]
+    assert [event[0] for event in events] == [
+        "usage_append",
+        "raw_log_open",
+    ]
     assert not list((tmp_path / "logs" / "raw_responses").glob("*.txt"))

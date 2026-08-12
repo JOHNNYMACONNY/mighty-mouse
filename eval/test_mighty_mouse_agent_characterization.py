@@ -265,18 +265,18 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
 
     original_execute_generation_attempt = agent._execute_generation_attempt
 
-    class RecordingUsageHistory(list):
+    class RecordingUsageHistory:
+        def __init__(self, delegate):
+            self._delegate = delegate
+
         def append(self, metadata):
             events.append(("usage_append", metadata["usage"]["total_tokens"]))
-            super().append(metadata)
+            self._delegate.append(metadata)
 
     def record_generation_attempt(*args, **kwargs):
         usage_history = kwargs["usage_history"]
-        recorded_usage_history = RecordingUsageHistory()
-        kwargs["usage_history"] = recorded_usage_history
-        response = original_execute_generation_attempt(*args, **kwargs)
-        usage_history.extend(recorded_usage_history)
-        return response
+        kwargs["usage_history"] = RecordingUsageHistory(usage_history)
+        return original_execute_generation_attempt(*args, **kwargs)
 
     parser = MagicMock(side_effect=parse_and_write)
     monkeypatch.setattr(agent.ResponseParser, "parse_and_write", parser)

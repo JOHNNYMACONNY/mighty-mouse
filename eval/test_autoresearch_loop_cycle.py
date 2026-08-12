@@ -5,10 +5,10 @@ from unittest.mock import Mock
 import pytest
 
 from eval.autoresearch_harness import SingleInstanceLock as LegacyLock
+from eval.autoresearch_cycle import MutationRequest
 from eval.mutation_engine import MutationLogRecord
 from eval.perpetual_loop import (
     AutoresearchLoop,
-    AutoresearchLoopOperations,
     CycleResult,
 )
 from eval.runner_lock import SingleInstanceLock, SingleInstanceLockError
@@ -18,9 +18,9 @@ from mighty_mouse.v2.seams import VerificationResult
 def test_loop_cycle_uses_injected_benchmark_verifier_and_mutation_adapters(tmp_path: Path) -> None:
     mutations = []
 
-    def mutate(verification, tier, replay_tiers):
-        assert isinstance(verification, VerificationResult)
-        mutations.append((tier, replay_tiers))
+    def mutate(request: MutationRequest):
+        assert isinstance(request.verification, VerificationResult)
+        mutations.append((request.current_tier, request.replay_tiers))
         return MutationLogRecord(
             timestamp=datetime.now().isoformat(),
             failure_category="LOGIC",
@@ -28,7 +28,7 @@ def test_loop_cycle_uses_injected_benchmark_verifier_and_mutation_adapters(tmp_p
             hypothesis="test",
             before=None,
             after=None,
-            replay_tiers_tested=replay_tiers,
+            replay_tiers_tested=list(request.replay_tiers),
             decision="REJECT",
         )
 
@@ -65,18 +65,23 @@ def test_loop_operations_preserve_fallback_verification(
         mutation_engine=Mock(),
         state_dir=str(tmp_path / "v2-state"),
         benchmark_adapter=lambda _tier: {"summary": {"success_rate": "1/4"}},
-        mutation_adapter=lambda *_args: None,
     )
+    loop.mutation_engine.execute_mutation_cycle.return_value = None
     loop._run_parity_report = lambda: None
 
     cycle = loop.build_cycle()
 
-    assert isinstance(cycle.operations, AutoresearchLoopOperations)
+    assert cycle.operations is loop
     result = cycle.run()
 
     assert result.pass_rate == 25.0
     assert result.verification is not None
     assert result.verification.verdict_category == "FAIL"
+    loop.mutation_engine.execute_mutation_cycle.assert_called_once()
+    request = loop.mutation_engine.execute_mutation_cycle.call_args.kwargs
+    assert request["current_tier"] == loop.tiers[0]
+    assert request["replay_tiers"] == []
+    assert isinstance(request["verification_result"], VerificationResult)
 
 
 def test_harness_adapters_share_one_lock_implementation(tmp_path: Path) -> None:

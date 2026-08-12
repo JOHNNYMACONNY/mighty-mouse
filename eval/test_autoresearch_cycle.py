@@ -4,14 +4,18 @@ from unittest.mock import Mock
 
 import pytest
 
-from eval.autoresearch_cycle import AutoresearchCycle, CycleResult
+from eval.autoresearch_cycle import (
+    AutoresearchCycle,
+    CycleResult,
+    MutationRequest,
+)
 from eval import perpetual_loop as perpetual_loop_module
 from eval.perpetual_loop import (
     AutoresearchLoop,
     CycleResult as LoopCycleResult,
 )
 from eval.tier_utils import parse_pass_rate
-from mighty_mouse.v2.seams import PolicyMutationSurface, VerificationResult
+from mighty_mouse.v2.seams import VerificationResult
 
 
 def _state(*, mutation_count: int = 0) -> dict:
@@ -41,17 +45,12 @@ class FakeCycleOperations:
         events: list[str],
         *,
         verifier_adapter=None,
-        mutation_adapter=None,
-        mutation_engine=None,
+        mutation_handler=None,
     ) -> None:
         self.benchmark = benchmark
         self.events = events
         self.verifier_adapter = verifier_adapter
-        self.mutation_adapter = mutation_adapter
-        self.mutation_engine = mutation_engine or Mock()
-        self.mutation_surface = PolicyMutationSurface(
-            frozenset({"reasoning.txt"})
-        )
+        self.mutation_handler = mutation_handler or Mock()
 
     def config_hash(self) -> str:
         return "config-hash"
@@ -83,21 +82,10 @@ class FakeCycleOperations:
 
     def execute_mutation(
         self,
-        verification: VerificationResult,
-        current_tier: str,
-        replay_tiers: list[str],
+        request: MutationRequest,
     ):
         self.events.append("mutation")
-        if self.mutation_adapter is not None:
-            return self.mutation_adapter(
-                verification, current_tier, replay_tiers
-            )
-        return self.mutation_engine.execute_mutation_cycle(
-            current_tier=current_tier,
-            replay_tiers=replay_tiers,
-            mutation_surface=self.mutation_surface,
-            verification_result=verification,
-        )
+        return self.mutation_handler(request)
 
     def save_state(self) -> None:
         self.events.append("save")
@@ -115,6 +103,9 @@ def _cycle(
     mutation_adapter=None,
     mutation_engine=None,
 ) -> AutoresearchCycle:
+    mutation_handler = mutation_adapter
+    if mutation_handler is None and mutation_engine is not None:
+        mutation_handler = mutation_engine.execute_mutation_cycle
     return AutoresearchCycle(
         state=state,
         tiers=["tier-1", "tier-2"],
@@ -122,8 +113,7 @@ def _cycle(
             benchmark,
             events,
             verifier_adapter=verifier_adapter,
-            mutation_adapter=mutation_adapter,
-            mutation_engine=mutation_engine,
+            mutation_handler=mutation_handler,
         ),
     )
 

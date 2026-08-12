@@ -51,6 +51,15 @@ class CycleResult:
         return self.to_dict()[key]
 
 
+@dataclass(frozen=True)
+class MutationRequest:
+    """Inputs needed to execute one mutation attempt."""
+
+    verification: VerificationResult
+    current_tier: str
+    replay_tiers: tuple[str, ...]
+
+
 class AutoresearchCycleOperations(Protocol):
     """Operational capabilities required by one bounded cycle."""
 
@@ -80,9 +89,7 @@ class AutoresearchCycleOperations(Protocol):
 
     def execute_mutation(
         self,
-        verification: VerificationResult,
-        current_tier: str,
-        replay_tiers: List[str],
+        request: MutationRequest,
     ) -> Optional["MutationRecord"]:
         ...
 
@@ -202,7 +209,11 @@ class AutoresearchCycle:
                 )
                 replay_tiers = self.operations.replay_tiers(current_tier)
                 record = self.operations.execute_mutation(
-                    verification, current_tier, replay_tiers
+                    MutationRequest(
+                        verification=verification,
+                        current_tier=current_tier,
+                        replay_tiers=tuple(replay_tiers),
+                    )
                 )
                 mutation_decision = getattr(record, "decision", None)
                 record_decision = getattr(

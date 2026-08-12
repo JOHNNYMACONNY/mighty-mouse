@@ -38,11 +38,13 @@ try:
     from .autoresearch_cycle import (
         AutoresearchCycle,
         CycleResult,
+        MutationRequest,
     )
 except ImportError:
     from autoresearch_cycle import (
         AutoresearchCycle,
         CycleResult,
+        MutationRequest,
     )
 from mighty_mouse.v2.foundation import (
     ImmutableStateStore,
@@ -99,77 +101,8 @@ def get_config_hash() -> str:
         return hashlib.sha256(f.read()).hexdigest()[:8]
 
 
-class AutoresearchLoopOperations:
-    """Concrete operational seam for one AutoresearchLoop cycle."""
-
-    def __init__(self, loop: "AutoresearchLoop") -> None:
-        self._loop = loop
-
-    def config_hash(self) -> str:
-        return get_config_hash()
-
-    def run_benchmark(self, tier: str) -> Optional[Dict[str, Any]]:
-        return self._loop.run_benchmark(tier)
-
-    def verify_benchmark(
-        self, benchmark: Dict[str, Any]
-    ) -> VerificationResult:
-        if self._loop.verifier_adapter is not None:
-            return self._loop.verifier_adapter(benchmark)
-
-        summary = benchmark.get("summary", {})
-        pass_rate = parse_pass_rate(summary) * 100.0
-        return VerificationResult(
-            passed=pass_rate >= 100.0,
-            score=pass_rate / 100.0,
-            details={"verifier_category": "LOGIC"},
-            verdict_category="PASS" if pass_rate >= 100.0 else "FAIL",
-        )
-
-    def update_telemetry(
-        self, tier: str, summary: Dict[str, Any], config_hash: str
-    ) -> None:
-        self._loop.update_telemetry(tier, summary, config_hash)
-
-    def record_signal(
-        self, *, scope: Scope, outcome: str, signal_counter: int
-    ) -> Any:
-        return self._loop.record_signal(
-            scope=scope,
-            outcome=outcome,
-            signal_counter=signal_counter,
-        )
-
-    def replay_tiers(self, tier: str) -> List[str]:
-        return get_replay_tiers(tier)
-
-    def execute_mutation(
-        self,
-        verification: VerificationResult,
-        current_tier: str,
-        replay_tiers: List[str],
-    ) -> Any:
-        if self._loop.mutation_adapter is not None:
-            return self._loop.mutation_adapter(
-                verification, current_tier, replay_tiers
-            )
-
-        return self._loop.mutation_engine.execute_mutation_cycle(
-            current_tier=current_tier,
-            replay_tiers=replay_tiers,
-            mutation_surface=self._loop.mutation_surface,
-            verification_result=verification,
-        )
-
-    def save_state(self) -> None:
-        self._loop.state_manager.save()
-
-    def run_parity_report(self) -> None:
-        self._loop._run_parity_report()
-
-
 class AutoresearchLoop:
-    """Typed execution engine for perpetual evaluation and prompt mutation loops."""
+    """Typed execution engine for bounded evaluation and mutation cycles."""
 
     def __init__(
         self,
@@ -178,16 +111,24 @@ class AutoresearchLoop:
         benchmark_results_path: str = BENCHMARK_RESULTS_PATH,
         mutation_engine: Optional[MutationEngine] = None,
         state_dir: str = "logs/v2-state",
-        benchmark_adapter: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None,
-        verifier_adapter: Optional[Callable[[Dict[str, Any]], VerificationResult]] = None,
-        mutation_adapter: Optional[Callable[[VerificationResult, str, List[str]], Optional[MutationLogRecord]]] = None,
+        benchmark_adapter: Optional[
+            Callable[[str], Optional[Dict[str, Any]]]
+        ] = None,
+        verifier_adapter: Optional[
+            Callable[[Dict[str, Any]], VerificationResult]
+        ] = None,
+        mutation_adapter: Optional[
+            Callable[[MutationRequest], Optional[MutationLogRecord]]
+        ] = None,
         mutation_surface: Optional[PolicyMutationSurface] = None,
     ):
         self.state_path = state_path
         self.telemetry_path = telemetry_path
         self.benchmark_results_path = benchmark_results_path
         self.state_manager = AtomicState(self.state_path)
-        self.mutation_engine = mutation_engine or MutationEngine(results_path=benchmark_results_path)
+        self.mutation_engine = mutation_engine or MutationEngine(
+            results_path=benchmark_results_path
+        )
         self.tiers = load_tiers()
         self.store = ImmutableStateStore(state_dir=state_dir)
         self.signal_lifecycle = SignalLifecycle(state_dir)
@@ -210,7 +151,10 @@ class AutoresearchLoop:
         retry_count: int = 0,
         verifier_category: str = "tests",
         verifier_result: str = "passed",
-        model_digest: str = "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        model_digest: str = (
+            "sha256:00000000000000000000000000000000"
+            "00000000000000000000000000000000"
+        ),
         execution_profile_id: str = "codex-local",
         signal_counter: int = 100,
     ) -> Any:
@@ -226,13 +170,13 @@ class AutoresearchLoop:
             verifier_category=verifier_category,
             verifier_result=verifier_result,
         )
-
-
     @property
     def state(self) -> Dict[str, Any]:
         return self.state_manager.data
 
-    def update_telemetry(self, tier: str, summary: Dict[str, Any], config_hash: str) -> None:
+    def update_telemetry(
+        self, tier: str, summary: Dict[str, Any], config_hash: str
+    ) -> None:
         history: List[Dict[str, Any]] = []
         if os.path.exists(self.telemetry_path):
             try:
@@ -285,12 +229,50 @@ class AutoresearchLoop:
                 return json.load(f)
         return None
 
+    def config_hash(self) -> str:
+        return get_config_hash()
+
+    def verify_benchmark(
+        self, benchmark: Dict[str, Any]
+    ) -> VerificationResult:
+        if self.verifier_adapter is not None:
+            return self.verifier_adapter(benchmark)
+
+        summary = benchmark.get("summary", {})
+        pass_rate = parse_pass_rate(summary) * 100.0
+        return VerificationResult(
+            passed=pass_rate >= 100.0,
+            score=pass_rate / 100.0,
+            details={"verifier_category": "LOGIC"},
+            verdict_category="PASS" if pass_rate >= 100.0 else "FAIL",
+        )
+
+    def replay_tiers(self, tier: str) -> List[str]:
+        return get_replay_tiers(tier)
+
+    def execute_mutation(self, request: MutationRequest) -> Any:
+        if self.mutation_adapter is not None:
+            return self.mutation_adapter(request)
+
+        return self.mutation_engine.execute_mutation_cycle(
+            current_tier=request.current_tier,
+            replay_tiers=list(request.replay_tiers),
+            mutation_surface=self.mutation_surface,
+            verification_result=request.verification,
+        )
+
+    def save_state(self) -> None:
+        self.state_manager.save()
+
+    def run_parity_report(self) -> None:
+        self._run_parity_report()
+
     def build_cycle(self) -> AutoresearchCycle:
         """Build one independently callable cycle over current loop state."""
         return AutoresearchCycle(
             state=self.state,
             tiers=self.tiers,
-            operations=AutoresearchLoopOperations(self),
+            operations=self,
         )
 
     def run_single_cycle(self) -> CycleResult:

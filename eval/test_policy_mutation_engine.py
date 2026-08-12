@@ -1,4 +1,3 @@
-import os
 from unittest.mock import Mock
 
 from eval.mutation_engine import MutationEngine
@@ -8,6 +7,7 @@ from mighty_mouse.v2.seams import (
     PolicyMutationSurface,
     VerificationResult,
 )
+from test_utils import isolated_engine_paths
 
 
 def _candidate() -> Candidate:
@@ -30,44 +30,11 @@ def _verification(*, passed: bool) -> VerificationResult:
 
 
 def _isolated_policy_engine(tmp_path) -> PolicyMutationEngine:
-    segments_dir = tmp_path / "segments"
-    segments_dir.mkdir()
-    agent_config = tmp_path / "agent.yaml"
-    agent_config.write_text("model: gemma\n")
+    paths = isolated_engine_paths(tmp_path)
     engine = PolicyMutationEngine(
-        segments_dir=str(segments_dir),
-        agent_config=str(agent_config),
+        segments_dir=paths["segments_dir"],
+        agent_config=paths["agent_config"],
     )
-
-    root = os.path.realpath(str(tmp_path))
-    for path in (engine.segments_dir, engine.agent_config):
-        assert os.path.commonpath((root, os.path.realpath(path))) == root
-    return engine
-
-
-def _isolated_mutation_engine(tmp_path, **overrides) -> MutationEngine:
-    segments_dir = tmp_path / "segments"
-    segments_dir.mkdir()
-    agent_config = tmp_path / "agent.yaml"
-    agent_config.write_text("model: gemma\n")
-    paths = {
-        "results_path": str(tmp_path / "benchmark_results.json"),
-        "mutation_log_path": str(tmp_path / "mutation_log.jsonl"),
-        "segments_dir": str(segments_dir),
-        "agent_config": str(agent_config),
-    }
-    paths.update(overrides)
-    engine = MutationEngine(**paths)
-
-    root = os.path.realpath(str(tmp_path))
-    for key in (
-        "results_path",
-        "mutation_log_path",
-        "segments_dir",
-        "agent_config",
-    ):
-        path = paths[key]
-        assert os.path.commonpath((root, os.path.realpath(path))) == root
     return engine
 
 
@@ -132,10 +99,10 @@ def test_legacy_mutation_engine_delegates_typed_candidate_mutation(
     delegate = Mock()
     expected = _candidate()
     delegate.mutate_candidate.return_value = expected
-    engine = _isolated_mutation_engine(
+    engine = MutationEngine(**isolated_engine_paths(
         tmp_path,
         policy_mutation_engine=delegate,
-    )
+    ))
     candidate = _candidate()
     verification = _verification(passed=False)
     surface = PolicyMutationSurface(frozenset({"reasoning.txt"}))
@@ -149,7 +116,7 @@ def test_legacy_mutation_engine_delegates_typed_candidate_mutation(
 
 
 def test_legacy_mutation_engine_defaults_to_canonical_engine(tmp_path) -> None:
-    engine = _isolated_mutation_engine(tmp_path)
+    engine = MutationEngine(**isolated_engine_paths(tmp_path))
 
     assert isinstance(engine.policy_mutation_engine, PolicyMutationEngine)
 
@@ -161,10 +128,10 @@ def test_legacy_mutation_engine_delegates_generation(tmp_path) -> None:
         MutationAttempt("reasoning.txt", "Improve logic", "new rules"),
     )
     delegate.generate_mutation.return_value = expected
-    engine = _isolated_mutation_engine(
+    engine = MutationEngine(**isolated_engine_paths(
         tmp_path,
         policy_mutation_engine=delegate,
-    )
+    ))
     failures = [{"task_id": "t1", "reason": "logic error"}]
 
     result = engine.generate_mutation("LOGIC", failures)

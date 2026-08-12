@@ -645,6 +645,7 @@ def test_generation_attempt_raw_log_error_preserves_usage_append_order(
     client.last_metadata = {"usage": {"total_tokens": 7}}
     usage_history = []
     events = []
+    real_open = open
 
     class RecordingUsageHistory:
         def append(self, metadata):
@@ -654,12 +655,16 @@ def test_generation_attempt_raw_log_error_preserves_usage_append_order(
     recorded_usage_history = RecordingUsageHistory()
 
     class FailingRawLog:
+        def __init__(self, handle):
+            self._handle = handle
+
         def __enter__(self):
+            self._handle.__enter__()
             events.append(("raw_log_open", "raw_log_error.txt"))
             return self
 
         def __exit__(self, exc_type, exc_value, traceback):
-            return False
+            return self._handle.__exit__(exc_type, exc_value, traceback)
 
         def write(self, _response):
             events.append(("raw_log_write", "raw_log_error.txt"))
@@ -667,7 +672,7 @@ def test_generation_attempt_raw_log_error_preserves_usage_append_order(
 
     def fail_raw_log(path, mode="r", *args, **kwargs):
         if "raw_responses" in str(path):
-            return FailingRawLog()
+            return FailingRawLog(real_open(path, mode, *args, **kwargs))
         return open(path, mode, *args, **kwargs)
 
     monkeypatch.setattr(agent, "_REPO_ROOT", str(tmp_path))
@@ -689,4 +694,6 @@ def test_generation_attempt_raw_log_error_preserves_usage_append_order(
         "raw_log_open",
         "raw_log_write",
     ]
-    assert not list((tmp_path / "logs" / "raw_responses").glob("*.txt"))
+    raw_logs = list((tmp_path / "logs" / "raw_responses").glob("*.txt"))
+    assert len(raw_logs) == 1
+    assert raw_logs[0].read_text() == ""

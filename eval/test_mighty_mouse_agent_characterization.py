@@ -27,6 +27,11 @@ def test_provider_retry_then_success_preserves_success_only_usage(agent_env):
     assert len(result.metadata["usage_history"]) == 1
     assert result.metadata["pass_type"] == "clean"
     assert result.metadata["output_files"] == ["answer.py"]
+    assert result.metadata["coverage_missing_files"] == []
+    assert result.metadata["coverage_recovery_attempts"] == 0
+    assert result.metadata["coverage_recovery_triggered"] is False
+    assert result.metadata["coverage_recovery_success"] is False
+    assert result.metadata["coverage_recovery_disallowed_reason"] is None
     assert [path.name for path in result.raw_logs] == [
         "raw_provider_retry_attempt_2_1700000000.txt"
     ]
@@ -258,9 +263,29 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
             events.append(("raw_log_open", Path(path).name))
         return builtins.open(path, mode, *args, **kwargs)
 
+    original_execute_generation_attempt = agent._execute_generation_attempt
+
+    class RecordingUsageHistory(list):
+        def append(self, metadata):
+            events.append(("usage_append", metadata["usage"]["total_tokens"]))
+            super().append(metadata)
+
+    def record_generation_attempt(*args, **kwargs):
+        usage_history = kwargs["usage_history"]
+        recorded_usage_history = RecordingUsageHistory()
+        kwargs["usage_history"] = recorded_usage_history
+        response = original_execute_generation_attempt(*args, **kwargs)
+        usage_history.extend(recorded_usage_history)
+        return response
+
     parser = MagicMock(side_effect=parse_and_write)
     monkeypatch.setattr(agent.ResponseParser, "parse_and_write", parser)
     monkeypatch.setattr(agent, "open", record_open, raising=False)
+    monkeypatch.setattr(
+        agent,
+        "_execute_generation_attempt",
+        record_generation_attempt,
+    )
     metadata_sequence = [
         {"usage": {"total_tokens": 3}, "latency_seconds": 0.03},
         {"usage": {"total_tokens": 5}, "latency_seconds": 0.05},
@@ -281,9 +306,11 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
 
     assert events == [
         ("provider", "plain response"),
+        ("usage_append", 3),
         ("raw_log_open", "raw_ordered_attempts_attempt_1_1700000000.txt"),
         ("parser", "plain response"),
         ("provider", "```python:answer.py\nanswer = True\n```"),
+        ("usage_append", 5),
         ("raw_log_open", "raw_ordered_attempts_attempt_2_1700000000.txt"),
         ("parser", "```python:answer.py\nanswer = True\n```"),
     ]
@@ -298,7 +325,14 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
 
 
 @pytest.mark.parametrize(
-    ("task_data", "responses", "skills_result", "reason", "expected_calls"),
+    (
+        "task_data",
+        "responses",
+        "skills_result",
+        "reason",
+        "expected_calls",
+        "expected_recovery_triggered",
+    ),
     [
         (
             {
@@ -310,6 +344,7 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
             None,
             "DELETABLE_FILE_EXCLUSION",
             1,
+            False,
         ),
         (
             {"id": "obs_task_conflict_case", "expected_files": ["missing.py"]},
@@ -317,6 +352,7 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
             None,
             "CONFLICT_ROUTING_VALIDATION_TASK",
             1,
+            False,
         ),
         (
             {"id": "conflict_task", "expected_files": ["missing.py"]},
@@ -331,6 +367,7 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
             ),
             "CONFLICT_DETECTED",
             1,
+            False,
         ),
         (
             {"id": "second_omission", "expected_files": ["missing.py"]},
@@ -341,6 +378,7 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
             None,
             "MAX_ATTEMPTS_REACHED",
             2,
+            True,
         ),
     ],
 )
@@ -351,11 +389,17 @@ def test_coverage_recovery_disallowed_cases(
     skills_result,
     reason,
     expected_calls,
+    expected_recovery_triggered,
 ):
     result = agent_env.run(task_data, responses, skills_result=skills_result)
 
     assert result.metadata["pass_type"] == "failed"
     assert result.metadata["coverage_recovery_disallowed_reason"] == reason
+    assert (
+        result.metadata["coverage_recovery_triggered"]
+        is expected_recovery_triggered
+    )
+    assert result.metadata["coverage_recovery_success"] is False
     assert result.client.generate_content.call_count == expected_calls
     actual_missing_files = result.metadata["coverage_missing_files"]
     assert actual_missing_files == task_data["expected_files"]

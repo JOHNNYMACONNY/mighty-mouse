@@ -104,6 +104,10 @@ def test_coverage_recovery_records_second_attempt_success(agent_env):
     assert result.metadata["coverage_recovery_success"] is True
     assert result.metadata["coverage_recovery_disallowed_reason"] is None
     assert set(result.metadata["output_files"]) == {"first.py", "second.py"}
+    recovery_prompt = result.client.generate_content.call_args_list[1].args[1]
+    assert "- second.py" in recovery_prompt
+    assert "- first.py" not in recovery_prompt
+    assert "Only provide the missing file blocks." in recovery_prompt
 
 
 def test_empty_expected_files_follow_clean_no_recovery_path(agent_env):
@@ -294,7 +298,7 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
 
 
 @pytest.mark.parametrize(
-    ("task_data", "responses", "skills_result", "reason"),
+    ("task_data", "responses", "skills_result", "reason", "expected_calls"),
     [
         (
             {
@@ -305,12 +309,14 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
             ["```python:other.py\nvalue = 1\n```"],
             None,
             "DELETABLE_FILE_EXCLUSION",
+            1,
         ),
         (
             {"id": "obs_task_conflict_case", "expected_files": ["missing.py"]},
             ["```python:other.py\nvalue = 1\n```"],
             None,
             "CONFLICT_ROUTING_VALIDATION_TASK",
+            1,
         ),
         (
             {"id": "conflict_task", "expected_files": ["missing.py"]},
@@ -324,6 +330,7 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
                 },
             ),
             "CONFLICT_DETECTED",
+            1,
         ),
         (
             {"id": "second_omission", "expected_files": ["missing.py"]},
@@ -333,6 +340,7 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
             ],
             None,
             "MAX_ATTEMPTS_REACHED",
+            2,
         ),
     ],
 )
@@ -342,11 +350,76 @@ def test_coverage_recovery_disallowed_cases(
     responses,
     skills_result,
     reason,
+    expected_calls,
 ):
     result = agent_env.run(task_data, responses, skills_result=skills_result)
 
     assert result.metadata["pass_type"] == "failed"
     assert result.metadata["coverage_recovery_disallowed_reason"] == reason
+    assert result.client.generate_content.call_count == expected_calls
+    actual_missing_files = result.metadata["coverage_missing_files"]
+    assert actual_missing_files == task_data["expected_files"]
+    assert result.metadata["coverage_recovery_attempts"] == expected_calls - 1
+
+
+def test_coverage_recovery_does_not_duplicate_provider_or_parser_side_effects(
+    agent_env,
+    monkeypatch,
+):
+    events = []
+
+    def parse_and_write(response, *args, **kwargs):
+        events.append(("parser", response))
+        if "first.py" in response:
+            return ["first.py"]
+        return ["second.py"]
+
+    monkeypatch.setattr(
+        agent.ResponseParser,
+        "parse_and_write",
+        parse_and_write,
+    )
+    result = agent_env.run(
+        {
+            "id": "coverage_side_effects",
+            "expected_files": ["first.py", "second.py"],
+        },
+        [
+            "```python:first.py\nvalue = 1\n```",
+            "```python:second.py\nvalue = 2\n```",
+        ],
+        event_log=events,
+    )
+
+    assert events == [
+        ("provider", "```python:first.py\nvalue = 1\n```"),
+        ("parser", "```python:first.py\nvalue = 1\n```"),
+        ("provider", "```python:second.py\nvalue = 2\n```"),
+        ("parser", "```python:second.py\nvalue = 2\n```"),
+    ]
+    assert result.client.generate_content.call_count == 2
+    assert result.metadata["coverage_recovery_attempts"] == 1
+    assert result.metadata["pass_type"] == "recovered"
+
+
+def test_pre_run_hygiene_removes_stale_root_python_before_classification(
+    agent_env,
+):
+    stale_file = agent_env.root / "stale_ghost.py"
+    stale_file.write_text("stale = True\n")
+
+    result = agent_env.run(
+        {
+            "id": "hygiene_before_classification",
+            "expected_files": ["answer.py"],
+        },
+        ["```python:answer.py\nanswer = True\n```"],
+    )
+
+    assert not stale_file.exists()
+    assert result.metadata["stale_ghost_files_removed_pre_run"] == 1
+    assert result.metadata["written_files"] == ["answer.py"]
+    assert result.metadata["deleted_files"] == []
 
 
 def test_parser_value_error_propagates(agent_env, monkeypatch):

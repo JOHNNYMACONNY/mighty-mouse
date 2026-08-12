@@ -165,3 +165,7 @@ _Avoid_: Uncoordinated background loops, unverified background runners
 **Verifier Seam**:
 The external execution boundary through which all candidates and policies undergo empirical, deterministic testing.
 _Avoid_: Internal state inspections, unverified mock assertions
+
+**Output Coverage Recovery**:
+A bounded agent retry path that detects missing task-declared expected files after response parsing, requests only missing file blocks, and records whether recovery succeeds or remains disallowed.
+_Avoid_: Schema retry, parser success, unrestricted rewrite

@@ -32,6 +32,7 @@ def evaluate_candidate_lifecycle(pass_rate: float, current_tier: str) -> Literal
 from mighty_mouse.experiments.local_agent import OllamaChatClient
 from mighty_mouse.orchestrator.response_parser import ResponseParser
 from mighty_mouse.v2.seams import Candidate, PolicyMutationSurface, VerificationResult
+from eval.autoresearch_cycle import MutationRequest  # noqa: E402
 from eval.mutation_engine import (  # noqa: E402
     CATEGORY_TO_SEGMENT,
     MutationLogRecord,
@@ -209,16 +210,18 @@ def main() -> int:
             surface = PolicyMutationSurface(frozenset(CATEGORY_TO_SEGMENT.values()))
             harness_state_dir = tasks_dir / ".mighty-mouse-state"
 
-            def mutation_adapter(verification: VerificationResult, tier: str, replay_tiers: list[str]):
+            def mutation_adapter(request: MutationRequest):
                 print("[*] Triggering PolicyMutationEngine for candidate mutation cycle...", file=sys.stderr)
                 engine = PolicyMutationEngine()
                 candidate = Candidate(
-                    candidate_id=f"c_harness_{tier}",
+                    candidate_id=f"c_harness_{request.current_tier}",
                     generation_id="g_1",
                     mode=args.mode,
                     policy_data={},
                 )
-                mutated = engine.mutate_candidate(candidate, verification, surface)
+                mutated = engine.mutate_candidate(
+                    candidate, request.verification, surface
+                )
                 print(f"[+] Produced mutated candidate: {mutated.candidate_id}", file=sys.stderr)
                 decision = "PROMOTE" if mutated.policy_data != candidate.policy_data else "REJECT"
                 return MutationLogRecord(
@@ -228,7 +231,7 @@ def main() -> int:
                     hypothesis="typed harness mutation",
                     before=None,
                     after=None,
-                    replay_tiers_tested=replay_tiers,
+                    replay_tiers_tested=list(request.replay_tiers),
                     decision=decision,
                 )
 

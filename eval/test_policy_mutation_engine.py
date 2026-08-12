@@ -7,6 +7,7 @@ from mighty_mouse.v2.seams import (
     PolicyMutationSurface,
     VerificationResult,
 )
+from test_utils import isolated_engine_paths
 
 
 def _candidate() -> Candidate:
@@ -28,8 +29,19 @@ def _verification(*, passed: bool) -> VerificationResult:
     )
 
 
-def test_policy_mutation_engine_applies_allowed_mutation(monkeypatch) -> None:
-    engine = PolicyMutationEngine()
+def _isolated_policy_engine(tmp_path) -> PolicyMutationEngine:
+    paths = isolated_engine_paths(tmp_path)
+    engine = PolicyMutationEngine(
+        segments_dir=paths["segments_dir"],
+        agent_config=paths["agent_config"],
+    )
+    return engine
+
+
+def test_policy_mutation_engine_applies_allowed_mutation(
+    monkeypatch, tmp_path
+) -> None:
+    engine = _isolated_policy_engine(tmp_path)
     monkeypatch.setattr(
         engine,
         "generate_mutation",
@@ -54,8 +66,10 @@ def test_policy_mutation_engine_applies_allowed_mutation(monkeypatch) -> None:
     assert mutated.status == "pending"
 
 
-def test_policy_mutation_engine_preserves_noop_and_reject(monkeypatch) -> None:
-    engine = PolicyMutationEngine()
+def test_policy_mutation_engine_preserves_noop_and_reject(
+    monkeypatch, tmp_path
+) -> None:
+    engine = _isolated_policy_engine(tmp_path)
     generator = Mock(
         return_value=(
             "constraints.txt",
@@ -79,11 +93,16 @@ def test_policy_mutation_engine_preserves_noop_and_reject(monkeypatch) -> None:
     assert generator.call_count == 1
 
 
-def test_legacy_mutation_engine_delegates_typed_candidate_mutation() -> None:
+def test_legacy_mutation_engine_delegates_typed_candidate_mutation(
+    tmp_path,
+) -> None:
     delegate = Mock()
     expected = _candidate()
     delegate.mutate_candidate.return_value = expected
-    engine = MutationEngine(policy_mutation_engine=delegate)
+    engine = MutationEngine(**isolated_engine_paths(
+        tmp_path,
+        policy_mutation_engine=delegate,
+    ))
     candidate = _candidate()
     verification = _verification(passed=False)
     surface = PolicyMutationSurface(frozenset({"reasoning.txt"}))
@@ -96,20 +115,23 @@ def test_legacy_mutation_engine_delegates_typed_candidate_mutation() -> None:
     )
 
 
-def test_legacy_mutation_engine_defaults_to_canonical_engine() -> None:
-    engine = MutationEngine()
+def test_legacy_mutation_engine_defaults_to_canonical_engine(tmp_path) -> None:
+    engine = MutationEngine(**isolated_engine_paths(tmp_path))
 
     assert isinstance(engine.policy_mutation_engine, PolicyMutationEngine)
 
 
-def test_legacy_mutation_engine_delegates_generation() -> None:
+def test_legacy_mutation_engine_delegates_generation(tmp_path) -> None:
     delegate = Mock()
     expected = (
         "reasoning.txt",
         MutationAttempt("reasoning.txt", "Improve logic", "new rules"),
     )
     delegate.generate_mutation.return_value = expected
-    engine = MutationEngine(policy_mutation_engine=delegate)
+    engine = MutationEngine(**isolated_engine_paths(
+        tmp_path,
+        policy_mutation_engine=delegate,
+    ))
     failures = [{"task_id": "t1", "reason": "logic error"}]
 
     result = engine.generate_mutation("LOGIC", failures)

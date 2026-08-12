@@ -12,11 +12,15 @@ from mutation_engine import (
     CATEGORY_TO_SEGMENT,
 )
 from perpetual_loop import AutoresearchLoop, AtomicState
+from test_utils import isolated_engine_paths
 
 
 def test_failure_analysis_no_file(tmp_path):
     results_path = str(tmp_path / "nonexistent.json")
-    engine = MutationEngine(results_path=results_path)
+    engine = MutationEngine(**isolated_engine_paths(
+        tmp_path,
+        results_path=results_path,
+    ))
     analysis = engine.analyze_failures()
     assert analysis is None
 
@@ -27,14 +31,27 @@ def test_failure_analysis_parsing(tmp_path):
         "summary": {"success_rate": "1/3"},
         "results": [
             {"task_id": "t1", "status": "pass"},
-            {"task_id": "t2", "status": "fail", "category": "SCOPE", "reason": "out of bounds"},
-            {"task_id": "t3", "status": "fail", "category": "SCOPE", "reason": "invalid path"},
+            {
+                "task_id": "t2",
+                "status": "fail",
+                "category": "SCOPE",
+                "reason": "out of bounds",
+            },
+            {
+                "task_id": "t3",
+                "status": "fail",
+                "category": "SCOPE",
+                "reason": "invalid path",
+            },
         ]
     }
     with open(results_path, "w") as f:
         json.dump(data, f)
 
-    engine = MutationEngine(results_path=results_path)
+    engine = MutationEngine(**isolated_engine_paths(
+        tmp_path,
+        results_path=results_path,
+    ))
     analysis = engine.analyze_failures()
     assert analysis is not None
     assert analysis.dominant_category == "SCOPE"
@@ -48,15 +65,31 @@ def test_timeout_dominance_freeze(tmp_path):
     data = {
         "summary": {"success_rate": "0/2"},
         "results": [
-            {"task_id": "t1", "status": "fail", "category": "TIMEOUT", "reason": "time limit"},
-            {"task_id": "t2", "status": "fail", "category": "TIMEOUT", "reason": "time limit"},
+            {
+                "task_id": "t1",
+                "status": "fail",
+                "category": "TIMEOUT",
+                "reason": "time limit",
+            },
+            {
+                "task_id": "t2",
+                "status": "fail",
+                "category": "TIMEOUT",
+                "reason": "time limit",
+            },
         ]
     }
     with open(results_path, "w") as f:
         json.dump(data, f)
 
-    engine = MutationEngine(results_path=results_path, mutation_log_path=mutation_log_path)
-    record = engine.execute_mutation_cycle(current_tier="tier-1", replay_tiers=[])
+    engine = MutationEngine(**isolated_engine_paths(
+        tmp_path,
+        results_path=results_path,
+        mutation_log_path=mutation_log_path,
+    ))
+    record = engine.execute_mutation_cycle(
+        current_tier="tier-1", replay_tiers=[]
+    )
 
     assert record is not None
     assert record.decision == "FROZEN_TIMEOUT"
@@ -161,14 +194,16 @@ def test_autoresearch_loop_initialization(tmp_path):
         state_path=state_path,
         telemetry_path=telemetry_path,
         benchmark_results_path=bench_results_path,
+        mutation_engine=MutationEngine(**isolated_engine_paths(tmp_path)),
+        state_dir=str(tmp_path / "state"),
     )
     assert loop.state["mutation_count"] == 0
     assert "current_tier" in loop.state
 
 
-def test_mutate_candidate_seam():
+def test_mutate_candidate_seam(tmp_path):
     from mighty_mouse.v2.seams import Candidate, Signal
-    engine = MutationEngine()
+    engine = MutationEngine(**isolated_engine_paths(tmp_path))
 
     candidate = Candidate(
         candidate_id="c_base",

@@ -13,11 +13,9 @@ import yaml
 
 try:
     from mighty_mouse.orchestrator.gemini_client import GeminiClient
-    from mighty_mouse.orchestrator.model_engine import ModelExecutionEngine
     from mighty_mouse.orchestrator.response_parser import ResponseParser
 except ImportError:
     from gemini_client import GeminiClient
-    from model_engine import ModelExecutionEngine
     from response_parser import ResponseParser
 
 
@@ -195,6 +193,68 @@ def _write_run_metadata(client, workspace, task_input, p_cfg, feedback_str=None,
         json.dump(metadata, f, indent=2)
 
 
+def _execute_generation_attempt(
+    client,
+    system_prompt,
+    user_prompt,
+    *,
+    task_id,
+    attempt,
+    usage_history,
+):
+    response = client.generate_content(system_prompt, user_prompt)
+    usage_history.append(dict(client.last_metadata))
+
+    # DEBUG: Save raw response to a permanent global log directory
+    global_logs_dir = os.path.join(_REPO_ROOT, "logs", "raw_responses")
+    os.makedirs(global_logs_dir, exist_ok=True)
+    task_id_str = task_id if task_id else "unknown"
+    ts = int(time.time())
+    with open(
+        os.path.join(
+            global_logs_dir,
+            f"raw_{task_id_str}_attempt_{attempt}_{ts}.txt",
+        ),
+        "w",
+    ) as f:
+        f.write(response)
+
+    return response
+
+
+def _evaluate_output_coverage_policy(
+    expected_files,
+    cumulative_output_paths,
+    *,
+    conflict_detected,
+    injection_reason,
+    is_conflict_routing_validation,
+    allowed_delete_paths,
+    coverage_recovery_attempts,
+):
+    """Evaluate coverage and reachable recovery rejection policy."""
+    missing_files = [
+        path for path in expected_files if path not in cumulative_output_paths
+    ]
+    if not missing_files:
+        return [], None
+
+    if conflict_detected:
+        disallowed_reason = "CONFLICT_DETECTED"
+    elif injection_reason == "CONFLICT_REJECTED":
+        disallowed_reason = "CONFLICT_REJECTED"
+    elif is_conflict_routing_validation:
+        disallowed_reason = "CONFLICT_ROUTING_VALIDATION_TASK"
+    elif any(path in allowed_delete_paths for path in missing_files):
+        disallowed_reason = "DELETABLE_FILE_EXCLUSION"
+    elif coverage_recovery_attempts >= 1:
+        disallowed_reason = "MAX_ATTEMPTS_REACHED"
+    else:
+        disallowed_reason = None
+
+    return missing_files, disallowed_reason
+
+
 def solve(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_skills=None, temperature=None, stage="unified", plan_file=None):
     p_cfg_path = os.path.abspath(p_cfg_path)
     task_input = os.path.abspath(task_input)
@@ -313,6 +373,7 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
             "3. <adversarial_plan>: Zero-deletion checks and risk analysis.\n"
             "4. <proposed_changes>: Concrete steps and file-by-file changes.\n\n"
         )
+
         user_prompt = f"{PLANNER_REMINDER}Create an execution blueprint for the following task:\n{task_str}\n"
     else:
         user_prompt = f"{FORMAT_REMINDER}Implement the following task:\n{task_str}\n"
@@ -324,7 +385,6 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
     user_prompt += DISALLOWED_PATTERNS
 
     client = GeminiClient(config=p_cfg)
-    engine = ModelExecutionEngine(config=p_cfg, client=client)
     allowed_delete_paths = []
     if isinstance(task_data, dict):
         allowed_delete_paths = task_data.get("deletable_files", [])
@@ -368,16 +428,14 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
         print(f"[agent] Attempt {attempt}/{effective_max_attempts} starting...", file=sys.stderr)
         sys.stdout.flush()
         try:
-            response = client.generate_content(full_sys, current_user_prompt)
-            usage_history.append(dict(client.last_metadata))
-
-            # DEBUG: Save raw response to a permanent global log directory
-            global_logs_dir = os.path.join(_REPO_ROOT, "logs", "raw_responses")
-            os.makedirs(global_logs_dir, exist_ok=True)
-            task_id_str = task_id if task_id else 'unknown'
-            ts = int(time.time())
-            with open(os.path.join(global_logs_dir, f"raw_{task_id_str}_attempt_{attempt}_{ts}.txt"), "w") as f:
-                f.write(response)
+            response = _execute_generation_attempt(
+                client,
+                full_sys,
+                current_user_prompt,
+                task_id=task_id,
+                attempt=attempt,
+                usage_history=usage_history,
+            )
 
         except Exception as e:
             print(f"[agent] ERROR during generation: {e}", file=sys.stderr)
@@ -422,24 +480,17 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
                 break
 
         # Strictly verify parsed files against expected implementation files
-        missing_files = [f for f in expected_files if f not in cumulative_output_paths]
+        missing_files, disallowed_reason = _evaluate_output_coverage_policy(
+            expected_files,
+            cumulative_output_paths,
+            conflict_detected=conflict_detected,
+            injection_reason=injection_reason,
+            is_conflict_routing_validation=is_conflict_routing_validation,
+            allowed_delete_paths=allowed_delete_paths,
+            coverage_recovery_attempts=coverage_recovery_attempts,
+        )
         if missing_files:
             coverage_missing_files = missing_files  # Record context immediately
-            disallowed_reason = None
-            if schema_error:
-                disallowed_reason = "SCHEMA_ERROR"
-            elif conflict_detected:
-                disallowed_reason = "CONFLICT_DETECTED"
-            elif injection_reason == "CONFLICT_REJECTED":
-                disallowed_reason = "CONFLICT_REJECTED"
-            elif is_conflict_routing_validation:
-                disallowed_reason = "CONFLICT_ROUTING_VALIDATION_TASK"
-            elif not expected_files:
-                disallowed_reason = "EMPTY_EXPECTED_FILES"
-            elif any(f in allowed_delete_paths for f in missing_files):
-                disallowed_reason = "DELETABLE_FILE_EXCLUSION"
-            elif coverage_recovery_attempts >= 1:
-                disallowed_reason = "MAX_ATTEMPTS_REACHED"
 
             if disallowed_reason:
                 coverage_recovery_disallowed_reason = disallowed_reason
@@ -556,4 +607,3 @@ if __name__ == "__main__":
             stage=args.stage,
             plan_file=args.plan_file
         )
-

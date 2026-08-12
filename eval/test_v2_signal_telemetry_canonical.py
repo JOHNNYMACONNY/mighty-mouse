@@ -170,6 +170,7 @@ def test_autoresearch_loop_routes_signal_construction_through_canonical_seam(
         state_path=str(tmp_path / "state.json"),
         telemetry_path=str(tmp_path / "telemetry.json"),
         benchmark_results_path=str(tmp_path / "results.json"),
+        mutation_engine=Mock(),
         state_dir=str(tmp_path / "v2-state"),
     )
 

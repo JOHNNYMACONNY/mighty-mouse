@@ -383,7 +383,7 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
         (
             {
                 "id": "multiple_missing_files",
-                "expected_files": ["first.py", "second.py", "third.py"],
+                "expected_files": ["third.py", "first.py", "second.py"],
             },
             [
                 "```python:other.py\nvalue = 1\n```",
@@ -653,10 +653,21 @@ def test_generation_attempt_raw_log_error_preserves_usage_append_order(
 
     recorded_usage_history = RecordingUsageHistory()
 
+    class FailingRawLog:
+        def __enter__(self):
+            events.append(("raw_log_open", "raw_log_error.txt"))
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def write(self, _response):
+            events.append(("raw_log_write", "raw_log_error.txt"))
+            raise OSError("raw log unavailable")
+
     def fail_raw_log(path, mode="r", *args, **kwargs):
         if "raw_responses" in str(path):
-            events.append(("raw_log_open", Path(path).name))
-            raise OSError("raw log unavailable")
+            return FailingRawLog()
         return open(path, mode, *args, **kwargs)
 
     monkeypatch.setattr(agent, "_REPO_ROOT", str(tmp_path))
@@ -676,5 +687,6 @@ def test_generation_attempt_raw_log_error_preserves_usage_append_order(
     assert [event[0] for event in events] == [
         "usage_append",
         "raw_log_open",
+        "raw_log_write",
     ]
     assert not list((tmp_path / "logs" / "raw_responses").glob("*.txt"))

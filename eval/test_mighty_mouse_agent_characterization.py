@@ -1,4 +1,6 @@
+import builtins
 import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -236,6 +238,61 @@ def test_schema_retry_then_coverage_recovery_reaches_third_attempt(agent_env):
     assert "Only provide the missing file blocks." in recovery_prompt
 
 
+def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
+    agent_env,
+    monkeypatch,
+):
+    events = []
+    parse_results = iter([[], ["answer.py"]])
+
+    def parse_and_write(response, *args, **kwargs):
+        events.append(("parser", response))
+        return next(parse_results)
+
+    def record_open(path, mode="r", *args, **kwargs):
+        if "raw_responses" in str(path) and "w" in mode:
+            events.append(("raw_log_open", Path(path).name))
+        return builtins.open(path, mode, *args, **kwargs)
+
+    parser = MagicMock(side_effect=parse_and_write)
+    monkeypatch.setattr(agent.ResponseParser, "parse_and_write", parser)
+    monkeypatch.setattr(agent, "open", record_open, raising=False)
+    metadata_sequence = [
+        {"usage": {"total_tokens": 3}, "latency_seconds": 0.03},
+        {"usage": {"total_tokens": 5}, "latency_seconds": 0.05},
+    ]
+
+    result = agent_env.run(
+        {
+            "id": "ordered_attempts",
+            "task": "write answer",
+        },
+        [
+            "plain response",
+            "```python:answer.py\nanswer = True\n```",
+        ],
+        metadata_sequence=metadata_sequence,
+        event_log=events,
+    )
+
+    assert events == [
+        ("provider", "plain response"),
+        ("raw_log_open", "raw_ordered_attempts_attempt_1_1700000000.txt"),
+        ("parser", "plain response"),
+        ("provider", "```python:answer.py\nanswer = True\n```"),
+        ("raw_log_open", "raw_ordered_attempts_attempt_2_1700000000.txt"),
+        ("parser", "```python:answer.py\nanswer = True\n```"),
+    ]
+    assert result.metadata["usage_history"] == metadata_sequence
+    assert result.metadata["attempts"] == 2
+    assert result.client.generate_content.call_count == 2
+    assert parser.call_count == 2
+    assert [path.name for path in result.raw_logs] == [
+        "raw_ordered_attempts_attempt_1_1700000000.txt",
+        "raw_ordered_attempts_attempt_2_1700000000.txt",
+    ]
+
+
 @pytest.mark.parametrize(
     ("task_data", "responses", "skills_result", "reason"),
     [
@@ -340,6 +397,28 @@ def test_planner_writes_plan_without_parser(agent_env, monkeypatch):
     parse_and_write.assert_not_called()
     assert result.client.generate_content.call_count == 1
     assert result.metadata["pass_type"] == "clean"
+
+
+def test_coder_prompt_preserves_plan_file_and_feedback(agent_env):
+    plan_file = agent_env.root / "plans" / "stage1.md"
+    plan_file.parent.mkdir(parents=True)
+    plan_file.write_text("<plan>Keep response contract stable</plan>")
+
+    result = agent_env.run(
+        {"id": "coder_feedback_plan", "task": "implement plan"},
+        ["```python:answer.py\nanswer = True\n```"],
+        stage="coder",
+        plan_file=plan_file,
+        feedback_str="Previous attempt missed parser ordering",
+    )
+
+    user_prompt = result.client.generate_content.call_args.args[1]
+    assert "<stage1_blueprint>" in user_prompt
+    assert "<plan>Keep response contract stable</plan>" in user_prompt
+    assert "<execution_feedback>" in user_prompt
+    assert "Previous attempt missed parser ordering" in user_prompt
+    assert result.metadata["feedback_supplied"] is True
+    assert (result.workspace / "answer.py").exists()
 
 
 def test_written_and_deleted_classification_persists_metadata(agent_env):

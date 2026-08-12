@@ -27,16 +27,34 @@ def agent_env(tmp_path, monkeypatch):
         skills_result=None,
         feedback_str=None,
         temperature=None,
+        metadata_sequence=None,
+        event_log=None,
     ):
         task_file = tmp_path / "task.json"
         task_file.write_text(json.dumps(task_data))
 
         client = MagicMock()
-        client.generate_content.side_effect = list(responses)
         client.last_metadata = {
             "usage": {"total_tokens": 11},
             "latency_seconds": 0.01,
         }
+        if metadata_sequence is None and event_log is None:
+            client.generate_content.side_effect = list(responses)
+        else:
+            response_iter = iter(responses)
+            metadata_iter = iter(metadata_sequence or [])
+
+            def generate_content(system_prompt, user_prompt):
+                response = next(response_iter)
+                if event_log is not None:
+                    event_log.append(("provider", response))
+                if isinstance(response, BaseException):
+                    raise response
+                if metadata_sequence is not None:
+                    client.last_metadata = next(metadata_iter)
+                return response
+
+            client.generate_content.side_effect = generate_content
         client_factory = MagicMock(return_value=client)
 
         monkeypatch.setattr(agent, "GeminiClient", client_factory)

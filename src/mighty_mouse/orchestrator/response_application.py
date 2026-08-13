@@ -52,8 +52,11 @@ def _resolve_target_path(path: str, workspace_root: str) -> tuple[str, str]:
 
     canonical_workspace_root = os.path.realpath(workspace_root)
     canonical_target_path = os.path.realpath(target_path)
-    if canonical_target_path != canonical_workspace_root and not canonical_target_path.startswith(
-        canonical_workspace_root + os.sep
+    if (
+        canonical_target_path != canonical_workspace_root
+        and not canonical_target_path.startswith(
+            canonical_workspace_root + os.sep
+        )
     ):
         raise ValueError(f"Resolved path escapes workspace: {path}")
 
@@ -69,7 +72,10 @@ def _apply_response_text(
     migration and ownership-contraction tickets complete.
     """
 
-    print(f"[parser] Processing response (Length: {len(raw_text)})", file=sys.stderr)
+    print(
+        f"[parser] Processing response (Length: {len(raw_text)})",
+        file=sys.stderr,
+    )
     workspace_root = os.path.abspath(policy.workspace_root or os.getcwd())
     allowed_delete_paths = {
         path.strip()
@@ -91,7 +97,9 @@ def _apply_response_text(
         print("[parser] Wrote CHECKLIST.md", file=sys.stderr)
 
     file_blocks = re.finditer(
-        r"```(?P<lang>\w+)?(?:\s*:\s*(?P<path>[^\n\s]+))?.*?\n(?P<content>.*?)\n```",
+        r"```(?P<lang>\w+)?"
+        r"(?:\s*:\s*(?P<path>[^\n\s]+))?.*?\n"
+        r"(?P<content>.*?)\n```",
         raw_text,
         re.DOTALL,
     )
@@ -146,7 +154,10 @@ def _apply_response_text(
         if not policy.system_mode:
             norm_path = path.replace("\\", "/")
             if norm_path.startswith(".mighty/"):
-                print(f"[parser] REJECTED system path: {path}", file=sys.stderr)
+                print(
+                    f"[parser] REJECTED system path: {path}",
+                    file=sys.stderr,
+                )
                 continue
 
         if len(content.encode("utf-8")) > policy.max_file_bytes:
@@ -179,14 +190,18 @@ def _apply_response_text(
             extracted_files.append(path)
             continue
 
-        print(f"[parser] Target: {path} (Resolved: {target_path})", file=sys.stderr)
-        os.makedirs(
-            os.path.dirname(target_path) if os.path.dirname(target_path) else ".",
-            exist_ok=True,
+        print(
+            f"[parser] Target: {path} (Resolved: {target_path})",
+            file=sys.stderr,
         )
+        target_directory = os.path.dirname(target_path)
+        os.makedirs(target_directory or ".", exist_ok=True)
         with open(target_path, "w") as output_file:
             output_file.write(content)
-        print(f"[parser] Wrote {len(content)} bytes to {path}", file=sys.stderr)
+        print(
+            f"[parser] Wrote {len(content)} bytes to {path}",
+            file=sys.stderr,
+        )
         extracted_files.append(path)
 
     if not extracted_files:
@@ -195,7 +210,10 @@ def _apply_response_text(
             "[parser] No code blocks with file paths identified in response.",
             file=sys.stderr,
         )
-        print(f"[parser] Response length: {len(raw_text)} chars.", file=sys.stderr)
+        print(
+            f"[parser] Response length: {len(raw_text)} chars.",
+            file=sys.stderr,
+        )
         print("[parser] !!!!!!!!!!!!!!!!!!!!!!!!!!!", file=sys.stderr)
 
     return extracted_files
@@ -204,4 +222,7 @@ def _apply_response_text(
 def apply_response(request: ResponseApplicationRequest) -> list[str]:
     """Apply one response while preserving legacy parser behavior."""
 
-    return _apply_response_text(request.raw_response, request.policy)
+    return _apply_response_text(
+        request.raw_response,
+        request.policy,
+    )

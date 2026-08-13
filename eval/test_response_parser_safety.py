@@ -77,7 +77,10 @@ PURGED
 
 
 def test_checklist_symlink_escape_is_blocked_before_later_write():
-    with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as outside:
+    with (
+        tempfile.TemporaryDirectory() as tmp,
+        tempfile.TemporaryDirectory() as outside,
+    ):
         outside_checklist = os.path.join(outside, "CHECKLIST.md")
         with open(outside_checklist, "w") as f:
             f.write("keep\n")
@@ -100,7 +103,10 @@ later
 
 
 def test_legacy_parser_rejects_symlink_write_and_delete_escapes():
-    with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as outside:
+    with (
+        tempfile.TemporaryDirectory() as tmp,
+        tempfile.TemporaryDirectory() as outside,
+    ):
         link = os.path.join(tmp, "linked")
         os.symlink(outside, link)
 

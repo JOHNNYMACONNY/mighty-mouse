@@ -18,6 +18,17 @@ class ResponseParser:
         target_path = os.path.abspath(os.path.join(workspace_root, path))
         if target_path != workspace_root and not target_path.startswith(workspace_root + os.sep):
             raise ValueError(f"Resolved path escapes workspace: {path}")
+
+        canonical_workspace_root = os.path.realpath(workspace_root)
+        canonical_target_path = os.path.realpath(target_path)
+        if (
+            canonical_target_path != canonical_workspace_root
+            and not canonical_target_path.startswith(
+                canonical_workspace_root + os.sep
+            )
+        ):
+            raise ValueError(f"Resolved path escapes workspace: {path}")
+
         return path, target_path
 
     @staticmethod

@@ -30,7 +30,11 @@ def evaluate_candidate_lifecycle(pass_rate: float, current_tier: str) -> Literal
 
 
 from mighty_mouse.experiments.local_agent import OllamaChatClient
-from mighty_mouse.orchestrator.response_parser import ResponseParser
+from mighty_mouse.orchestrator.response_application import (  # noqa: E402
+    ResponseApplicationPolicy,
+    ResponseApplicationRequest,
+    apply_response,
+)
 from mighty_mouse.v2.seams import Candidate, PolicyMutationSurface, VerificationResult
 from eval.autoresearch_cycle import MutationRequest  # noqa: E402
 from eval.mutation_engine import (  # noqa: E402
@@ -108,7 +112,12 @@ def run_task(task_path: Path, model: str, host: str) -> bool:
 
         # Parse response and apply edits in-place to temp_dir
         try:
-            ResponseParser.parse_and_write(raw_text, workspace_root=temp_dir)
+            apply_response(
+                ResponseApplicationRequest(
+                    raw_response=raw_text,
+                    policy=ResponseApplicationPolicy(workspace_root=temp_dir),
+                )
+            )
         except Exception as e:
             print(f"Response parser failed for {task['id']}: {e}", file=sys.stderr)
             return False

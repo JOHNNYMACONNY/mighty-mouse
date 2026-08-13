@@ -1,4 +1,5 @@
 import os
+import posixpath
 import re
 
 
@@ -41,7 +42,9 @@ class ResponseParser:
         checklist_match = re.search(r'# Mighty Mouse Checklist.*?(?=```|$)', raw_text, re.DOTALL | re.IGNORECASE)
         if checklist_match:
             checklist_content = checklist_match.group(0).strip()
-            checklist_path = os.path.join(workspace_root, "CHECKLIST.md")
+            _, checklist_path = ResponseParser._resolve_target_path(
+                "CHECKLIST.md", workspace_root
+            )
             with open(checklist_path, "w") as f:
                 f.write(checklist_content)
                 f.write("\n")
@@ -95,8 +98,8 @@ class ResponseParser:
 
             # Harness Protection: Block .mighty/ unless system_mode=True
             if not system_mode:
-                norm_path = path.replace('\\', '/')
-                if norm_path.startswith('.mighty/'):
+                norm_path = posixpath.normpath(path.replace('\\', '/'))
+                if norm_path == '.mighty' or norm_path.startswith('.mighty/'):
                     print(f"[parser] REJECTED system path: {path}", file=sys.stderr)
                     continue
 

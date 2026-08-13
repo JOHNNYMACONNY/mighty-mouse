@@ -216,3 +216,39 @@ escape
             )
         )
     assert target.exists()
+
+
+def test_application_boundary_blocks_checklist_symlink_before_later_write(
+    tmp_path,
+):
+    outside = tmp_path.parent / "outside-checklist-response-application"
+    outside.mkdir()
+    outside_checklist = outside / "CHECKLIST.md"
+    outside_checklist.write_text("keep\n")
+    (tmp_path / "CHECKLIST.md").symlink_to(outside_checklist)
+    raw = """# Mighty Mouse Checklist
+unsafe
+```python:later.py
+later
+```"""
+
+    with pytest.raises(ValueError, match="Resolved path escapes workspace"):
+        apply_response(_request(raw, tmp_path))
+
+    assert outside_checklist.read_text() == "keep\n"
+    assert not (tmp_path / "later.py").exists()
+
+
+def test_application_boundary_normalizes_protected_path_for_authorization(
+    tmp_path,
+):
+    raw = """```python:./.mighty/secret.py
+secret
+```"""
+
+    assert apply_response(_request(raw, tmp_path)) == []
+    assert not (tmp_path / ".mighty/secret.py").exists()
+    assert apply_response(_request(raw, tmp_path, system_mode=True)) == [
+        "./.mighty/secret.py"
+    ]
+    assert (tmp_path / ".mighty/secret.py").read_text() == "secret"

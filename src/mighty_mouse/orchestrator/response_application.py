@@ -9,6 +9,7 @@ boundary; parser policy stays outside Agent Execution.
 from __future__ import annotations
 
 import os
+import posixpath
 import re
 import sys
 from dataclasses import dataclass
@@ -90,7 +91,10 @@ def _apply_response_text(
     )
     if checklist_match:
         checklist_content = checklist_match.group(0).strip()
-        checklist_path = os.path.join(workspace_root, "CHECKLIST.md")
+        _, checklist_path = _resolve_target_path(
+            "CHECKLIST.md",
+            workspace_root,
+        )
         with open(checklist_path, "w") as checklist_file:
             checklist_file.write(checklist_content)
             checklist_file.write("\n")
@@ -152,8 +156,8 @@ def _apply_response_text(
 
         # Harness protection: block .mighty/ unless system mode allows it.
         if not policy.system_mode:
-            norm_path = path.replace("\\", "/")
-            if norm_path.startswith(".mighty/"):
+            norm_path = posixpath.normpath(path.replace("\\", "/"))
+            if norm_path == ".mighty" or norm_path.startswith(".mighty/"):
                 print(
                     f"[parser] REJECTED system path: {path}",
                     file=sys.stderr,

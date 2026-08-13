@@ -20,19 +20,21 @@ def _request(raw_response, workspace_root, **policy_overrides):
     return ResponseApplicationRequest(raw_response=raw_response, policy=policy)
 
 
-def test_application_boundary_forwards_all_legacy_policy_controls(
+def test_application_boundary_owns_application_and_keeps_policy_frozen(
     tmp_path, monkeypatch
 ):
-    observed = {}
+    def fail_if_legacy_parser_called(*args, **kwargs):
+        raise AssertionError(
+            "application boundary must own response application"
+        )
 
-    def parse_and_write(raw_response, **kwargs):
-        observed["raw_response"] = raw_response
-        observed.update(kwargs)
-        return ["created.py"]
-
-    monkeypatch.setattr(ResponseParser, "parse_and_write", parse_and_write)
+    monkeypatch.setattr(
+        ResponseParser, "parse_and_write", fail_if_legacy_parser_called
+    )
     request = _request(
-        "raw response",
+        """```python:created.py
+created
+```""",
         tmp_path,
         allowed_delete_paths=("obsolete.py",),
         max_file_bytes=17,
@@ -41,14 +43,7 @@ def test_application_boundary_forwards_all_legacy_policy_controls(
     )
 
     assert apply_response(request) == ["created.py"]
-    assert observed == {
-        "raw_response": "raw response",
-        "workspace_root": str(tmp_path),
-        "allowed_delete_paths": ("obsolete.py",),
-        "max_file_bytes": 17,
-        "system_mode": True,
-        "strict_code_hygiene": True,
-    }
+    assert (tmp_path / "created.py").read_text() == "created"
 
     with pytest.raises(AttributeError):
         request.policy.max_file_bytes = 18

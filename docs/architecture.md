@@ -23,7 +23,7 @@ package boundaries, or dependency direction changes.
 | Compatibility seams | `src/mighty_mouse/v2/foundation.py`, `src/mighty_mouse/v2/seams.py`, `src/mighty_mouse/v2/__init__.py` | `foundation.py` re-export façade over deep v2 modules. `seams.py` typed Candidate, Signal, mutation-surface, verification-result, and mutation-adapter contracts. Public exports and import shape require compatibility review. |
 | MCP transport/integration | `mcp/`, `mcp/src/mighty_mouse_mcp/` | Separate `mighty-mouse-mcp` distribution. Stdio server, tool hooks, host setup, verification, protocol, and signal recording. MCP imports core packages. |
 | Research/evaluation | `eval/` | Repository research, benchmark, evaluator, mutation, autoresearch, local-model, and characterization context. `AutoresearchCycle` and `AutoresearchLoop` belong here. Eval consumes shipped core/v2/orchestrator seams; core source has no Python import dependency on eval, while repository-local benchmark paths may invoke eval runners/configuration. |
-| Original local-model execution | `src/mighty_mouse/orchestrator/` | Retained local-model agent subsystem: Gemini client, model execution engine, response parser, agent, and swarm orchestration. Current eval consumers exist. No deprecated/dead classification. |
+| Original local-model execution | `src/mighty_mouse/orchestrator/` | Active local-model agent subsystem: Gemini client, response parser, agent, and swarm orchestration. Eval consumes active response and agent seams. |
 | Services and compatibility adapters | `src/mighty_mouse/services/` | Benchmark service plus verifier adapter shims. Command paths consume benchmark service; verifier shims delegate to `mighty_mouse.verifier`. Verifier authority remains in `src/mighty_mouse/verifier/`. |
 | Evidence and study data | `data/evidence/` | Frozen historical, bare-control, and real-project evidence. Research input/output; no runtime ownership. |
 | Build and release infrastructure | `pyproject.toml`, `mcp/pyproject.toml`, `.github/workflows/`, `scripts/` | Core and MCP packaging, CI, PyPI publication, portfolio synchronization, and changed-line quality checks. |
@@ -71,9 +71,9 @@ package boundaries, or dependency direction changes.
   behavior before changing eval or mutation code.
 - `src/mighty_mouse/v2/__init__.py` exposes policy, engine, signal, and
   telemetry symbols. Treat exports as compatibility surface.
-- `src/mighty_mouse/orchestrator/__init__.py` exposes Gemini, model-engine, and
-  response-parser symbols. Inspect current consumers before moving or folding
-  original execution code into v2.
+- `src/mighty_mouse/orchestrator/__init__.py` exposes Gemini and response-parser
+  symbols. Inspect current consumers before moving or folding original
+  execution code into v2.
 - `src/mighty_mouse/services/verifiers/` contains delegating shims. Preserve
   caller paths while moving verifier implementation.
 - `mcp/pyproject.toml` and `mcp/src/mighty_mouse_mcp/server.py` encode separate

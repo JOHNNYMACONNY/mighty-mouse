@@ -76,6 +76,81 @@ PURGED
         assert not os.path.exists(target)
 
 
+def test_checklist_symlink_escape_is_blocked_before_later_write():
+    with (
+        tempfile.TemporaryDirectory() as tmp,
+        tempfile.TemporaryDirectory() as outside,
+    ):
+        outside_checklist = os.path.join(outside, "CHECKLIST.md")
+        with open(outside_checklist, "w") as f:
+            f.write("keep\n")
+        os.symlink(outside_checklist, os.path.join(tmp, "CHECKLIST.md"))
+        raw = """# Mighty Mouse Checklist
+unsafe
+```python:later.py
+later
+```"""
+
+        try:
+            ResponseParser.parse_and_write(raw, workspace_root=tmp)
+            raise AssertionError("Checklist symlink escape should be blocked")
+        except ValueError as e:
+            assert "Resolved path escapes workspace" in str(e)
+
+        with open(outside_checklist) as f:
+            assert f.read() == "keep\n"
+        assert not os.path.exists(os.path.join(tmp, "later.py"))
+
+
+def test_legacy_parser_rejects_symlink_write_and_delete_escapes():
+    with (
+        tempfile.TemporaryDirectory() as tmp,
+        tempfile.TemporaryDirectory() as outside,
+    ):
+        link = os.path.join(tmp, "linked")
+        os.symlink(outside, link)
+
+        write_raw = """```python:linked/escaped.py
+escape
+```"""
+        try:
+            ResponseParser.parse_and_write(write_raw, workspace_root=tmp)
+            raise AssertionError("Symlink write escape should be blocked")
+        except ValueError as e:
+            assert "Resolved path escapes workspace" in str(e)
+        assert not os.path.exists(os.path.join(outside, "escaped.py"))
+
+        target = os.path.join(outside, "obsolete.py")
+        with open(target, "w") as f:
+            f.write("keep\n")
+        delete_raw = """```delete:linked/obsolete.py
+
+```"""
+        try:
+            ResponseParser.parse_and_write(
+                delete_raw,
+                workspace_root=tmp,
+                allowed_delete_paths=["linked/obsolete.py"],
+            )
+            raise AssertionError("Symlink delete escape should be blocked")
+        except ValueError as e:
+            assert "Resolved path escapes workspace" in str(e)
+        assert os.path.exists(target)
+
+
+def test_legacy_parser_normalizes_protected_path_for_authorization():
+    raw = """```python:./.mighty/secret.py
+secret
+```"""
+    with tempfile.TemporaryDirectory() as tmp:
+        assert ResponseParser.parse_and_write(raw, workspace_root=tmp) == []
+        assert not os.path.exists(os.path.join(tmp, ".mighty", "secret.py"))
+        assert ResponseParser.parse_and_write(
+            raw, workspace_root=tmp, system_mode=True
+        ) == ["./.mighty/secret.py"]
+        assert os.path.exists(os.path.join(tmp, ".mighty", "secret.py"))
+
+
 if __name__ == "__main__":
     test_relative_write_stays_inside_workspace()
     print("PASS: relative writes stay inside workspace")

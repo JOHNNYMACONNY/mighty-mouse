@@ -69,8 +69,7 @@ def _apply_response_text(
 ) -> list[str]:
     """Own response parse, validation, authorization, and application order.
 
-    ResponseParser keeps its direct compatibility path until later caller
-    migration and ownership-contraction tickets complete.
+    ResponseParser delegates here as a public compatibility shim.
     """
 
     print(

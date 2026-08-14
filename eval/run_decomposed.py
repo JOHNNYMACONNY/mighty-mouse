@@ -11,7 +11,11 @@ from datetime import datetime
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator"))
 from gemini_client import GeminiClient
-from response_parser import ResponseParser
+from response_application import (
+    ResponseApplicationPolicy,
+    ResponseApplicationRequest,
+    apply_response,
+)
 from analyze_failure import get_category
 
 def run_decomposed(config_path, task_path, workspace):
@@ -55,7 +59,15 @@ def run_decomposed(config_path, task_path, workspace):
         latency_p1 = time.time() - start_p1
         pass_1_tokens = client.last_metadata.get("usage", {}).get("total_tokens", 0)
         # Extract .mighty/PLAN.md (system_mode=True allows writing to hidden harness dir)
-        ResponseParser.parse_and_write(p1_res, workspace_root=workspace, system_mode=True)
+        apply_response(
+            ResponseApplicationRequest(
+                raw_response=p1_res,
+                policy=ResponseApplicationPolicy(
+                    workspace_root=workspace,
+                    system_mode=True,
+                ),
+            )
+        )
         has_plan = os.path.exists(plan_path)
     except Exception as e:
         return {
@@ -89,7 +101,12 @@ def run_decomposed(config_path, task_path, workspace):
         p2_res = client.generate_content("", impl_prompt)
         latency_p2 = time.time() - start_p2
         pass_2_tokens = client.last_metadata.get("usage", {}).get("total_tokens", 0)
-        output_paths = ResponseParser.parse_and_write(p2_res, workspace_root=workspace)
+        output_paths = apply_response(
+            ResponseApplicationRequest(
+                raw_response=p2_res,
+                policy=ResponseApplicationPolicy(workspace_root=workspace),
+            )
+        )
     except Exception as e:
         return {
             "status": "fail", "reason": f"Pass 2 Error: {str(e)}", "category": "PARSER",

@@ -1,11 +1,12 @@
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import patch
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator"))
 
+import swarm
 from swarm import SwarmPlanner, SwarmCoder, SwarmReviewer, SwarmOrchestrator
 
 
@@ -71,6 +72,35 @@ class TestSwarmOrchestrator(unittest.TestCase):
         res = coder.code(self.task_data, plan_info)
         self.assertIn("/tmp/visitor.py", res["file_updates"])
         self.assertEqual(len(res["warnings"]), 0)
+
+    def test_swarm_coder_fallback_uses_response_application_boundary(self):
+        class FallbackClient:
+            def generate(self, prompt, system_prompt="", temperature=0.0):
+                return "```python:answer.py\nanswer = True\n```"
+
+        requests = []
+
+        def fake_apply_response(request):
+            requests.append(request)
+            return ["answer.py"]
+
+        with patch.object(swarm, "apply_response", fake_apply_response):
+            result = SwarmCoder(ollama_client=FallbackClient()).code(
+                self.task_data,
+                {"plan_text": "Authorized file: answer.py"},
+                workspace_root="/tmp/swarm-workspace",
+            )
+
+        self.assertEqual(result["file_updates"], {"answer.py": "written"})
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(
+            requests[0].policy.workspace_root,
+            "/tmp/swarm-workspace",
+        )
+        self.assertEqual(requests[0].policy.allowed_delete_paths, ())
+        self.assertEqual(requests[0].policy.max_file_bytes, 100_000)
+        self.assertFalse(requests[0].policy.system_mode)
+        self.assertFalse(requests[0].policy.strict_code_hygiene)
 
     def test_swarm_reviewer_pass(self):
         reviewer = SwarmReviewer(ollama_client=self.mock_client)

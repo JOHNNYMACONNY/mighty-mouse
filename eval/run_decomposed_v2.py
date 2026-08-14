@@ -12,7 +12,11 @@ from pathlib import Path
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator"))
 from ollama_client import OllamaClient
-from response_parser import ResponseParser
+from response_application import (
+    ResponseApplicationPolicy,
+    ResponseApplicationRequest,
+    apply_response,
+)
 from analyze_failure import get_category
 
 def log(msg):
@@ -232,10 +236,14 @@ class DecomposedV2Runner:
                     self.log_response(self.task_id, st_id, attempts, st_res)
                     
                     try:
-                        output_paths = ResponseParser.parse_and_write(
-                            st_res, 
-                            workspace_root=str(self.workspace),
-                            strict_code_hygiene=True  # Hardened for V2
+                        output_paths = apply_response(
+                            ResponseApplicationRequest(
+                                raw_response=st_res,
+                                policy=ResponseApplicationPolicy(
+                                    workspace_root=str(self.workspace),
+                                    strict_code_hygiene=True,
+                                ),
+                            )
                         )
                     except ValueError as ve:
                         if "XML leakage detected" in str(ve) and attempts < 2:

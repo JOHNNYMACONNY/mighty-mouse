@@ -12,7 +12,19 @@ import time
 from typing import Dict, List, Optional, Tuple, Any
 
 from ollama_client import OllamaClient
-from response_parser import ResponseParser
+
+try:
+    from mighty_mouse.orchestrator.response_application import (
+        ResponseApplicationPolicy,
+        ResponseApplicationRequest,
+        apply_response,
+    )
+except ImportError:
+    from response_application import (
+        ResponseApplicationPolicy,
+        ResponseApplicationRequest,
+        apply_response,
+    )
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 PROMPT_SEGMENTS_DIR = os.path.join(_REPO_ROOT, "configs", "prompt_segments")
@@ -77,7 +89,6 @@ class SwarmCoder:
     def __init__(self, ollama_client: Optional[Any] = None):
         self.ollama_client = ollama_client or OllamaClient()
         self.prompt_segment = _read_prompt_segment("coder")
-        self.parser = ResponseParser()
 
     def code(self, task_data: Dict[str, Any], plan_info: Dict[str, Any], reviewer_feedback: Optional[str] = None, temperature: float = 0.0, workspace_root: Optional[str] = None) -> Dict[str, Any]:
         task_id = task_data.get("id", "unknown_task")
@@ -107,9 +118,16 @@ class SwarmCoder:
 
         warnings = []
         if not file_updates:
-            # Fallback parse via ResponseParser if available
+            # Fallback application through canonical response boundary.
             try:
-                written = self.parser.parse_and_write(response_text, workspace_root=workspace_root or ".")
+                written = apply_response(
+                    ResponseApplicationRequest(
+                        raw_response=response_text,
+                        policy=ResponseApplicationPolicy(
+                            workspace_root=workspace_root or ".",
+                        ),
+                    )
+                )
                 if isinstance(written, list):
                     for w in written:
                         file_updates[w] = "written"

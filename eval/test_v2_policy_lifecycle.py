@@ -75,6 +75,43 @@ def test_determine_state_champion(store, scope):
     assert state == PolicyState.CHAMPION
 
 
+@pytest.mark.parametrize(
+    ("recent_pass_rate", "expected_state"),
+    [
+        (None, PolicyState.CHAMPION),
+        (0.0, PolicyState.ROLLBACK),
+        (0.499999, PolicyState.ROLLBACK),
+        (0.50, PolicyState.DEGRADED),
+        (0.749999, PolicyState.DEGRADED),
+        (0.75, PolicyState.CHAMPION),
+        (1.0, PolicyState.CHAMPION),
+    ],
+)
+def test_determine_state_default_threshold_boundaries(
+    store, scope, recent_pass_rate, expected_state
+):
+    lifecycle = PolicyLifecycle(store=store)
+
+    assert lifecycle.determine_state(scope, recent_pass_rate) == expected_state
+
+
+def test_pinned_policy_precedes_threshold_state(store, scope):
+    pinned_policy = Policy(
+        policy_id="pinned-001", mode=Mode.CODING, version="v1.0"
+    )
+    lifecycle = PolicyLifecycle(
+        store=store,
+        pinned_policies={"coding": pinned_policy},
+    )
+
+    assert (
+        lifecycle.determine_state(scope, recent_pass_rate=0.0)
+        == PolicyState.PINNED
+    )
+    selection = lifecycle.resolve_policy(scope, recent_pass_rate=0.0)
+    assert selection.policy == pinned_policy
+
+
 def test_resolve_policy_pinned(store, scope, model_identity, execution_profile):
     pinned_policy = Policy(policy_id="pinned-001", mode=Mode.CODING, version="v1.0")
     selection = resolve_effective_policy(

@@ -458,10 +458,9 @@ def test_coverage_recovery_does_not_duplicate_provider_or_parser_side_effects(
         ("application", "```python:second.py\nvalue = 2\n```"),
     ]
     assert result.client.generate_content.call_count == 2
-    assert [request.policy.workspace_root for request in application_requests] == [
-        str(agent_env.workspace),
-        str(agent_env.workspace),
-    ]
+    assert [
+        request.policy.workspace_root for request in application_requests
+    ] == [str(agent_env.workspace), str(agent_env.workspace)]
     assert all(
         request.policy.allowed_delete_paths == ()
         and request.policy.max_file_bytes == 100_000

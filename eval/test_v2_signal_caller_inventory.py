@@ -29,8 +29,10 @@ COMPATIBILITY_TEST_CALLERS = {
 POLICY_COMPATIBILITY_SEAM = {
     "src/mighty_mouse/v2/policy.py": (
         "PolicyLifecycle.__init__.telemetry_aggregator",
-        "PolicyLifecycle.determine_state.telemetry_aggregator.compute_pass_rate",
-        "PolicyLifecycle.resolve_policy.telemetry_aggregator.compute_pass_rate",
+        "PolicyLifecycle.determine_state.telemetry_aggregator."
+        "compute_pass_rate",
+        "PolicyLifecycle.resolve_policy.telemetry_aggregator."
+        "compute_pass_rate",
         "policy.TYPE_CHECKING.TelemetryAggregator",
         "resolve_effective_policy.telemetry_aggregator",
     ),
@@ -97,7 +99,9 @@ def _import_module(node: ast.ImportFrom, path: Path) -> str:
     return ".".join(package)
 
 
-def _bindings(tree: ast.AST, path: Path) -> tuple[dict[str, str], dict[str, str]]:
+def _bindings(
+    tree: ast.AST, path: Path
+) -> tuple[dict[str, str], dict[str, str]]:
     symbols: dict[str, str] = {}
     modules: dict[str, str] = {}
 
@@ -108,13 +112,15 @@ def _bindings(tree: ast.AST, path: Path) -> tuple[dict[str, str], dict[str, str]
                 continue
             for alias in node.names:
                 if alias.name != "*":
-                    symbols[alias.asname or alias.name] = f"{module}.{alias.name}"
+                    local_name = alias.asname or alias.name
+                    symbols[local_name] = f"{module}.{alias.name}"
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.asname:
                     modules[alias.asname] = alias.name
                 else:
-                    modules[alias.name.split(".")[0]] = alias.name.split(".")[0]
+                    root = alias.name.split(".")[0]
+                    modules[root] = root
 
     def resolve(node: ast.AST) -> str | None:
         dotted = _dotted_name(node)
@@ -146,7 +152,10 @@ def _bindings(tree: ast.AST, path: Path) -> tuple[dict[str, str], dict[str, str]
             if qualified is None:
                 continue
             for target in targets:
-                if isinstance(target, ast.Name) and symbols.get(target.id) != qualified:
+                if (
+                    isinstance(target, ast.Name)
+                    and symbols.get(target.id) != qualified
+                ):
                     symbols[target.id] = qualified
                     changed = True
 
@@ -168,7 +177,10 @@ def _call_names(path: Path, names: set[str]) -> tuple[str, ...]:
         return f"{module}.{suffix}" if module and suffix else module
 
     qualified_to_name = {
-        **{qualified: "SignalTelemetry" for qualified in _CANONICAL_QUALIFIED_NAMES},
+        **{
+            qualified: "SignalTelemetry"
+            for qualified in _CANONICAL_QUALIFIED_NAMES
+        },
         **{
             qualified: name
             for qualified in _COMPATIBILITY_QUALIFIED_NAMES
@@ -249,7 +261,9 @@ def _policy_seam_inventory() -> dict[str, tuple[str, ...]]:
         if not isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         if method.name == "__init__":
-            if any(arg.arg == "telemetry_aggregator" for arg in method.args.args):
+            if any(
+                arg.arg == "telemetry_aggregator" for arg in method.args.args
+            ):
                 entries.add("PolicyLifecycle.__init__.telemetry_aggregator")
         if method.name in {"determine_state", "resolve_policy"}:
             if any(
@@ -259,7 +273,8 @@ def _policy_seam_inventory() -> dict[str, tuple[str, ...]]:
                 for node in ast.walk(method)
             ):
                 entries.add(
-                    f"PolicyLifecycle.{method.name}.telemetry_aggregator.compute_pass_rate"
+                    f"PolicyLifecycle.{method.name}.telemetry_aggregator."
+                    "compute_pass_rate"
                 )
     resolver = next(
         node
@@ -319,7 +334,9 @@ def _direct_history_consumers() -> dict[str, tuple[str, ...]]:
             and node.func.attr == "history"
             for node in ast.walk(tree)
         ):
-            consumers[str(path.relative_to(REPO_ROOT))] = ("SignalLifecycle.history",)
+            consumers[str(path.relative_to(REPO_ROOT))] = (
+                "SignalLifecycle.history",
+            )
     return consumers
 
 
@@ -333,7 +350,9 @@ def _inventory_scope() -> Scope:
 
 
 def test_supported_signal_callers_use_canonical_telemetry() -> None:
-    assert _caller_inventory({"SignalTelemetry"}, tests=False) == CANONICAL_CALLERS
+    assert _caller_inventory(
+        {"SignalTelemetry"}, tests=False
+    ) == CANONICAL_CALLERS
 
 
 def test_compatibility_facade_constructors_remain_test_only() -> None:
@@ -349,12 +368,15 @@ def test_runtime_inventory_excludes_compatibility_implementation() -> None:
     )
 
 
-def test_inventory_resolves_aliases_and_module_provenance(tmp_path: Path) -> None:
+def test_inventory_resolves_aliases_and_module_provenance(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "caller.py"
     path.write_text(
         "\n".join(
             (
-                "from mighty_mouse.v2.telemetry import SignalTelemetry as CanonicalSignal",
+                "from mighty_mouse.v2.telemetry import "
+                "SignalTelemetry as CanonicalSignal",
                 "import mighty_mouse.v2.telemetry as telemetry_module",
                 "from unrelated_module import SignalTelemetry",
                 "CanonicalSignal()",
@@ -375,7 +397,8 @@ def test_autoresearch_cycle_signal_interface_is_inventoried() -> None:
     assert _cycle_signal_inventory() == CYCLE_SIGNAL_INTERFACE
 
 
-def test_signal_lifecycle_owns_history_projection_without_direct_consumers() -> None:
+def test_signal_lifecycle_owns_history_projection_without_direct_consumers(
+) -> None:
     lifecycle_path = REPO_ROOT / "src/mighty_mouse/v2/signals.py"
     assert set(LIFECYCLE_OWNER_METHODS).issubset(
         _class_method_names(lifecycle_path, "SignalLifecycle")
@@ -383,7 +406,9 @@ def test_signal_lifecycle_owns_history_projection_without_direct_consumers() -> 
     assert _direct_history_consumers() == LIFECYCLE_HISTORY_CONSUMERS
 
 
-def test_evaluator_metrics_and_v2_signal_receipts_stay_separate(tmp_path: Path) -> None:
+def test_evaluator_metrics_and_v2_signal_receipts_stay_separate(
+    tmp_path: Path,
+) -> None:
     metric_path = tmp_path / "metric_telemetry.json"
     state_dir = tmp_path / "v2-state"
     loop = AutoresearchLoop(
@@ -399,10 +424,16 @@ def test_evaluator_metrics_and_v2_signal_receipts_stay_separate(tmp_path: Path) 
     )
     assert not metric_path.exists()
 
-    receipt_path = next(state_dir.joinpath(SignalLifecycle.receipt_directory).glob("*.json"))
+    receipt_directory = state_dir.joinpath(SignalLifecycle.receipt_directory)
+    receipt_path = next(receipt_directory.glob("*.json"))
     receipt_bytes = receipt_path.read_bytes()
     receipt = json.loads(receipt_bytes)
-    assert set(receipt) == {"schema_version", "recorded_at", "signal", "receipt_hash"}
+    assert set(receipt) == {
+        "schema_version",
+        "recorded_at",
+        "signal",
+        "receipt_hash",
+    }
     assert receipt["schema_version"] == SignalLifecycle.schema_version
 
     loop.update_telemetry(

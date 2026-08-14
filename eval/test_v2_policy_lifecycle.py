@@ -96,13 +96,18 @@ def test_determine_state_default_threshold_boundaries(
 
 
 def test_pinned_policy_precedes_threshold_state(store, scope):
-    pinned_policy = Policy(policy_id="pinned-001", mode=Mode.CODING, version="v1.0")
+    pinned_policy = Policy(
+        policy_id="pinned-001", mode=Mode.CODING, version="v1.0"
+    )
     lifecycle = PolicyLifecycle(
         store=store,
         pinned_policies={"coding": pinned_policy},
     )
 
-    assert lifecycle.determine_state(scope, recent_pass_rate=0.0) == PolicyState.PINNED
+    assert (
+        lifecycle.determine_state(scope, recent_pass_rate=0.0)
+        == PolicyState.PINNED
+    )
     selection = lifecycle.resolve_policy(scope, recent_pass_rate=0.0)
     assert selection.policy == pinned_policy
 

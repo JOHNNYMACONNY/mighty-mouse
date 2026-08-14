@@ -129,7 +129,9 @@ def run_task(task_path: Path, workspace_root: Path, model: str, host: str, timeo
         extracted = apply_response(
             ResponseApplicationRequest(
                 raw_response=raw_response,
-                policy=ResponseApplicationPolicy(workspace_root=str(workspace)),
+                policy=ResponseApplicationPolicy(
+                    workspace_root=str(workspace),
+                ),
             )
         )
         tests_passed, test_output = _run_frozen_test(task, workspace)

@@ -12,7 +12,7 @@ from pathlib import Path
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator"))
 from ollama_client import OllamaClient
-from response_application import (
+from response_application import (  # noqa: E402
     ResponseApplicationPolicy,
     ResponseApplicationRequest,
     apply_response,

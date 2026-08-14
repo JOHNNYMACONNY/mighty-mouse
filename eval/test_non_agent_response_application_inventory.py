@@ -75,7 +75,7 @@ def _caller_inventory(name: str) -> dict[str, tuple[str, ...]]:
     }
 
 
-def test_supported_non_agent_callers_use_response_application_boundary() -> None:
+def test_supported_callers_use_response_application_boundary() -> None:
     assert _caller_inventory("apply_response") == {
         **SUPPORTED_NON_AGENT_CALLERS,
         **AGENT_CALLERS,

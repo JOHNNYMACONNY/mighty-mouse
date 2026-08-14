@@ -6,7 +6,7 @@ from unittest.mock import patch
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator"))
 
-import swarm
+import swarm  # noqa: E402
 from swarm import SwarmPlanner, SwarmCoder, SwarmReviewer, SwarmOrchestrator
 
 

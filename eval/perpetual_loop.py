@@ -53,7 +53,6 @@ from mighty_mouse.v2.foundation import (
 from mighty_mouse.v2.signals import SignalLifecycle
 from mighty_mouse.v2.seams import PolicyMutationSurface, VerificationResult
 from mighty_mouse.v2.telemetry import (  # noqa: E402
-    SignalAggregator,
     SignalTelemetry,
 )
 try:
@@ -133,9 +132,9 @@ class AutoresearchLoop:
         self.store = ImmutableStateStore(state_dir=state_dir)
         self.signal_lifecycle = SignalLifecycle(state_dir)
         self.signal_telemetry = SignalTelemetry(self.signal_lifecycle)
-        self.telemetry_aggregator = SignalAggregator(
-            store=self.store, signal_lifecycle=self.signal_lifecycle
-        )
+        # Preserve legacy attribute access while collapsing redundant facade
+        # ownership onto canonical lifecycle-backed SignalTelemetry.
+        self.telemetry_aggregator = self.signal_telemetry
         self.benchmark_adapter = benchmark_adapter
         self.verifier_adapter = verifier_adapter
         self.mutation_adapter = mutation_adapter

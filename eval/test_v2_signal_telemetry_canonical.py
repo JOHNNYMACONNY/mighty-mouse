@@ -179,6 +179,9 @@ def test_autoresearch_loop_routes_signal_construction_through_canonical_seam(
     )
 
     assert result == "receipt"
+    assert loop.telemetry_aggregator is loop.signal_telemetry
+    assert isinstance(loop.telemetry_aggregator, SignalTelemetry)
+    assert not (tmp_path / "telemetry.json").exists()
     assert recorder.call_args.kwargs["signal_id"] == "signal-007"
     assert recorder.call_args.kwargs["scope"] == _scope()
 

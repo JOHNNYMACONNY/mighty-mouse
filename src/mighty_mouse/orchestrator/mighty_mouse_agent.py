@@ -17,7 +17,11 @@ try:
         _execute_agent_execution,
     )
     from mighty_mouse.orchestrator.gemini_client import GeminiClient
-    from mighty_mouse.orchestrator.response_parser import ResponseParser
+    from mighty_mouse.orchestrator.response_application import (
+        ResponseApplicationPolicy,
+        ResponseApplicationRequest,
+        apply_response,
+    )
     from mighty_mouse.orchestrator.response_attempt import (
         ResponseAttemptContext,
         execute_response_attempt,
@@ -28,7 +32,11 @@ except ImportError:
         _execute_agent_execution,
     )
     from gemini_client import GeminiClient
-    from response_parser import ResponseParser
+    from response_application import (
+        ResponseApplicationPolicy,
+        ResponseApplicationRequest,
+        apply_response,
+    )
     from response_attempt import (
         ResponseAttemptContext,
         execute_response_attempt,
@@ -431,11 +439,17 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
     if stage == "planner":
         response_application_adapter = None
     else:
+        response_application_policy = ResponseApplicationPolicy(
+            workspace_root=workspace_root,
+            allowed_delete_paths=tuple(allowed_delete_paths),
+        )
+
         def response_application_adapter(response_text, _context):
-            return ResponseParser.parse_and_write(
-                response_text,
-                workspace_root=workspace_root,
-                allowed_delete_paths=tuple(allowed_delete_paths),
+            return apply_response(
+                ResponseApplicationRequest(
+                    raw_response=response_text,
+                    policy=response_application_policy,
+                )
             )
 
     execution_outcome = _execute_agent_execution(

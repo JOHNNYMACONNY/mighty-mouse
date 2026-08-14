@@ -254,8 +254,8 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
     events = []
     parse_results = iter([[], ["answer.py"]])
 
-    def parse_and_write(response, *args, **kwargs):
-        events.append(("parser", response))
+    def apply_response(request):
+        events.append(("application", request.raw_response))
         return next(parse_results)
 
     def record_open(path, mode="r", *args, **kwargs):
@@ -278,8 +278,8 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
         kwargs["usage_history"] = RecordingUsageHistory(usage_history)
         return original_execute_generation_attempt(*args, **kwargs)
 
-    parser = MagicMock(side_effect=parse_and_write)
-    monkeypatch.setattr(agent.ResponseParser, "parse_and_write", parser)
+    application = MagicMock(side_effect=apply_response)
+    monkeypatch.setattr(agent, "apply_response", application)
     monkeypatch.setattr(agent, "open", record_open, raising=False)
     monkeypatch.setattr(
         agent,
@@ -308,16 +308,16 @@ def test_response_attempt_order_preserves_usage_logs_and_parser_invocation(
         ("provider", "plain response"),
         ("usage_append", 3),
         ("raw_log_open", "raw_ordered_attempts_attempt_1_1700000000.txt"),
-        ("parser", "plain response"),
+        ("application", "plain response"),
         ("provider", "```python:answer.py\nanswer = True\n```"),
         ("usage_append", 5),
         ("raw_log_open", "raw_ordered_attempts_attempt_2_1700000000.txt"),
-        ("parser", "```python:answer.py\nanswer = True\n```"),
+        ("application", "```python:answer.py\nanswer = True\n```"),
     ]
     assert result.metadata["usage_history"] == metadata_sequence
     assert result.metadata["attempts"] == 2
     assert result.client.generate_content.call_count == 2
-    assert parser.call_count == 2
+    assert application.call_count == 2
     assert [path.name for path in result.raw_logs] == [
         "raw_ordered_attempts_attempt_1_1700000000.txt",
         "raw_ordered_attempts_attempt_2_1700000000.txt",
@@ -425,17 +425,19 @@ def test_coverage_recovery_does_not_duplicate_provider_or_parser_side_effects(
     monkeypatch,
 ):
     events = []
+    application_requests = []
 
-    def parse_and_write(response, *args, **kwargs):
-        events.append(("parser", response))
-        if "first.py" in response:
+    def apply_response(request):
+        application_requests.append(request)
+        events.append(("application", request.raw_response))
+        if "first.py" in request.raw_response:
             return ["first.py"]
         return ["second.py"]
 
     monkeypatch.setattr(
-        agent.ResponseParser,
-        "parse_and_write",
-        parse_and_write,
+        agent,
+        "apply_response",
+        apply_response,
     )
     result = agent_env.run(
         {
@@ -451,11 +453,22 @@ def test_coverage_recovery_does_not_duplicate_provider_or_parser_side_effects(
 
     assert events == [
         ("provider", "```python:first.py\nvalue = 1\n```"),
-        ("parser", "```python:first.py\nvalue = 1\n```"),
+        ("application", "```python:first.py\nvalue = 1\n```"),
         ("provider", "```python:second.py\nvalue = 2\n```"),
-        ("parser", "```python:second.py\nvalue = 2\n```"),
+        ("application", "```python:second.py\nvalue = 2\n```"),
     ]
     assert result.client.generate_content.call_count == 2
+    assert [request.policy.workspace_root for request in application_requests] == [
+        str(agent_env.workspace),
+        str(agent_env.workspace),
+    ]
+    assert all(
+        request.policy.allowed_delete_paths == ()
+        and request.policy.max_file_bytes == 100_000
+        and request.policy.system_mode is False
+        and request.policy.strict_code_hygiene is False
+        for request in application_requests
+    )
     assert result.metadata["coverage_recovery_attempts"] == 1
     assert result.metadata["pass_type"] == "recovered"
 
@@ -481,14 +494,10 @@ def test_pre_run_hygiene_removes_stale_root_python_before_classification(
 
 
 def test_parser_value_error_propagates(agent_env, monkeypatch):
-    def raise_parser_error(*args, **kwargs):
+    def raise_application_error(*args, **kwargs):
         raise ValueError("malformed parser response")
 
-    monkeypatch.setattr(
-        agent.ResponseParser,
-        "parse_and_write",
-        raise_parser_error,
-    )
+    monkeypatch.setattr(agent, "apply_response", raise_application_error)
     task_data = {"id": "parser_error", "task": "parse output"}
     task_file = agent_env.root / "task.json"
     task_file.write_text(json.dumps(task_data))
@@ -510,12 +519,8 @@ def test_parser_value_error_propagates(agent_env, monkeypatch):
 
 def test_planner_writes_plan_without_parser(agent_env, monkeypatch):
     plan_file = agent_env.root / "plans" / "stage1.md"
-    parse_and_write = MagicMock()
-    monkeypatch.setattr(
-        agent.ResponseParser,
-        "parse_and_write",
-        parse_and_write,
-    )
+    apply_response = MagicMock()
+    monkeypatch.setattr(agent, "apply_response", apply_response)
 
     result = agent_env.run(
         {"id": "planner_task", "task": "plan work"},
@@ -525,7 +530,7 @@ def test_planner_writes_plan_without_parser(agent_env, monkeypatch):
     )
 
     assert plan_file.read_text().startswith("<plan>")
-    parse_and_write.assert_not_called()
+    apply_response.assert_not_called()
     assert result.client.generate_content.call_count == 1
     assert result.metadata["pass_type"] == "clean"
 

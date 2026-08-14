@@ -456,7 +456,11 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
     pass_type = execution_outcome.pass_type
 
     if stage == "planner" and execution_outcome.response is not None:
-        plan_dest = plan_file or os.path.join(_REPO_ROOT, "logs", "stage1_plan.md")
+        plan_dest = plan_file or os.path.join(
+            _REPO_ROOT,
+            "logs",
+            "stage1_plan.md",
+        )
         os.makedirs(os.path.dirname(os.path.abspath(plan_dest)), exist_ok=True)
         with open(plan_dest, "w") as f:
             f.write(execution_outcome.response)

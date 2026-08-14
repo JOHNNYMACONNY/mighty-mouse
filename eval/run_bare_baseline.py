@@ -22,7 +22,11 @@ import tempfile
 import time
 import urllib.request
 
-from mighty_mouse.orchestrator.response_parser import ResponseParser
+from mighty_mouse.orchestrator.response_application import (
+    ResponseApplicationPolicy,
+    ResponseApplicationRequest,
+    apply_response,
+)
 
 
 PROMPT_TEMPLATE = """You are completing a coding task.
@@ -122,7 +126,14 @@ def run_task(task_path: Path, workspace_root: Path, model: str, host: str, timeo
 
     try:
         raw_response, metadata = request_generation(prompt, model, host, timeout_sec)
-        extracted = ResponseParser.parse_and_write(raw_response, workspace_root=str(workspace))
+        extracted = apply_response(
+            ResponseApplicationRequest(
+                raw_response=raw_response,
+                policy=ResponseApplicationPolicy(
+                    workspace_root=str(workspace),
+                ),
+            )
+        )
         tests_passed, test_output = _run_frozen_test(task, workspace)
         missing = [name for name in task.get("expected_files", []) if not (workspace / name).is_file()]
         unexpected = sorted(

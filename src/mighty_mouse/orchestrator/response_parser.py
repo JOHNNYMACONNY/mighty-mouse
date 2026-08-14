@@ -12,7 +12,7 @@ COMPATIBILITY_DISPOSITION = "NO_FURTHER_ARCHITECTURE_NEEDED"
 
 
 class ResponseParser:
-    """Compatibility adapter for the canonical response application boundary."""
+    """Compatibility adapter for canonical response application."""
 
     @staticmethod
     def _resolve_target_path(path, workspace_root):

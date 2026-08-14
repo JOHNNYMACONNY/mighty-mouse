@@ -13,7 +13,7 @@ def test_public_parser_export_and_disposition_remain_explicit() -> None:
     assert COMPATIBILITY_DISPOSITION == "NO_FURTHER_ARCHITECTURE_NEEDED"
 
 
-def test_legacy_parser_delegates_all_application_policy(monkeypatch, tmp_path) -> None:
+def test_legacy_parser_delegates_policy(monkeypatch, tmp_path) -> None:
     raw_response = "```python:answer.py\nprint('ok')\n```"
     captured = []
 
@@ -21,7 +21,11 @@ def test_legacy_parser_delegates_all_application_policy(monkeypatch, tmp_path) -
         captured.append(request)
         return ["answer.py"]
 
-    monkeypatch.setattr(response_application, "apply_response", fake_apply_response)
+    monkeypatch.setattr(
+        response_application,
+        "apply_response",
+        fake_apply_response,
+    )
 
     result = ResponseParser.parse_and_write(
         raw_response,

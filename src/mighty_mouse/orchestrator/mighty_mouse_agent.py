@@ -12,6 +12,10 @@ from pathlib import Path
 import yaml
 
 try:
+    from mighty_mouse.orchestrator.agent_execution import (
+        _AgentExecutionRequest,
+        _execute_agent_execution,
+    )
     from mighty_mouse.orchestrator.gemini_client import GeminiClient
     from mighty_mouse.orchestrator.response_parser import ResponseParser
     from mighty_mouse.orchestrator.response_attempt import (
@@ -19,6 +23,10 @@ try:
         execute_response_attempt,
     )
 except ImportError:
+    from agent_execution import (
+        _AgentExecutionRequest,
+        _execute_agent_execution,
+    )
     from gemini_client import GeminiClient
     from response_parser import ResponseParser
     from response_attempt import (
@@ -230,39 +238,6 @@ def _execute_generation_attempt(
     return response
 
 
-def _evaluate_output_coverage_policy(
-    expected_files,
-    cumulative_output_paths,
-    *,
-    conflict_detected,
-    injection_reason,
-    is_conflict_routing_validation,
-    allowed_delete_paths,
-    coverage_recovery_attempts,
-):
-    """Evaluate coverage and reachable recovery rejection policy."""
-    missing_files = [
-        path for path in expected_files if path not in cumulative_output_paths
-    ]
-    if not missing_files:
-        return [], None
-
-    if conflict_detected:
-        disallowed_reason = "CONFLICT_DETECTED"
-    elif injection_reason == "CONFLICT_REJECTED":
-        disallowed_reason = "CONFLICT_REJECTED"
-    elif is_conflict_routing_validation:
-        disallowed_reason = "CONFLICT_ROUTING_VALIDATION_TASK"
-    elif any(path in allowed_delete_paths for path in missing_files):
-        disallowed_reason = "DELETABLE_FILE_EXCLUSION"
-    elif coverage_recovery_attempts >= 1:
-        disallowed_reason = "MAX_ATTEMPTS_REACHED"
-    else:
-        disallowed_reason = None
-
-    return missing_files, disallowed_reason
-
-
 def solve(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_skills=None, temperature=None, stage="unified", plan_file=None):
     p_cfg_path = os.path.abspath(p_cfg_path)
     task_input = os.path.abspath(task_input)
@@ -397,21 +372,6 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
     if isinstance(task_data, dict):
         allowed_delete_paths = task_data.get("deletable_files", [])
 
-    MAX_ATTEMPTS = 2
-    usage_history = []
-    current_user_prompt = user_prompt
-    output_paths = []
-    schema_error = False
-
-    # Control and telemetry state for Output Coverage Recovery
-    cumulative_output_paths = []
-    coverage_recovery_attempts = 0
-    coverage_recovery_triggered = False
-    coverage_missing_files = []
-    coverage_recovery_success = False
-    coverage_recovery_disallowed_reason = None
-    pass_type = "clean"
-
     # Extract conflict and routing validation properties
     conflict_detected = conflict_meta.get("conflict_detected", False)
     injection_reason = ""
@@ -429,117 +389,88 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
         any(tag in task_tags for tag in ["conflict", "routing", "stacking"])
     )
 
-    base_max_attempts = MAX_ATTEMPTS
-    effective_max_attempts = base_max_attempts
-    attempt = 1
-    while attempt <= effective_max_attempts:
-        print(f"[agent] Attempt {attempt}/{effective_max_attempts} starting...", file=sys.stderr)
-        sys.stdout.flush()
-        response_context = ResponseAttemptContext(
-            system_prompt=full_sys,
-            user_prompt=current_user_prompt,
-            task_id=task_id,
-            attempt=attempt,
-            max_attempts=effective_max_attempts,
-            workspace_root=workspace or os.getcwd(),
-            allowed_delete_paths=tuple(allowed_delete_paths),
+    workspace_root = workspace or os.getcwd()
+    response_context = ResponseAttemptContext(
+        system_prompt=full_sys,
+        user_prompt=user_prompt,
+        task_id=task_id,
+        attempt=1,
+        max_attempts=2,
+        workspace_root=workspace_root,
+        allowed_delete_paths=tuple(allowed_delete_paths),
+    )
+    execution_request = _AgentExecutionRequest(
+        response_attempt_context=response_context,
+        expected_files=tuple(expected_files),
+        conflict_detected=conflict_detected,
+        injection_reason=injection_reason,
+        is_conflict_routing_validation=is_conflict_routing_validation,
+        deletable_expected_files=tuple(
+            path for path in expected_files if path in allowed_delete_paths
+        ),
+    )
+
+    def provider_adapter(context, attempt_usage_history):
+        return _execute_generation_attempt(
+            client,
+            context.system_prompt,
+            context.user_prompt,
+            task_id=context.task_id,
+            attempt=context.attempt,
+            usage_history=attempt_usage_history,
         )
 
-        def provider_adapter(context, attempt_usage_history):
-            return _execute_generation_attempt(
-                client,
-                context.system_prompt,
-                context.user_prompt,
-                task_id=context.task_id,
-                attempt=context.attempt,
-                usage_history=attempt_usage_history,
-            )
-
-        def parser_adapter(response_text, context):
-            return ResponseParser.parse_and_write(
-                response_text,
-                workspace_root=context.workspace_root,
-                allowed_delete_paths=context.allowed_delete_paths,
-            )
-
-        attempt_result = execute_response_attempt(
-            response_context,
+    def response_attempt_runner(context, parser_adapter):
+        return execute_response_attempt(
+            context,
             provider_adapter,
-            None if stage == "planner" else parser_adapter,
+            parser_adapter,
             sleep_fn=time.sleep,
         )
-        usage_history.extend(attempt_result.usage_history)
-        current_user_prompt = attempt_result.next_user_prompt
-        attempt = attempt_result.next_attempt
-        schema_error = attempt_result.schema_error
 
-        if attempt_result.failed:
-            pass_type = "failed"
-            break
+    if stage == "planner":
+        response_application_adapter = None
+    else:
+        def response_application_adapter(response_text, _context):
+            return ResponseParser.parse_and_write(
+                response_text,
+                workspace_root=workspace_root,
+                allowed_delete_paths=tuple(allowed_delete_paths),
+            )
 
-        response = attempt_result.response
+    execution_outcome = _execute_agent_execution(
+        execution_request,
+        response_attempt_runner=response_attempt_runner,
+        response_application_adapter=response_application_adapter,
+    )
+    usage_history = list(execution_outcome.usage_history)
+    output_paths = list(execution_outcome.output_paths)
+    schema_error = execution_outcome.schema_error
+    coverage_recovery_attempts = execution_outcome.coverage_recovery_attempts
+    coverage_recovery_triggered = execution_outcome.coverage_recovery_triggered
+    coverage_missing_files = list(execution_outcome.coverage_missing_files)
+    coverage_recovery_success = execution_outcome.coverage_recovery_success
+    coverage_recovery_disallowed_reason = (
+        execution_outcome.coverage_recovery_disallowed_reason
+    )
+    pass_type = execution_outcome.pass_type
 
-        if stage == "planner":
-            plan_dest = plan_file or os.path.join(_REPO_ROOT, "logs", "stage1_plan.md")
-            os.makedirs(os.path.dirname(os.path.abspath(plan_dest)), exist_ok=True)
-            with open(plan_dest, "w") as f:
-                f.write(response)
-            print(f"[Stage 1 Planner] Architectural blueprint saved to {plan_dest}", file=sys.stderr)
-            output_paths = [plan_dest]
-            pass_type = "clean"
-            break
-
-        output_paths = attempt_result.output_paths
-        cumulative_output_paths.extend(output_paths)
-
-        # Strictly verify parsed files against expected implementation files
-        missing_files, disallowed_reason = _evaluate_output_coverage_policy(
-            expected_files,
-            cumulative_output_paths,
-            conflict_detected=conflict_detected,
-            injection_reason=injection_reason,
-            is_conflict_routing_validation=is_conflict_routing_validation,
-            allowed_delete_paths=allowed_delete_paths,
-            coverage_recovery_attempts=coverage_recovery_attempts,
+    if stage == "planner" and execution_outcome.response is not None:
+        plan_dest = plan_file or os.path.join(
+            _REPO_ROOT,
+            "logs",
+            "stage1_plan.md",
         )
-        if missing_files:
-            coverage_missing_files = missing_files  # Record context immediately
-
-            if disallowed_reason:
-                coverage_recovery_disallowed_reason = disallowed_reason
-                print(f"[agent] Missing expected files {missing_files} detected but recovery is forbidden: {disallowed_reason}", file=sys.stderr)
-                pass_type = "failed"
-                break
-            else:
-                # Trigger Output Coverage Recovery
-                coverage_recovery_attempts += 1
-                coverage_recovery_triggered = True
-                print(f"[agent] Missing expected files detected: {missing_files}. Issuing targeted recovery reprompt...", file=sys.stderr)
-                
-                missing_list_str = "\n".join([f"- {f}" for f in missing_files])
-                recovery_prompt = (
-                    f"\n\nCRITICAL OMISSION DETECTED:\n"
-                    f"Your previous response failed to provide the implementation for the following required files:\n"
-                    f"{missing_list_str}\n\n"
-                    f"You MUST provide the complete implementation for these files now using the correct format (```python:path/to/file.py).\n"
-                    f"Do NOT rewrite files you have already provided. Only provide the missing file blocks."
-                )
-                current_user_prompt += recovery_prompt
-                effective_max_attempts = base_max_attempts + 1
-                continue
-        else:
-            if coverage_recovery_triggered:
-                coverage_recovery_success = True
-                pass_type = "recovered"
-                print("[agent] Coverage recovery successfully recovered missing expected files.", file=sys.stderr)
-            else:
-                pass_type = "clean"
-            break
+        os.makedirs(os.path.dirname(os.path.abspath(plan_dest)), exist_ok=True)
+        with open(plan_dest, "w") as f:
+            f.write(execution_outcome.response)
+        print(
+            f"[Stage 1 Planner] Architectural blueprint saved to {plan_dest}",
+            file=sys.stderr,
+        )
 
     # Unify final outputs
-    output_paths = list(set(cumulative_output_paths))
-
-    workspace_root = workspace or os.getcwd()
+    output_paths = list(set(output_paths))
     deleted_files = [
         path for path in output_paths
         if path in allowed_delete_paths and not os.path.exists(os.path.join(workspace_root, path))

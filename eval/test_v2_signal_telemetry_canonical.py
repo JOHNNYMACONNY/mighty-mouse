@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from unittest.mock import Mock
 
+import mighty_mouse.v2 as v2
 import pytest
 
 from mighty_mouse.commands.signals_cmd import run_signals
@@ -17,7 +18,12 @@ from mighty_mouse.v2.foundation import (
     TaskCategory,
 )
 from mighty_mouse.v2.signals import SignalLifecycle
-from mighty_mouse.v2.telemetry import SignalAggregator, SignalTelemetry
+import mighty_mouse.v2.telemetry as telemetry_module
+from mighty_mouse.v2.telemetry import (
+    SignalAggregator,
+    SignalTelemetry,
+    TelemetryAggregator,
+)
 from perpetual_loop import AutoresearchLoop
 
 
@@ -126,6 +132,29 @@ def test_signal_aggregator_lifecycle_path_delegates_to_canonical(
     aggregator.compute_pass_rate(_scope(), window_size=4)
 
     delegate.compute_pass_rate.assert_called_once_with(_scope(), 4)
+
+
+def test_public_telemetry_compatibility_exports_are_explicit() -> None:
+    assert v2.TelemetryAggregator is SignalAggregator
+    assert TelemetryAggregator is SignalAggregator
+    assert set(telemetry_module.__all__) == {
+        "SignalTelemetry",
+        "SignalAggregator",
+        "TelemetryAggregator",
+    }
+    assert "_LegacyStoreSignalTelemetry" not in telemetry_module.__all__
+
+
+def test_canonical_telemetry_path_never_needs_raw_store(
+    tmp_path: Path,
+) -> None:
+    scope = _scope()
+    telemetry = SignalTelemetry(SignalLifecycle(tmp_path))
+
+    telemetry.record(**_record_kwargs(scope))
+
+    assert telemetry.signal_count_for_scope(scope) == 1
+    assert telemetry.compute_pass_rate(scope) == 1.0
 
 
 def test_canonical_record_preserves_signal_validation(tmp_path: Path) -> None:

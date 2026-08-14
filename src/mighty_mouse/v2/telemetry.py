@@ -16,6 +16,9 @@ from mighty_mouse.v2.foundation import ImmutableStateStore, Scope, Signal
 from mighty_mouse.v2.signals import SignalLifecycle
 
 
+__all__ = ("SignalTelemetry", "SignalAggregator", "TelemetryAggregator")
+
+
 class SignalOutcome(str, Enum):
     """Canonical Signal execution outcomes."""
     PASSED = "passed"
@@ -257,8 +260,10 @@ class _LegacyStoreSignalTelemetry:
 
 
 class SignalAggregator:
-    """Compatibility facade routing lifecycle users to canonical
-    SignalTelemetry.
+    """Public compatibility facade for canonical SignalTelemetry.
+
+    Lifecycle-backed construction routes to SignalTelemetry. Store-only
+    construction retains legacy raw-store semantics for compatibility callers.
     """
 
     def __init__(
@@ -322,5 +327,5 @@ class SignalAggregator:
     get_telemetry_summary = get_signal_summary
 
 
-# Backwards compatibility alias conforming to domain terminology transition
+# Public compatibility alias retained for existing TelemetryAggregator imports.
 TelemetryAggregator = SignalAggregator

@@ -220,7 +220,17 @@ def test_setup_partitions_profiles_by_exact_host_facts_and_full_tool_contract(tm
 
     assert first_result["execution_profile_id"] != second_result["execution_profile_id"]
     assert set(_mcp_tool_contract()) == {
-        "contract_version", "protocol", "verify", "setup_workspace", "verify_and_record", "recording_audit", "run",
+        "contract_version",
+        "protocol",
+        "verify",
+        "setup_workspace",
+        "verify_and_record",
+        "recording_audit",
+        "run",
+        "policy_status",
+        "policy_preview",
+        "policy_pin",
+        "policy_rollback",
     }
 
 
@@ -229,7 +239,7 @@ def test_recording_requires_reonboarding_after_a_tool_contract_change(tmp_path, 
     import mighty_mouse_mcp.server as server
 
     configure_cline_adapter(tmp_path, model_digest="sha256:" + "7" * 64)
-    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 3)
+    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 4)
     with pytest.raises(ValueError, match="stale"):
         server.run_verify_and_record(str(tmp_path))
 
@@ -474,20 +484,20 @@ def test_mcp_run_rejects_stale_tool_contract(tmp_path, monkeypatch):
 
 
 @pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
-def test_mcp_v1_workspace_requires_reonboarding_for_v2_contract(tmp_path):
+def test_mcp_v2_workspace_requires_reonboarding_for_v3_contract(tmp_path):
     import mighty_mouse_mcp.server as server
 
     state_dir = tmp_path / ".mighty-mouse"
     state_dir.mkdir()
-    # Build v1 config with contract_version=1
+    # Build v2 config with contract_version=2
     profile, tool_contract_digest, prompt_template_digest = server.HostAdapter.build_execution_profile(
         runtime_kind="cline",
         runtime_version="3.54.0",
         effective_context_limit=8192,
         tool_signatures=server._get_mcp_tool_signatures(),
-        contract_version=1,
+        contract_version=2,
     )
-    v1_config = {
+    v2_config = {
         "schema_version": 2,
         "repository": "JOHNNYMACONNY/mighty-mouse",
         "model_digest": "sha256:" + "a" * 64,
@@ -501,9 +511,11 @@ def test_mcp_v1_workspace_requires_reonboarding_for_v2_contract(tmp_path):
         "tool_contract_digest": tool_contract_digest,
         "prompt_template_digest": prompt_template_digest,
     }
-    (state_dir / "mcp-adapter.json").write_text(json.dumps(v1_config), encoding="utf-8")
+    (state_dir / "mcp-adapter.json").write_text(json.dumps(v2_config), encoding="utf-8")
 
-    # With v2 server running, v1 adapter config must fail as stale
+    # With v3 server running, v2 adapter config must fail as stale
+    with pytest.raises(ValueError, match="stale"):
+        server.run_policy_status(str(tmp_path))
     with pytest.raises(ValueError, match="stale"):
         server.run_run(str(tmp_path))
 
@@ -519,11 +531,200 @@ def test_mcp_v1_workspace_requires_reonboarding_for_v2_contract(tmp_path):
     )
     assert setup_res["configured"] is True
 
-    # Now both run and verify_and_record succeed
-    run_res = server.run_run(str(tmp_path))
-    assert run_res["mode"] == "coding"
-    rec_res = server.run_verify_and_record(str(tmp_path), test_command=[sys.executable, "-c", "print('ok')"])
-    assert rec_res["signal_recorded"] is True
+    # Now run, policy tools, and verify_and_record succeed
+    assert server.run_policy_status(str(tmp_path))["scope"]["mode"] == "coding"
+    assert server.run_run(str(tmp_path))["mode"] == "coding"
+    assert server.run_verify_and_record(
+        str(tmp_path), test_command=[sys.executable, "-c", "print('ok')"],
+    )["signal_recorded"] is True
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_policy_status_returns_structured_projection(tmp_path):
+    from mighty_mouse_mcp.server import run_policy_status
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "b" * 64, model_class="local-small")
+
+    status = run_policy_status(str(tmp_path), mode="coding", task_category="feature")
+    assert status["scope"]["mode"] == "coding"
+    assert status["scope"]["task_category"] == "feature"
+    assert status["scope"]["repository"] == "JOHNNYMACONNY/mighty-mouse"
+    assert status["selection"]["policy_id"] == "safe-baseline-coding"
+    assert status["signals"]["receipt_count"] == 0
+    assert "eligible_successors" in status
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_policy_preview_evaluates_candidate_without_mutating_selection(tmp_path):
+    from mighty_mouse_mcp.server import run_policy_preview, run_policy_status
+    from mighty_mouse.v2.foundation import (
+        Candidate,
+        EligibleSuccessor,
+        EvidenceBundle,
+        ExecutionProfile,
+        Experiment,
+        ExperimentDecision,
+        ExperimentOutcome,
+        FreshHoldout,
+        ImmutableStateStore,
+        Mode,
+        ModelIdentity,
+        Policy,
+        Scope,
+        TaskCategory,
+    )
+
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "c" * 64, model_class="local-large")
+    adapter_config = json.loads((tmp_path / ".mighty-mouse" / "mcp-adapter.json").read_text())
+    profile_id = adapter_config["execution_profile_id"]
+    model_digest = "sha256:" + "c" * 64
+    store = ImmutableStateStore(tmp_path / ".mighty-mouse")
+    scope = Scope(Mode.CODING, "JOHNNYMACONNY/mighty-mouse", TaskCategory.UNKNOWN, "local-large")
+
+    candidate = Candidate(
+        candidate_id="candidate-123",
+        policy=Policy(policy_id="policy-123", mode=Mode.CODING, version="1"),
+        scope=scope,
+        model_digest=model_digest,
+        required_capabilities=frozenset(),
+        compatible_execution_profiles=frozenset({profile_id}),
+    )
+    store.append_candidate(candidate)
+    store.append(EvidenceBundle("evidence-123", "experiment-123", model_digest, profile_id, "sha256:" + "1" * 64))
+    store.append(Experiment(
+        "experiment-123", "generation-123", "candidate-000", model_digest, profile_id,
+        (candidate.candidate_id,), ("evidence-123",), ("sha256:" + "1" * 64,), (),
+        (("safety", True), ("security", True), ("provenance", True), ("integrity", True), ("freshness", True)), "v2",
+        ExperimentOutcome.COMPLETED, ExperimentDecision.NOMINATE, candidate.candidate_id,
+    ))
+    store.append(FreshHoldout(
+        candidate.candidate_id, scope, model_digest, profile_id, True,
+        "experiment-123", "evidence-123", "sha256:manifest", "sha256:corpus",
+        "v2", (("holdout-task", "sha256:task"),),
+    ))
+    store.append_eligible_successor(
+        EligibleSuccessor(candidate, "experiment-123", "evidence-123"),
+        model_identity=ModelIdentity(model_digest),
+        execution_profile=ExecutionProfile(profile_id, frozenset()),
+    )
+
+    preview = run_policy_preview(str(tmp_path), candidate_id="candidate-123", evidence_bundle_id="evidence-123")
+    assert preview["interface"] == "policy_preview"
+    assert preview["preview_id"].startswith("preview-")
+    assert preview["selection"]["policy_id"] == "policy-123"
+    assert preview["selection"]["source"] == "preview"
+
+    status = run_policy_status(str(tmp_path))
+    assert status["selection"]["policy_id"] == "safe-baseline-coding"
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_policy_pin_persists_pin_record(tmp_path):
+    from mighty_mouse_mcp.server import run_policy_pin
+    from mighty_mouse.v2.foundation import (
+        Candidate,
+        EligibleSuccessor,
+        ImmutableStateStore,
+        Mode,
+        Policy,
+        Promotion,
+        Scope,
+        TaskCategory,
+    )
+
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "d" * 64, model_class="local-large")
+    adapter_config = json.loads((tmp_path / ".mighty-mouse" / "mcp-adapter.json").read_text())
+    profile_id = adapter_config["execution_profile_id"]
+    model_digest = "sha256:" + "d" * 64
+    store = ImmutableStateStore(tmp_path / ".mighty-mouse")
+    scope = Scope(Mode.CODING, "JOHNNYMACONNY/mighty-mouse", TaskCategory.UNKNOWN, "local-large")
+
+    candidate = Candidate(
+        candidate_id="candidate-456",
+        policy=Policy("policy-456", Mode.CODING, "v1.0"),
+        scope=scope,
+        model_digest=model_digest,
+        required_capabilities=frozenset(),
+        compatible_execution_profiles=frozenset({profile_id}),
+    )
+    store.append_promotion(Promotion(
+        eligible_successor=EligibleSuccessor(candidate, "exp-456", "bundle-456"),
+        prior_champion_id=None,
+        machine_gates_passed=True,
+    ))
+
+    pin = run_policy_pin(str(tmp_path), candidate_id="candidate-456")
+    assert pin["interface"] == "policy_pin"
+    assert pin["pin_id"].startswith("pin-")
+    assert pin["candidate_id"] == "candidate-456"
+    assert len(pin["record_hash"]) == 64
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_policy_rollback_recovers_champion_and_records_notice(tmp_path):
+    from mighty_mouse_mcp.server import run_policy_rollback
+    from mighty_mouse.v2.foundation import (
+        Candidate,
+        EligibleSuccessor,
+        ImmutableStateStore,
+        Mode,
+        Policy,
+        Promotion,
+        Scope,
+        TaskCategory,
+    )
+
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "e" * 64, model_class="local-large")
+
+    with pytest.raises(ValueError, match="Recovery requires a current exact compatible Champion"):
+        run_policy_rollback(str(tmp_path), reason="user_requested")
+
+    store = ImmutableStateStore(tmp_path / ".mighty-mouse")
+    scope = Scope(Mode.CODING, "JOHNNYMACONNY/mighty-mouse", TaskCategory.UNKNOWN, "local-large")
+    adapter_config = json.loads((tmp_path / ".mighty-mouse" / "mcp-adapter.json").read_text())
+    candidate = Candidate(
+        candidate_id="candidate-champion-1",
+        policy=Policy("policy-champion-1", Mode.CODING, "v1.0"),
+        scope=scope,
+        model_digest="sha256:" + "e" * 64,
+        required_capabilities=frozenset(),
+        compatible_execution_profiles=frozenset({adapter_config["execution_profile_id"]}),
+    )
+    store.append_promotion(Promotion(
+        eligible_successor=EligibleSuccessor(candidate, "exp-1", "bundle-1"),
+        prior_champion_id=None,
+        machine_gates_passed=True,
+    ))
+
+    rollback = run_policy_rollback(
+        str(tmp_path),
+        reason="verified_security_guard_failure",
+        security_breach=True,
+    )
+    assert rollback["interface"] == "policy_rollback"
+    assert rollback["reason"] == "verified_security_guard_failure"
+    assert rollback["security_breach"] is True
+    assert rollback["action"] == "restricted_and_rolled_back"
+    assert rollback["candidate_id"] == "candidate-champion-1"
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_policy_tools_reject_unconfigured_or_stale_workspaces(tmp_path, monkeypatch):
+    import mighty_mouse_mcp.server as server
+
+    with pytest.raises(ValueError, match="not configured"):
+        server.run_policy_status(str(tmp_path))
+
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "f" * 64)
+    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 99)
+
+    with pytest.raises(ValueError, match="stale"):
+        server.run_policy_status(str(tmp_path))
+    with pytest.raises(ValueError, match="stale"):
+        server.run_policy_preview(str(tmp_path), candidate_id="candidate-1")
+    with pytest.raises(ValueError, match="stale"):
+        server.run_policy_pin(str(tmp_path), candidate_id="candidate-1")
+    with pytest.raises(ValueError, match="stale"):
+        server.run_policy_rollback(str(tmp_path), reason="test")
 
 
 @pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
@@ -597,6 +798,10 @@ def test_stdio_server_lists_and_calls_tools():
                         "setup_workspace",
                         "recording_audit",
                         "run",
+                        "policy_status",
+                        "policy_preview",
+                        "policy_pin",
+                        "policy_rollback",
                     }
                     response = await session.call_tool(
                         "protocol",

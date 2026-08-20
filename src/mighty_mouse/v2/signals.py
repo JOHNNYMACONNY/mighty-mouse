@@ -105,7 +105,94 @@ class SignalLifecycle:
             and (model_digest is None or aggregate["aggregate"].get("model_digest") == model_digest)
             and (execution_profile_id is None or aggregate["aggregate"].get("execution_profile_id") == execution_profile_id)
         ]
-        return {"collection_paused": self.collection_paused, "receipt_count": len(receipts), "aggregates": self._combine_aggregates([*aggregates, *self._aggregate(receipts)])}
+        return {
+            "collection_paused": self.collection_paused,
+            "receipt_count": len(receipts),
+            "aggregates": self._combine_aggregates([*aggregates, *self._aggregate(receipts)]),
+        }
+
+    def profile_summary(
+        self,
+        *,
+        execution_profile_id: str | None = None,
+        model_digest: str | None = None,
+        window_size: int | None = None,
+    ) -> dict[str, Any]:
+        """Compute cross-host aggregate reliability and verifier telemetry for execution profiles."""
+        receipts = [
+            receipt for receipt in self._receipts()
+            if (execution_profile_id is None or receipt["signal"]["execution_profile_id"] == execution_profile_id)
+            and (model_digest is None or receipt["signal"]["model_digest"] == model_digest)
+        ]
+        if window_size is not None:
+            receipts = receipts[-window_size:] if window_size > 0 else []
+            durable_aggregates: list[dict[str, Any]] = []
+        else:
+            durable_aggregates = [
+                document["aggregate"] for document in self._aggregates()
+                if (execution_profile_id is None or document["aggregate"].get("execution_profile_id") == execution_profile_id)
+                and (model_digest is None or document["aggregate"].get("model_digest") == model_digest)
+            ]
+        aggregates = self._combine_aggregates([*durable_aggregates, *self._aggregate(receipts)])
+        total = sum(int(bucket["count"]) for bucket in aggregates)
+        passed = sum(int(bucket["count"]) for bucket in aggregates if bucket["outcome"] == "passed")
+        duration = sum(int(bucket["total_duration_ms"]) for bucket in aggregates)
+        retries = sum(int(bucket["total_retry_count"]) for bucket in aggregates)
+
+        verifier_breakdown: dict[str, int] = {}
+        profile_breakdown: dict[str, dict[str, Any]] = {}
+        for bucket in aggregates:
+            category = str(bucket.get("verifier_category", "none"))
+            count = int(bucket["count"])
+            verifier_breakdown[category] = verifier_breakdown.get(category, 0) + count
+
+            ep_id = str(bucket.get("execution_profile_id", "unknown"))
+            ep_stats = profile_breakdown.setdefault(
+                ep_id,
+                {
+                    "total_signals": 0,
+                    "passed_signals": 0,
+                    "failed_signals": 0,
+                    "total_duration_ms": 0,
+                    "total_retry_count": 0,
+                    "mode_breakdown": {},
+                    "task_category_breakdown": {},
+                },
+            )
+            ep_stats["total_signals"] += count
+            if bucket["outcome"] == "passed":
+                ep_stats["passed_signals"] += count
+            else:
+                ep_stats["failed_signals"] += count
+            ep_stats["total_duration_ms"] += int(bucket["total_duration_ms"])
+            ep_stats["total_retry_count"] += int(bucket["total_retry_count"])
+
+            mode = str(bucket.get("mode", "unknown"))
+            ep_stats["mode_breakdown"][mode] = ep_stats["mode_breakdown"].get(mode, 0) + count
+
+            task_cat = str(bucket.get("task_category", "unknown"))
+            ep_stats["task_category_breakdown"][task_cat] = ep_stats["task_category_breakdown"].get(task_cat, 0) + count
+
+        for ep_stats in profile_breakdown.values():
+            ep_tot = ep_stats["total_signals"]
+            ep_stats["pass_rate"] = ep_stats["passed_signals"] / ep_tot if ep_tot else None
+            ep_stats["avg_duration_ms"] = ep_stats["total_duration_ms"] / ep_tot if ep_tot else 0.0
+            ep_stats["avg_retry_count"] = ep_stats["total_retry_count"] / ep_tot if ep_tot else 0.0
+
+        return {
+            "execution_profile_id": execution_profile_id,
+            "model_digest": model_digest,
+            "total_signals": total,
+            "passed_signals": passed,
+            "failed_signals": total - passed,
+            "pass_rate": passed / total if total else None,
+            "avg_duration_ms": duration / total if total else 0.0,
+            "avg_retry_count": retries / total if total else 0.0,
+            "verifier_breakdown": verifier_breakdown,
+            "profile_breakdown": profile_breakdown,
+            "window_size": window_size,
+            "collection_paused": self.collection_paused,
+        }
 
     def compute_pass_rate(
         self,

@@ -252,3 +252,22 @@ secret
         "./.mighty/secret.py"
     ]
     assert (tmp_path / ".mighty/secret.py").read_text() == "secret"
+
+
+def test_application_boundary_handles_empty_and_inline_delete_blocks(tmp_path):
+    target = tmp_path / "obsolete_shim.py"
+    target.write_text("bad code\n")
+
+    raw = """```delete:obsolete_shim.py
+```
+```python:valid.py
+def ok(): pass
+```"""
+    res = apply_response(
+        _request(raw, tmp_path, allowed_delete_paths=("obsolete_shim.py",))
+    )
+    assert "obsolete_shim.py" in res
+    assert "valid.py" in res
+    assert not target.exists()
+    assert not (tmp_path / "delete:obsolete_shim.py").exists()
+    assert (tmp_path / "valid.py").exists()

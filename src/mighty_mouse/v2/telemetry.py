@@ -153,7 +153,22 @@ class SignalTelemetry:
             scope, window_size=window_size
         )
 
+    def get_profile_telemetry(
+        self,
+        *,
+        execution_profile_id: Optional[str] = None,
+        model_digest: Optional[str] = None,
+        window_size: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Return cross-host profile-partitioned aggregate telemetry."""
+        return self.signal_lifecycle.profile_summary(
+            execution_profile_id=execution_profile_id,
+            model_digest=model_digest,
+            window_size=window_size,
+        )
+
     get_telemetry_summary = get_signal_summary
+    profile_summary = get_profile_telemetry
 
 
 class _LegacyStoreSignalTelemetry:

@@ -246,3 +246,97 @@ def test_cli_routes_signal_construction_through_canonical_seam(
 
     assert json.loads(capsys.readouterr().out)["collected"] is True
     recorder.assert_called_once()
+
+
+def test_cross_host_profile_telemetry_aggregation(tmp_path: Path) -> None:
+    scope_coding = Scope(
+        Mode.CODING, "JOHNNYMACONNY/mighty-mouse", TaskCategory.FEATURE, "local-small"
+    )
+    scope_refactor = Scope(
+        Mode.CODING, "JOHNNYMACONNY/mighty-mouse", TaskCategory.MAINTENANCE, "local-small"
+    )
+    lifecycle = SignalLifecycle(tmp_path)
+    telemetry = SignalTelemetry(lifecycle)
+
+    # 1. Profile 1 (codex-local): 2 passed, 1 failed
+    telemetry.record(
+        signal_id="signal-001",
+        scope=scope_coding,
+        model_digest="sha256:" + "1" * 64,
+        execution_profile_id="codex-local",
+        outcome="passed",
+        duration_ms=100,
+        retry_count=0,
+        verifier_category="tests",
+        verifier_result="passed",
+    )
+    telemetry.record(
+        signal_id="signal-002",
+        scope=scope_refactor,
+        model_digest="sha256:" + "1" * 64,
+        execution_profile_id="codex-local",
+        outcome="passed",
+        duration_ms=200,
+        retry_count=1,
+        verifier_category="lint",
+        verifier_result="passed",
+    )
+    telemetry.record(
+        signal_id="signal-003",
+        scope=scope_coding,
+        model_digest="sha256:" + "1" * 64,
+        execution_profile_id="codex-local",
+        outcome="failed",
+        duration_ms=300,
+        retry_count=2,
+        verifier_category="tests",
+        verifier_result="failed",
+    )
+
+    # 2. Profile 2 (sha256 profile): 1 passed
+    profile_2_id = "sha256:" + "b" * 64
+    telemetry.record(
+        signal_id="signal-004",
+        scope=scope_coding,
+        model_digest="sha256:" + "2" * 64,
+        execution_profile_id=profile_2_id,
+        outcome="passed",
+        duration_ms=150,
+        retry_count=0,
+        verifier_category="build",
+        verifier_result="passed",
+    )
+
+    # Global cross-host summary
+    summary = telemetry.get_profile_telemetry()
+    assert summary["total_signals"] == 4
+    assert summary["passed_signals"] == 3
+    assert summary["failed_signals"] == 1
+    assert summary["pass_rate"] == 0.75
+    assert summary["avg_duration_ms"] == (100 + 200 + 300 + 150) / 4
+    assert summary["avg_retry_count"] == (0 + 1 + 2 + 0) / 4
+    assert summary["verifier_breakdown"] == {"tests": 2, "lint": 1, "build": 1}
+
+    assert "codex-local" in summary["profile_breakdown"]
+    assert profile_2_id in summary["profile_breakdown"]
+    assert summary["profile_breakdown"]["codex-local"]["total_signals"] == 3
+    assert summary["profile_breakdown"]["codex-local"]["passed_signals"] == 2
+    assert summary["profile_breakdown"]["codex-local"]["failed_signals"] == 1
+    assert summary["profile_breakdown"]["codex-local"]["mode_breakdown"] == {"coding": 3}
+    assert summary["profile_breakdown"]["codex-local"]["task_category_breakdown"] == {"feature": 2, "maintenance": 1}
+    assert summary["profile_breakdown"][profile_2_id]["total_signals"] == 1
+    assert summary["profile_breakdown"][profile_2_id]["passed_signals"] == 1
+    assert summary["profile_breakdown"][profile_2_id]["mode_breakdown"] == {"coding": 1}
+    assert summary["profile_breakdown"][profile_2_id]["task_category_breakdown"] == {"feature": 1}
+
+    # Filtered by profile
+    codex_summary = telemetry.get_profile_telemetry(execution_profile_id="codex-local")
+    assert codex_summary["total_signals"] == 3
+    assert codex_summary["passed_signals"] == 2
+    assert codex_summary["failed_signals"] == 1
+    assert codex_summary["pass_rate"] == 2 / 3
+
+    # Filtered by model_digest
+    profile2_model_summary = telemetry.get_profile_telemetry(model_digest="sha256:" + "2" * 64)
+    assert profile2_model_summary["total_signals"] == 1
+    assert profile2_model_summary["passed_signals"] == 1

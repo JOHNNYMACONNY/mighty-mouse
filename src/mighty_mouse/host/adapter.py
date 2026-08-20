@@ -28,7 +28,7 @@ from mighty_mouse.protocols import get_protocol
 
 
 SUPPORTED_RUNTIME_KINDS = frozenset({"cline", "claude-code", "codex", "cursor", "antigravity", "hermes", "windsurf"})
-MCP_TOOL_CONTRACT_VERSION = 2
+MCP_TOOL_CONTRACT_VERSION = 3
 MCP_ADAPTER_CONFIG_SCHEMA_VERSION = 2
 ADAPTER_CONFIG_FILENAME = "mcp-adapter.json"
 

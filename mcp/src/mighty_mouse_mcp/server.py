@@ -29,10 +29,13 @@ from mighty_mouse.host.adapter import (
     HostAdapter,
 )
 from mighty_mouse.protocols import PROTOCOL_VERSION, get_protocol
+from mighty_mouse.v2.engine import PolicyEngine
 from mighty_mouse.v2.foundation import (
     HybridHandoff,
     ImmutableStateStore,
     Mode,
+    Pin,
+    Preview,
     Scope,
     TaskCategory,
 )
@@ -95,6 +98,10 @@ def _get_mcp_tool_signatures() -> dict:
         "verify_and_record": run_verify_and_record,
         "recording_audit": run_recording_audit,
         "run": run_run,
+        "policy_status": run_policy_status,
+        "policy_preview": run_policy_preview,
+        "policy_pin": run_policy_pin,
+        "policy_rollback": run_policy_rollback,
     }
 
 
@@ -322,6 +329,231 @@ def run_tool(
         confidence_percent=confidence_percent,
         user_mode=user_mode,
         hybrid_handoff=hybrid_handoff,
+        state_dir=state_dir,
+    )
+
+
+def run_policy_status(
+    workspace: str,
+    *,
+    mode: str = "coding",
+    task_category: str = "unknown",
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Inspect current v2 Effective Policy and promotion status using pinned adapter context."""
+    ctx = HostAdapter.resolve_adapter_context(
+        workspace,
+        state_dir,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
+    )
+    scope = Scope(
+        mode=Mode(mode),
+        repository=ctx.repository,
+        task_category=TaskCategory(task_category),
+        model_class=ctx.model_class,
+    )
+    return PolicyEngine(ctx.state_dir).get_status(scope, ctx.model_identity, ctx.execution_profile)
+
+
+@mcp.tool(name="policy_status")
+def policy_status_tool(
+    workspace: str,
+    mode: str = "coding",
+    task_category: str = "unknown",
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Inspect current Effective Policy, eligible successors, and signal receipts."""
+    return run_policy_status(
+        workspace=workspace,
+        mode=mode,
+        task_category=task_category,
+        state_dir=state_dir,
+    )
+
+
+def run_policy_preview(
+    workspace: str,
+    *,
+    candidate_id: str,
+    evidence_bundle_id: str = "",
+    mode: str = "coding",
+    task_category: str = "unknown",
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Evaluate and persist a bounded policy Preview without modifying active selection."""
+    ctx = HostAdapter.resolve_adapter_context(
+        workspace,
+        state_dir,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
+    )
+    scope = Scope(
+        mode=Mode(mode),
+        repository=ctx.repository,
+        task_category=TaskCategory(task_category),
+        model_class=ctx.model_class,
+    )
+    preview_id = f"preview-{secrets.randbelow(10**30):030d}"
+    resolved_evidence_bundle_id = evidence_bundle_id or f"evidence-{secrets.randbelow(10**30):030d}"
+    preview = Preview(
+        preview_id=preview_id,
+        scope=scope,
+        candidate_id=candidate_id,
+        evidence_bundle_id=resolved_evidence_bundle_id,
+        model_digest=str(ctx.model_identity.artifact_digest),
+        execution_profile_id=str(ctx.execution_profile.profile_id),
+    )
+    selection = PolicyEngine(ctx.state_dir).preview(preview, ctx.model_identity, ctx.execution_profile)
+    return {
+        "schema_version": ImmutableStateStore.schema_version,
+        "interface": "policy_preview",
+        "preview_id": preview_id,
+        "evidence_bundle_id": resolved_evidence_bundle_id,
+        "selection": {
+            "policy_id": selection.policy.policy_id,
+            "policy_version": selection.policy.version,
+            "source": selection.source,
+            "reason": selection.reason,
+            "record_hash": selection.record_hash,
+        },
+    }
+
+
+@mcp.tool(name="policy_preview")
+def policy_preview_tool(
+    workspace: str,
+    candidate_id: str,
+    evidence_bundle_id: str = "",
+    mode: str = "coding",
+    task_category: str = "unknown",
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Evaluate a candidate policy without changing the active Champion."""
+    return run_policy_preview(
+        workspace=workspace,
+        candidate_id=candidate_id,
+        evidence_bundle_id=evidence_bundle_id,
+        mode=mode,
+        task_category=task_category,
+        state_dir=state_dir,
+    )
+
+
+def run_policy_pin(
+    workspace: str,
+    *,
+    candidate_id: str,
+    mode: str = "coding",
+    task_category: str = "unknown",
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Persist a bounded Pin control locking policy selection to a designated candidate."""
+    ctx = HostAdapter.resolve_adapter_context(
+        workspace,
+        state_dir,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
+    )
+    scope = Scope(
+        mode=Mode(mode),
+        repository=ctx.repository,
+        task_category=TaskCategory(task_category),
+        model_class=ctx.model_class,
+    )
+    pin_id = f"pin-{secrets.randbelow(10**30):030d}"
+    pin = Pin(
+        pin_id=pin_id,
+        scope=scope,
+        candidate_id=candidate_id,
+        model_digest=str(ctx.model_identity.artifact_digest),
+        execution_profile_id=str(ctx.execution_profile.profile_id),
+    )
+    record = PolicyEngine(ctx.state_dir).pin(pin, ctx.model_identity, ctx.execution_profile)
+    return {
+        "schema_version": ImmutableStateStore.schema_version,
+        "interface": "policy_pin",
+        "pin_id": pin_id,
+        "candidate_id": candidate_id,
+        "record_hash": record.record_hash,
+    }
+
+
+@mcp.tool(name="policy_pin")
+def policy_pin_tool(
+    workspace: str,
+    candidate_id: str,
+    mode: str = "coding",
+    task_category: str = "unknown",
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Lock policy selection for the workspace to a specific candidate policy."""
+    return run_policy_pin(
+        workspace=workspace,
+        candidate_id=candidate_id,
+        mode=mode,
+        task_category=task_category,
+        state_dir=state_dir,
+    )
+
+
+def run_policy_rollback(
+    workspace: str,
+    *,
+    reason: str,
+    mode: str = "coding",
+    task_category: str = "unknown",
+    security_breach: bool = False,
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Recover the active Champion and record a promotion notice."""
+    ctx = HostAdapter.resolve_adapter_context(
+        workspace,
+        state_dir,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
+    )
+    scope = Scope(
+        mode=Mode(mode),
+        repository=ctx.repository,
+        task_category=TaskCategory(task_category),
+        model_class=ctx.model_class,
+    )
+    notice = PolicyEngine(ctx.state_dir).rollback(
+        scope=scope,
+        model_identity=ctx.model_identity,
+        execution_profile=ctx.execution_profile,
+        reason=reason,
+        security_breach=security_breach,
+    )
+    return {
+        "schema_version": ImmutableStateStore.schema_version,
+        "interface": "policy_rollback",
+        "action": notice.action,
+        "candidate_id": notice.candidate_id,
+        "reason": notice.reason,
+        "security_breach": security_breach,
+        "inspect_command": notice.inspect_command,
+        "rollback_command": notice.rollback_command,
+    }
+
+
+@mcp.tool(name="policy_rollback")
+def policy_rollback_tool(
+    workspace: str,
+    reason: str,
+    mode: str = "coding",
+    task_category: str = "unknown",
+    security_breach: bool = False,
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Roll back the active Champion policy for this workspace."""
+    return run_policy_rollback(
+        workspace=workspace,
+        reason=reason,
+        mode=mode,
+        task_category=task_category,
+        security_breach=security_breach,
         state_dir=state_dir,
     )
 

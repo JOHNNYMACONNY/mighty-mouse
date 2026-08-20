@@ -102,7 +102,8 @@ def _apply_response_text(
     file_blocks = re.finditer(
         r"```(?P<lang>\w+)?"
         r"(?:\s*:\s*(?P<path>[^\n\s]+))?.*?\n"
-        r"(?P<content>.*?)\n```",
+        r"(?P<content>.*?)"
+        r"(?:\n\s*```|\s*```)",
         raw_text,
         re.DOTALL,
     )
@@ -148,6 +149,11 @@ def _apply_response_text(
         if not path:
             continue
 
+        is_delete = (block.group("lang") == "delete")
+        if path.startswith("delete:"):
+            is_delete = True
+            path = path[7:].strip()
+
         path, target_path = _resolve_target_path(path, workspace_root)
 
         if path.lower() == "checklist.md":
@@ -166,6 +172,15 @@ def _apply_response_text(
         if len(content.encode("utf-8")) > policy.max_file_bytes:
             raise ValueError(f"Refusing oversized file block for {path}")
 
+        if is_delete:
+            if path not in allowed_delete_paths:
+                raise ValueError(f"Deletion not permitted for path: {path}")
+            if os.path.exists(target_path):
+                os.remove(target_path)
+                print(f"[parser] PURGED file: {path}", file=sys.stderr)
+            extracted_files.append(path)
+            continue
+
         if policy.strict_code_hygiene:
             leakage_patterns = [
                 r"</thought>",
@@ -183,15 +198,6 @@ def _apply_response_text(
                         f"XML leakage detected in {path}: "
                         f"Found hallucinated tag {pattern}"
                     )
-
-        if block.group("lang") == "delete":
-            if path not in allowed_delete_paths:
-                raise ValueError(f"Deletion not permitted for path: {path}")
-            if os.path.exists(target_path):
-                os.remove(target_path)
-                print(f"[parser] PURGED file: {path}", file=sys.stderr)
-            extracted_files.append(path)
-            continue
 
         print(
             f"[parser] Target: {path} (Resolved: {target_path})",

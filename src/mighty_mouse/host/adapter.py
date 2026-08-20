@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from hashlib import sha256
 import inspect
 import json
@@ -27,9 +28,18 @@ from mighty_mouse.protocols import get_protocol
 
 
 SUPPORTED_RUNTIME_KINDS = frozenset({"cline", "claude-code", "codex", "cursor", "antigravity", "hermes", "windsurf"})
-MCP_TOOL_CONTRACT_VERSION = 1
+MCP_TOOL_CONTRACT_VERSION = 2
 MCP_ADAPTER_CONFIG_SCHEMA_VERSION = 2
 ADAPTER_CONFIG_FILENAME = "mcp-adapter.json"
+
+
+@dataclass(frozen=True)
+class AdapterRuntimeContext:
+    state_dir: Path
+    repository: str
+    model_class: str
+    model_identity: ModelIdentity
+    execution_profile: ExecutionProfile
 
 
 class HostAdapter:
@@ -218,6 +228,46 @@ class HostAdapter:
         return scope
 
     @staticmethod
+    def resolve_adapter_context(
+        workspace: str,
+        state_dir: str | None = None,
+        *,
+        tool_signatures: dict[str, Any],
+        contract_version: int = MCP_TOOL_CONTRACT_VERSION,
+    ) -> AdapterRuntimeContext:
+        """Resolve workspace state directory, model identity, and execution profile context."""
+        resolved_state_dir = Path(state_dir) if state_dir else Path(workspace) / ".mighty-mouse"
+        path = resolved_state_dir / ADAPTER_CONFIG_FILENAME
+        if not path.is_file():
+            raise ValueError(f"MCP adapter identity is not configured: {path}; run setup_workspace")
+        try:
+            config = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError("MCP adapter identity configuration is invalid JSON") from exc
+        HostAdapter.validate_adapter_config(
+            config,
+            tool_signatures=tool_signatures,
+            contract_version=contract_version,
+        )
+        profile, _, _ = HostAdapter.build_execution_profile(
+            runtime_kind=str(config["runtime_kind"]),
+            runtime_version=str(config["runtime_version"]),
+            effective_context_limit=int(config["effective_context_limit"]),
+            tool_signatures=tool_signatures,
+            contract_version=contract_version,
+        )
+        model_identity = ModelIdentity(
+            artifact_digest=str(config["model_digest"]),
+        )
+        return AdapterRuntimeContext(
+            state_dir=resolved_state_dir,
+            repository=str(config["repository"]),
+            model_class=str(config["model_class"]),
+            model_identity=model_identity,
+            execution_profile=profile,
+        )
+
+    @staticmethod
     def resolve_adapter_scope(
         workspace: str,
         state_dir: str | None,
@@ -226,18 +276,11 @@ class HostAdapter:
         contract_version: int = MCP_TOOL_CONTRACT_VERSION,
     ) -> tuple[Path, Scope, str, str]:
         """Resolve workspace state directory, Scope, model digest, and execution profile ID."""
-        resolved_state_dir = Path(state_dir) if state_dir else Path(workspace) / ".mighty-mouse"
-        path = resolved_state_dir / ADAPTER_CONFIG_FILENAME
-        if not path.is_file():
-            raise ValueError(f"MCP adapter identity is not configured: {path}; run setup_workspace")
-        try:
-            config = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise ValueError("Cline adapter identity configuration is invalid JSON") from exc
-        base_scope = HostAdapter.validate_adapter_config(
-            config,
+        ctx = HostAdapter.resolve_adapter_context(
+            workspace,
+            state_dir,
             tool_signatures=tool_signatures,
             contract_version=contract_version,
         )
-        scope = Scope(Mode.CODING, base_scope.repository, TaskCategory(task_category), base_scope.model_class)
-        return resolved_state_dir, scope, str(config["model_digest"]), str(config["execution_profile_id"])
+        scope = Scope(Mode.CODING, ctx.repository, TaskCategory(task_category), ctx.model_class)
+        return ctx.state_dir, scope, str(ctx.model_identity.artifact_digest), str(ctx.execution_profile.profile_id)

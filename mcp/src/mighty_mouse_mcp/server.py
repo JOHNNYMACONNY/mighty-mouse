@@ -6,18 +6,37 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 import secrets
+from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError:
+    class FastMCP:  # type: ignore[no-redef]
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def tool(self, *args: Any, **kwargs: Any) -> Any:
+            def decorator(func: Any) -> Any:
+                return func
+            return decorator
+
+        def run(self, *args: Any, **kwargs: Any) -> None:
+            pass
 
 from mighty_mouse.host.adapter import (
     ADAPTER_CONFIG_FILENAME,
-    MCP_ADAPTER_CONFIG_SCHEMA_VERSION,
     MCP_TOOL_CONTRACT_VERSION,
-    SUPPORTED_RUNTIME_KINDS,
     HostAdapter,
 )
 from mighty_mouse.protocols import PROTOCOL_VERSION, get_protocol
-from mighty_mouse.v2.foundation import Scope
+from mighty_mouse.v2.foundation import (
+    HybridHandoff,
+    ImmutableStateStore,
+    Mode,
+    Scope,
+    TaskCategory,
+)
+from mighty_mouse.v2.runtime import AutopilotRunRequest, run_autopilot
 from mighty_mouse.v2.signals import SignalLifecycle
 from mighty_mouse.v2.telemetry import SignalTelemetry
 from mighty_mouse.verifier import verify as verify_workspace
@@ -75,6 +94,7 @@ def _get_mcp_tool_signatures() -> dict:
         "setup_workspace": run_setup_workspace,
         "verify_and_record": run_verify_and_record,
         "recording_audit": run_recording_audit,
+        "run": run_run,
     }
 
 
@@ -212,6 +232,98 @@ def run_verify_and_record(
         "signal_recorded": receipt_hash is not None,
         "receipt_hash": receipt_hash,
     }
+
+
+def run_run(
+    workspace: str,
+    *,
+    task_category: str = "unknown",
+    inferred_mode: str = "coding",
+    confidence_percent: int = 100,
+    user_mode: str | None = None,
+    hybrid_handoff: dict[str, Any] | None = None,
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Select adaptive Mode and Effective Policy for a workspace task using pinned adapter identity."""
+    ctx = HostAdapter.resolve_adapter_context(
+        workspace,
+        state_dir,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
+    )
+    parsed_task_category = TaskCategory(task_category)
+    parsed_inferred_mode = Mode(inferred_mode)
+    parsed_user_mode = Mode(user_mode) if user_mode is not None else None
+
+    parsed_handoff: HybridHandoff | None = None
+    if hybrid_handoff is not None:
+        handoff_scope = Scope(
+            mode=Mode.HYBRID,
+            repository=ctx.repository,
+            task_category=parsed_task_category,
+            model_class=ctx.model_class,
+        )
+        parsed_handoff = HybridHandoff(
+            handoff_id=hybrid_handoff["handoff_id"],
+            scope=handoff_scope,
+            summary=hybrid_handoff["summary"],
+            constraints=tuple(hybrid_handoff["constraints"]),
+            acceptance_checks=tuple(hybrid_handoff["acceptance_checks"]),
+            file_scope=tuple(hybrid_handoff["file_scope"]),
+            risks=tuple(hybrid_handoff["risks"]),
+        )
+
+    result = run_autopilot(
+        AutopilotRunRequest(
+            repository=ctx.repository,
+            task_category=parsed_task_category,
+            model_class=ctx.model_class,
+            inferred_mode=parsed_inferred_mode,
+            confidence_percent=confidence_percent,
+            model_identity=ctx.model_identity,
+            execution_profile=ctx.execution_profile,
+            user_mode=parsed_user_mode,
+            hybrid_handoff=parsed_handoff,
+        ),
+        ImmutableStateStore(ctx.state_dir),
+    )
+    return {
+        "schema_version": ImmutableStateStore.schema_version,
+        "interface": "run",
+        "mode": result.mode.value,
+        "routing_reason": result.routing_reason,
+        "selection": {
+            "policy_id": result.selection.policy.policy_id,
+            "policy_version": result.selection.policy.version,
+            "source": result.selection.source,
+            "reason": result.selection.reason,
+            "record_hash": result.selection.record_hash,
+        },
+        "handoff_record_hash": result.handoff_record_hash,
+        "routing_record_hash": result.routing_record_hash,
+    }
+
+
+@mcp.tool(name="run")
+def run_tool(
+    workspace: str,
+    task_category: str = "unknown",
+    inferred_mode: str = "coding",
+    confidence_percent: int = 100,
+    user_mode: str | None = None,
+    hybrid_handoff: dict[str, Any] | None = None,
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Select adaptive Mode and Effective Policy for a task using pinned workspace identity."""
+    return run_run(
+        workspace=workspace,
+        task_category=task_category,
+        inferred_mode=inferred_mode,
+        confidence_percent=confidence_percent,
+        user_mode=user_mode,
+        hybrid_handoff=hybrid_handoff,
+        state_dir=state_dir,
+    )
 
 
 @mcp.tool(name="verify")

@@ -16,11 +16,12 @@ sys.path.insert(0, MCP_SRC)
 GEMMA_MODEL = "gemma4:e4b"
 
 try:
-    from mcp.server.fastmcp import FastMCP  # noqa: F401
+    import mcp.client.stdio  # noqa: F401
+    mcp_stdio_available = True
 except ImportError:
-    mcp_available = False
-else:
-    mcp_available = True
+    mcp_stdio_available = False
+
+mcp_available = True
 
 
 def configure_cline_adapter(workspace: Path, *, model_digest: str, model_class: str = "local-large") -> None:
@@ -219,7 +220,7 @@ def test_setup_partitions_profiles_by_exact_host_facts_and_full_tool_contract(tm
 
     assert first_result["execution_profile_id"] != second_result["execution_profile_id"]
     assert set(_mcp_tool_contract()) == {
-        "contract_version", "protocol", "verify", "setup_workspace", "verify_and_record", "recording_audit",
+        "contract_version", "protocol", "verify", "setup_workspace", "verify_and_record", "recording_audit", "run",
     }
 
 
@@ -228,7 +229,7 @@ def test_recording_requires_reonboarding_after_a_tool_contract_change(tmp_path, 
     import mighty_mouse_mcp.server as server
 
     configure_cline_adapter(tmp_path, model_digest="sha256:" + "7" * 64)
-    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 2)
+    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 3)
     with pytest.raises(ValueError, match="stale"):
         server.run_verify_and_record(str(tmp_path))
 
@@ -276,6 +277,284 @@ def test_unknown_protocol_complexity_is_rejected():
 
 
 @pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_run_uses_pinned_adapter_runtime_context(tmp_path):
+    from mighty_mouse_mcp.server import run_run
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "1" * 64, model_class="local-small")
+
+    result = run_run(
+        str(tmp_path),
+        task_category="feature",
+        inferred_mode="coding",
+        confidence_percent=100,
+    )
+
+    assert result["interface"] == "run"
+    assert result["mode"] == "coding"
+    assert result["routing_reason"] == "high-confidence inferred Mode"
+    assert result["selection"]["policy_id"] == "safe-baseline-coding"
+    assert result["routing_record_hash"] is not None
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_run_matches_direct_autopilot_high_confidence(tmp_path):
+    from mighty_mouse_mcp.server import run_run, _adapter_config
+    from mighty_mouse.v2.runtime import AutopilotRunRequest, run_autopilot
+    from mighty_mouse.v2.foundation import (
+        ExecutionProfile,
+        ImmutableStateStore,
+        ModelIdentity,
+        Mode,
+        TaskCategory,
+    )
+
+    state_dir = tmp_path / ".mighty-mouse"
+    state_dir.mkdir()
+    config = _adapter_config(
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "2" * 64,
+        model_class="local-small",
+        effective_context_limit=8192,
+        runtime_kind="codex",
+        runtime_version="1.2.3",
+        ollama_model=None,
+    )
+    (state_dir / "mcp-adapter.json").write_text(json.dumps(config), encoding="utf-8")
+
+    mcp_result = run_run(
+        str(tmp_path),
+        task_category="debugging",
+        inferred_mode="agentic",
+        confidence_percent=85,
+    )
+
+    direct_result = run_autopilot(
+        AutopilotRunRequest(
+            repository="JOHNNYMACONNY/mighty-mouse",
+            task_category=TaskCategory.DEBUGGING,
+            model_class="local-small",
+            inferred_mode=Mode.AGENTIC,
+            confidence_percent=85,
+            model_identity=ModelIdentity("sha256:" + "2" * 64),
+            execution_profile=ExecutionProfile(config["execution_profile_id"], frozenset()),
+        ),
+        ImmutableStateStore(state_dir),
+    )
+
+    assert mcp_result["mode"] == direct_result.mode.value
+    assert mcp_result["routing_reason"] == direct_result.routing_reason
+    assert mcp_result["selection"]["policy_id"] == direct_result.selection.policy.policy_id
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_run_honors_explicit_mode(tmp_path):
+    from mighty_mouse_mcp.server import run_run
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "3" * 64)
+
+    result = run_run(
+        str(tmp_path),
+        task_category="feature",
+        inferred_mode="coding",
+        confidence_percent=50,
+        user_mode="agentic",
+    )
+
+    assert result["mode"] == "agentic"
+    assert result["routing_reason"] == "explicit user Mode override"
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_run_selects_hybrid_for_medium_confidence(tmp_path):
+    from mighty_mouse_mcp.server import run_run
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "4" * 64)
+
+    handoff = {
+        "handoff_id": "handoff-mcp-01",
+        "summary": "Hybrid task summary",
+        "constraints": ["Keep tests green"],
+        "acceptance_checks": ["Unit tests pass"],
+        "file_scope": ["src/"],
+        "risks": ["None"],
+    }
+
+    result = run_run(
+        str(tmp_path),
+        task_category="feature",
+        inferred_mode="coding",
+        confidence_percent=70,
+        hybrid_handoff=handoff,
+    )
+
+    assert result["mode"] == "hybrid"
+    assert result["routing_reason"] == "medium-confidence fixed Hybrid"
+    assert result["handoff_record_hash"] is not None
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_run_requires_hybrid_handoff(tmp_path):
+    from mighty_mouse_mcp.server import run_run
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "5" * 64)
+
+    with pytest.raises(ValueError, match="durable Hybrid handoff"):
+        run_run(
+            str(tmp_path),
+            task_category="feature",
+            inferred_mode="coding",
+            confidence_percent=70,
+        )
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_run_rejects_low_confidence_without_override(tmp_path):
+    from mighty_mouse_mcp.server import run_run
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "6" * 64)
+
+    with pytest.raises(ValueError, match="explicit user Mode choice is required below 55%"):
+        run_run(
+            str(tmp_path),
+            task_category="feature",
+            inferred_mode="coding",
+            confidence_percent=50,
+        )
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_run_builds_hybrid_scope_from_pinned_identity(tmp_path):
+    from mighty_mouse_mcp.server import run_run
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "7" * 64, model_class="local-large")
+
+    handoff = {
+        "handoff_id": "handoff-mcp-02",
+        "summary": "Check pinned scope construction",
+        "constraints": ["Constraint 1"],
+        "acceptance_checks": ["Check 1"],
+        "file_scope": ["src/mcp"],
+        "risks": ["Risk 1"],
+    }
+
+    result = run_run(
+        str(tmp_path),
+        task_category="refactoring",
+        inferred_mode="hybrid",
+        confidence_percent=90,
+        hybrid_handoff=handoff,
+    )
+    assert result["mode"] == "hybrid"
+    assert result["handoff_record_hash"] is not None
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_run_rejects_unconfigured_workspace(tmp_path):
+    from mighty_mouse_mcp.server import run_run
+
+    with pytest.raises(ValueError, match="not configured"):
+        run_run(str(tmp_path))
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_run_rejects_invalid_adapter_json(tmp_path):
+    from mighty_mouse_mcp.server import run_run
+
+    state_dir = tmp_path / ".mighty-mouse"
+    state_dir.mkdir()
+    (state_dir / "mcp-adapter.json").write_text("{bad json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="invalid JSON"):
+        run_run(str(tmp_path))
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_run_rejects_stale_tool_contract(tmp_path, monkeypatch):
+    import mighty_mouse_mcp.server as server
+
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "8" * 64)
+    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 99)
+
+    with pytest.raises(ValueError, match="stale"):
+        server.run_run(str(tmp_path))
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_v1_workspace_requires_reonboarding_for_v2_contract(tmp_path):
+    import mighty_mouse_mcp.server as server
+
+    state_dir = tmp_path / ".mighty-mouse"
+    state_dir.mkdir()
+    # Build v1 config with contract_version=1
+    profile, tool_contract_digest, prompt_template_digest = server.HostAdapter.build_execution_profile(
+        runtime_kind="cline",
+        runtime_version="3.54.0",
+        effective_context_limit=8192,
+        tool_signatures=server._get_mcp_tool_signatures(),
+        contract_version=1,
+    )
+    v1_config = {
+        "schema_version": 2,
+        "repository": "JOHNNYMACONNY/mighty-mouse",
+        "model_digest": "sha256:" + "a" * 64,
+        "model_class": "local-large",
+        "model_source": "host",
+        "ollama_model": None,
+        "execution_profile_id": profile.profile_id,
+        "runtime_kind": "cline",
+        "runtime_version": "3.54.0",
+        "effective_context_limit": 8192,
+        "tool_contract_digest": tool_contract_digest,
+        "prompt_template_digest": prompt_template_digest,
+    }
+    (state_dir / "mcp-adapter.json").write_text(json.dumps(v1_config), encoding="utf-8")
+
+    # With v2 server running, v1 adapter config must fail as stale
+    with pytest.raises(ValueError, match="stale"):
+        server.run_run(str(tmp_path))
+
+    # Reonboard with replace=True
+    setup_res = server.run_setup_workspace(
+        str(tmp_path),
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "a" * 64,
+        model_class="local-large",
+        runtime_kind="cline",
+        runtime_version="3.54.0",
+        replace=True,
+    )
+    assert setup_res["configured"] is True
+
+    # Now both run and verify_and_record succeed
+    run_res = server.run_run(str(tmp_path))
+    assert run_res["mode"] == "coding"
+    rec_res = server.run_verify_and_record(str(tmp_path), test_command=[sys.executable, "-c", "print('ok')"])
+    assert rec_res["signal_recorded"] is True
+
+
+@pytest.mark.skipif(not mcp_available, reason="MCP optional dependency is not installed")
+def test_mcp_run_persists_routing_and_handoff_records(tmp_path):
+    from mighty_mouse_mcp.server import run_run
+    configure_cline_adapter(tmp_path, model_digest="sha256:" + "9" * 64)
+
+    # 1. Non-hybrid run -> persists routing, handoff_record_hash is None
+    res1 = run_run(str(tmp_path), confidence_percent=100)
+    assert res1["routing_record_hash"] is not None
+    assert res1["handoff_record_hash"] is None
+
+    # 2. Hybrid run -> persists both
+    handoff = {
+        "handoff_id": "handoff-persists-01",
+        "summary": "Check record persistence",
+        "constraints": ["C1"],
+        "acceptance_checks": ["A1"],
+        "file_scope": ["src/"],
+        "risks": ["R1"],
+    }
+    res2 = run_run(
+        str(tmp_path),
+        user_mode="hybrid",
+        hybrid_handoff=handoff,
+    )
+    assert res2["routing_record_hash"] is not None
+    assert res2["handoff_record_hash"] is not None
+
+
+@pytest.mark.skipif(not mcp_stdio_available, reason="MCP stdio client is not installed")
 def test_stdio_server_lists_and_calls_tools():
     import anyio
     from mcp import ClientSession, StdioServerParameters
@@ -317,6 +596,7 @@ def test_stdio_server_lists_and_calls_tools():
                         "verify_and_record",
                         "setup_workspace",
                         "recording_audit",
+                        "run",
                     }
                     response = await session.call_tool(
                         "protocol",
@@ -341,6 +621,19 @@ def test_stdio_server_lists_and_calls_tools():
                         },
                     )
                     assert not setup.isError
+                    run_result = await session.call_tool(
+                        "run",
+                        {
+                            "workspace": workspace,
+                            "task_category": "feature",
+                            "inferred_mode": "coding",
+                            "confidence_percent": 100,
+                        },
+                    )
+                    assert not run_result.isError
+                    run_payload = json.loads(run_result.content[0].text)
+                    assert run_payload["mode"] == "coding"
+                    assert run_payload["routing_reason"] == "high-confidence inferred Mode"
                     recorded = await session.call_tool(
                         "verify_and_record",
                         {

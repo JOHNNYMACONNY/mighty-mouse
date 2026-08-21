@@ -439,7 +439,7 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
         repo_name = (
             task_data.get("repository")
             if isinstance(task_data, dict) and task_data.get("repository")
-            else "JOHNNYMACONNY/mighty-mouse"
+            else ""
         )
         task_cat_str = (
             task_data.get("task_category")
@@ -454,29 +454,30 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
         model_cls = (
             p_cfg.get("model_class")
             or p_cfg.get("model")
-            or "unknown"
+            or ""
         )
         model_digest_str = p_cfg.get("model_digest")
-        profile_id_str = p_cfg.get("execution_profile") or "unknown"
+        profile_id_str = p_cfg.get("execution_profile") or ""
         capabilities = frozenset(p_cfg.get("capabilities", []))
 
-        scope = Scope(
-            mode=Mode.CODING,
-            repository=repo_name,
-            task_category=task_cat,
-            model_class=model_cls,
-        )
-        model_identity = ModelIdentity(artifact_digest=model_digest_str)
-        execution_profile = ExecutionProfile(
-            profile_id=profile_id_str,
-            capabilities=capabilities,
-        )
+        if repo_name and model_cls:
+            scope = Scope(
+                mode=Mode.CODING,
+                repository=repo_name,
+                task_category=task_cat,
+                model_class=model_cls,
+            )
+            model_identity = ModelIdentity(artifact_digest=model_digest_str)
+            execution_profile = ExecutionProfile(
+                profile_id=profile_id_str,
+                capabilities=capabilities,
+            )
 
-        scaling_policy = PolicyEngine(state_dir).resolve_scaling_policy(
-            scope=scope,
-            model_identity=model_identity,
-            execution_profile=execution_profile,
-        )
+            scaling_policy = PolicyEngine(state_dir).resolve_scaling_policy(
+                scope=scope,
+                model_identity=model_identity,
+                execution_profile=execution_profile,
+            )
 
     response_context = ResponseAttemptContext(
         system_prompt=full_sys,

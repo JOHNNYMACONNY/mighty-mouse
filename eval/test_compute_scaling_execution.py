@@ -844,6 +844,8 @@ def test_production_solve_unpinned_uses_legacy_single_path(agent_env):
         ({"execution_profile": ""}, {}),
         # Scope mismatch (different repository)
         ({}, {"repository": "JOHNNYMACONNY/other-repo"}),
+        # Missing repository in task
+        ({}, {"repository": ""}),
         # Scope mismatch (different task_category)
         ({}, {"task_category": "debugging"}),
         # Model digest mismatch

@@ -27,6 +27,7 @@ try:
         ResponseAttemptContext,
         execute_response_attempt,
     )
+    from mighty_mouse.host.adapter import AdapterRuntimeContext
     from mighty_mouse.v2.engine import PolicyEngine
     from mighty_mouse.v2.records import (
         ComputeScalingPolicy,
@@ -37,6 +38,7 @@ try:
         TaskCategory,
     )
 except ImportError:
+    from adapter import AdapterRuntimeContext
     from agent_execution import (
         _AgentExecutionRequest,
         _execute_agent_execution,
@@ -296,7 +298,17 @@ def solve(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_sk
     finally:
         os.chdir(original_cwd)
 
-def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_skills=None, temperature=None, stage="unified", plan_file=None):
+def _solve_inner(
+    p_cfg_path,
+    task_input,
+    feedback_str=None,
+    workspace=None,
+    explicit_skills=None,
+    temperature=None,
+    stage="unified",
+    plan_file=None,
+    runtime_context: AdapterRuntimeContext | None = None,
+):
     task_data = None
     raw_task_str = None
     if os.path.exists(task_input):
@@ -435,48 +447,38 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
     state_dir = os.path.join(workspace_root, ".mighty-mouse")
 
     scaling_policy: ComputeScalingPolicy | None = None
-    if stage != "planner":
-        repo_name = (
-            task_data.get("repository")
-            if isinstance(task_data, dict) and task_data.get("repository")
-            else ""
-        )
+    if stage != "planner" and runtime_context is not None:
         task_cat_str = (
             task_data.get("task_category")
             if isinstance(task_data, dict) and task_data.get("task_category")
-            else "unknown"
+            else None
         )
-        try:
-            task_cat = TaskCategory(task_cat_str)
-        except ValueError:
-            task_cat = TaskCategory.UNKNOWN
+        if task_cat_str:
+            try:
+                task_cat = TaskCategory(task_cat_str)
+            except ValueError:
+                task_cat = None
+        else:
+            task_cat = None
 
-        model_cls = (
-            p_cfg.get("model_class")
-            or p_cfg.get("model")
-            or ""
-        )
-        model_digest_str = p_cfg.get("model_digest")
-        profile_id_str = p_cfg.get("execution_profile") or ""
-        capabilities = frozenset(p_cfg.get("capabilities", []))
-
-        if repo_name and model_cls:
+        if (
+            task_cat is not None
+            and runtime_context.repository
+            and runtime_context.model_class
+        ):
             scope = Scope(
                 mode=Mode.CODING,
-                repository=repo_name,
+                repository=runtime_context.repository,
                 task_category=task_cat,
-                model_class=model_cls,
+                model_class=runtime_context.model_class,
             )
-            model_identity = ModelIdentity(artifact_digest=model_digest_str)
-            execution_profile = ExecutionProfile(
-                profile_id=profile_id_str,
-                capabilities=capabilities,
-            )
-
-            scaling_policy = PolicyEngine(state_dir).resolve_scaling_policy(
+            resolved_state_dir = runtime_context.state_dir or Path(state_dir)
+            scaling_policy = PolicyEngine(
+                resolved_state_dir
+            ).resolve_scaling_policy(
                 scope=scope,
-                model_identity=model_identity,
-                execution_profile=execution_profile,
+                model_identity=runtime_context.model_identity,
+                execution_profile=runtime_context.execution_profile,
             )
 
     response_context = ResponseAttemptContext(

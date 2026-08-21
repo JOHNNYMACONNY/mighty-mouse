@@ -29,6 +29,7 @@ def agent_env(tmp_path, monkeypatch):
         temperature=None,
         metadata_sequence=None,
         event_log=None,
+        runtime_context=None,
     ):
         task_file = tmp_path / "task.json"
         task_file.write_text(json.dumps(task_data))
@@ -77,6 +78,8 @@ def agent_env(tmp_path, monkeypatch):
             solve_kwargs["feedback_str"] = feedback_str
         if temperature is not None:
             solve_kwargs["temperature"] = temperature
+        if runtime_context is not None:
+            solve_kwargs["runtime_context"] = runtime_context
 
         agent._solve_inner(
             str(config_file),

@@ -298,6 +298,7 @@ def solve(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_sk
     finally:
         os.chdir(original_cwd)
 
+
 def _solve_inner(
     p_cfg_path,
     task_input,

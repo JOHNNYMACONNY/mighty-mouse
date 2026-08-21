@@ -741,7 +741,7 @@ def test_generation_attempt_preserves_temperature_and_logs(
 
 
 def test_provenance_symmetry_pin_to_production_activation(agent_env):
-    """Proves: provenance used to create pin == provenance used to activate pin."""
+    """Proves: pin creation provenance == production activation provenance."""
     workspace = agent_env.workspace
     state_dir = workspace / ".mighty-mouse"
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -780,7 +780,9 @@ def test_provenance_symmetry_pin_to_production_activation(agent_env):
         execution_profile_id=runtime_ctx.execution_profile.profile_id,
     )
     engine = PolicyEngine(state_dir)
-    engine.pin_scaling(pin, runtime_ctx.model_identity, runtime_ctx.execution_profile)
+    engine.pin_scaling(
+        pin, runtime_ctx.model_identity, runtime_ctx.execution_profile
+    )
 
     agent_env.config_file.write_text(
         "provider: sim\n"
@@ -884,7 +886,9 @@ def test_production_solve_unpinned_uses_legacy_single_path(agent_env):
         repository="JOHNNYMACONNY/mighty-mouse",
         model_class="local-small",
         model_identity=ModelIdentity("sha256:" + "a" * 64),
-        execution_profile=ExecutionProfile("codex-local", frozenset({"tools"})),
+        execution_profile=ExecutionProfile(
+            "codex-local", frozenset({"tools"})
+        ),
     )
 
     agent_env.config_file.write_text(
@@ -911,7 +915,7 @@ def test_production_solve_unpinned_uses_legacy_single_path(agent_env):
 
 
 def test_production_solve_without_runtime_context_remains_unscaled(agent_env):
-    """Direct legacy solve without canonical runtime_context fails closed to single-response."""
+    """Legacy solve without runtime_context fails closed to single-response."""
     workspace = agent_env.workspace
     state_dir = workspace / ".mighty-mouse"
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -957,7 +961,7 @@ def test_production_solve_without_runtime_context_remains_unscaled(agent_env):
     }
     responses = ["```python:legacy.py\nlegacy = 1\n```"]
 
-    # Without runtime_context passed, scaling cannot activate regardless of YAML fields
+    # Without runtime_context passed, scaling cannot activate
     result = agent_env.run(task_data, responses)
     assert result.metadata["pass_type"] == "clean"
     assert len(result.metadata["usage_history"]) == 1
@@ -983,7 +987,14 @@ def test_production_solve_without_runtime_context_remains_unscaled(agent_env):
         # Model digest mismatch in context
         ({"model_identity": ModelIdentity("sha256:" + "f" * 64)}, {}),
         # Execution profile ID mismatch in context
-        ({"execution_profile": ExecutionProfile("cursor-remote", frozenset())}, {}),
+        (
+            {
+                "execution_profile": ExecutionProfile(
+                    "cursor-remote", frozenset()
+                )
+            },
+            {},
+        ),
     ],
 )
 def test_production_solve_mismatches_disable_scaling(

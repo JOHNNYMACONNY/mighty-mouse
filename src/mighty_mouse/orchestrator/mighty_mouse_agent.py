@@ -21,6 +21,7 @@ try:
         ResponseApplicationPolicy,
         ResponseApplicationRequest,
         apply_response,
+        plan_response,
     )
     from mighty_mouse.orchestrator.response_attempt import (
         ResponseAttemptContext,
@@ -36,6 +37,7 @@ except ImportError:
         ResponseApplicationPolicy,
         ResponseApplicationRequest,
         apply_response,
+        plan_response,
     )
     from response_attempt import (
         ResponseAttemptContext,
@@ -225,8 +227,19 @@ def _execute_generation_attempt(
     task_id,
     attempt,
     usage_history,
+    candidate_index=None,
+    sampling_temperature=None,
 ):
-    response = client.generate_content(system_prompt, user_prompt)
+    original_temp = getattr(client, "temperature", None)
+    if sampling_temperature is not None and hasattr(client, "temperature"):
+        client.temperature = sampling_temperature
+
+    try:
+        response = client.generate_content(system_prompt, user_prompt)
+    finally:
+        if original_temp is not None and hasattr(client, "temperature"):
+            client.temperature = original_temp
+
     usage_history.append(dict(client.last_metadata))
 
     # DEBUG: Save raw response to a permanent global log directory
@@ -234,10 +247,11 @@ def _execute_generation_attempt(
     os.makedirs(global_logs_dir, exist_ok=True)
     task_id_str = task_id if task_id else "unknown"
     ts = int(time.time())
+    cand_suffix = f"_cand_{candidate_index}" if candidate_index is not None else ""
     with open(
         os.path.join(
             global_logs_dir,
-            f"raw_{task_id_str}_attempt_{attempt}_{ts}.txt",
+            f"raw_{task_id_str}_attempt_{attempt}{cand_suffix}_{ts}.txt",
         ),
         "w",
     ) as f:
@@ -419,6 +433,8 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
     )
 
     def provider_adapter(context, attempt_usage_history):
+        cand_idx = getattr(context, "_candidate_index", None)
+        cand_temp = getattr(context, "_sampling_temperature", None)
         return _execute_generation_attempt(
             client,
             context.system_prompt,
@@ -426,6 +442,8 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
             task_id=context.task_id,
             attempt=context.attempt,
             usage_history=attempt_usage_history,
+            candidate_index=cand_idx,
+            sampling_temperature=cand_temp,
         )
 
     def response_attempt_runner(context, parser_adapter):
@@ -438,6 +456,7 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
 
     if stage == "planner":
         response_application_adapter = None
+        response_planning_adapter = None
     else:
         response_application_policy = ResponseApplicationPolicy(
             workspace_root=workspace_root,
@@ -452,10 +471,19 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
                 )
             )
 
+        def response_planning_adapter(response_text, _context):
+            return plan_response(
+                ResponseApplicationRequest(
+                    raw_response=response_text,
+                    policy=response_application_policy,
+                )
+            )
+
     execution_outcome = _execute_agent_execution(
         execution_request,
         response_attempt_runner=response_attempt_runner,
         response_application_adapter=response_application_adapter,
+        response_planning_adapter=response_planning_adapter,
     )
     usage_history = list(execution_outcome.usage_history)
     output_paths = list(execution_outcome.output_paths)

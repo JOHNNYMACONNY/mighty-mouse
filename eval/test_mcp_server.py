@@ -231,6 +231,9 @@ def test_setup_partitions_profiles_by_exact_host_facts_and_full_tool_contract(tm
         "policy_preview",
         "policy_pin",
         "policy_rollback",
+        "compute_scaling_status",
+        "compute_scaling_preview",
+        "compute_scaling_pin",
     }
 
 
@@ -239,7 +242,7 @@ def test_recording_requires_reonboarding_after_a_tool_contract_change(tmp_path, 
     import mighty_mouse_mcp.server as server
 
     configure_cline_adapter(tmp_path, model_digest="sha256:" + "7" * 64)
-    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 4)
+    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 5)
     with pytest.raises(ValueError, match="stale"):
         server.run_verify_and_record(str(tmp_path))
 

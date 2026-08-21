@@ -31,6 +31,8 @@ from mighty_mouse.host.adapter import (
 from mighty_mouse.protocols import PROTOCOL_VERSION, get_protocol
 from mighty_mouse.v2.engine import PolicyEngine
 from mighty_mouse.v2.foundation import (
+    ComputeScalingPin,
+    ComputeScalingPolicy,
     HybridHandoff,
     ImmutableStateStore,
     Mode,
@@ -102,6 +104,9 @@ def _get_mcp_tool_signatures() -> dict:
         "policy_preview": run_policy_preview,
         "policy_pin": run_policy_pin,
         "policy_rollback": run_policy_rollback,
+        "compute_scaling_status": run_compute_scaling_status,
+        "compute_scaling_preview": run_compute_scaling_preview,
+        "compute_scaling_pin": run_compute_scaling_pin,
     }
 
 
@@ -554,6 +559,203 @@ def policy_rollback_tool(
         mode=mode,
         task_category=task_category,
         security_breach=security_breach,
+        state_dir=state_dir,
+    )
+
+
+def run_compute_scaling_status(
+    workspace: str,
+    *,
+    mode: str = "coding",
+    task_category: str = "unknown",
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Inspect active compute scaling parameters for the workspace."""
+    ctx = HostAdapter.resolve_adapter_context(
+        workspace,
+        state_dir,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
+    )
+    scope = Scope(
+        mode=Mode(mode),
+        repository=ctx.repository,
+        task_category=TaskCategory(task_category),
+        model_class=ctx.model_class,
+    )
+    status = PolicyEngine(ctx.state_dir).get_scaling_status(
+        scope=scope,
+        model_identity=ctx.model_identity,
+        execution_profile=ctx.execution_profile,
+    )
+    return {
+        "schema_version": ImmutableStateStore.schema_version,
+        "interface": "compute_scaling_status",
+        "scope": status["scope"],
+        "is_pinned": status["is_pinned"],
+        "pin_id": status["pin_id"],
+        "scaling_policy": status["scaling_policy"],
+    }
+
+
+@mcp.tool(name="compute_scaling_status")
+def compute_scaling_status_tool(
+    workspace: str,
+    mode: str = "coding",
+    task_category: str = "unknown",
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Inspect the active compute scaling policy configuration for this workspace."""
+    return run_compute_scaling_status(
+        workspace=workspace,
+        mode=mode,
+        task_category=task_category,
+        state_dir=state_dir,
+    )
+
+
+def run_compute_scaling_preview(
+    workspace: str,
+    *,
+    variations: int = 3,
+    temperature_schedule: list[float] | None = None,
+    consensus_strategy: str = "min_diff",
+    feedback_loop_enabled: bool = True,
+    mode: str = "coding",
+    task_category: str = "unknown",
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Preview compute scaling parameters without persisting changes."""
+    ctx = HostAdapter.resolve_adapter_context(
+        workspace,
+        state_dir,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
+    )
+    scope = Scope(
+        mode=Mode(mode),
+        repository=ctx.repository,
+        task_category=TaskCategory(task_category),
+        model_class=ctx.model_class,
+    )
+    temp_sched = tuple(temperature_schedule) if temperature_schedule is not None else (0.0, 0.35, 0.70)
+    preview = PolicyEngine(ctx.state_dir).preview_scaling(
+        scope=scope,
+        model_identity=ctx.model_identity,
+        execution_profile=ctx.execution_profile,
+        variations=variations,
+        temperature_schedule=temp_sched,
+        consensus_strategy=consensus_strategy,
+        feedback_loop_enabled=feedback_loop_enabled,
+    )
+    return {
+        "schema_version": ImmutableStateStore.schema_version,
+        "interface": "compute_scaling_preview",
+        "scope": preview["scope"],
+        "preview_scaling_policy": preview["preview_scaling_policy"],
+    }
+
+
+@mcp.tool(name="compute_scaling_preview")
+def compute_scaling_preview_tool(
+    workspace: str,
+    variations: int = 3,
+    temperature_schedule: list[float] | None = None,
+    consensus_strategy: str = "min_diff",
+    feedback_loop_enabled: bool = True,
+    mode: str = "coding",
+    task_category: str = "unknown",
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Preview custom compute scaling parameters without applying them."""
+    return run_compute_scaling_preview(
+        workspace=workspace,
+        variations=variations,
+        temperature_schedule=temperature_schedule,
+        consensus_strategy=consensus_strategy,
+        feedback_loop_enabled=feedback_loop_enabled,
+        mode=mode,
+        task_category=task_category,
+        state_dir=state_dir,
+    )
+
+
+def run_compute_scaling_pin(
+    workspace: str,
+    *,
+    variations: int = 3,
+    temperature_schedule: list[float] | None = None,
+    consensus_strategy: str = "min_diff",
+    feedback_loop_enabled: bool = True,
+    mode: str = "coding",
+    task_category: str = "unknown",
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Lock compute scaling parameters to a designated configuration."""
+    ctx = HostAdapter.resolve_adapter_context(
+        workspace,
+        state_dir,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
+    )
+    scope = Scope(
+        mode=Mode(mode),
+        repository=ctx.repository,
+        task_category=TaskCategory(task_category),
+        model_class=ctx.model_class,
+    )
+    temp_sched = tuple(temperature_schedule) if temperature_schedule is not None else (0.0, 0.35, 0.70)
+    scaling_policy = ComputeScalingPolicy(
+        variations=variations,
+        temperature_schedule=temp_sched,
+        consensus_strategy=consensus_strategy,
+        feedback_loop_enabled=feedback_loop_enabled,
+    )
+    pin_id = f"cspin-{secrets.randbelow(10**30):030d}"
+    pin = ComputeScalingPin(
+        pin_id=pin_id,
+        scope=scope,
+        scaling_policy=scaling_policy,
+        model_digest=str(ctx.model_identity.artifact_digest),
+        execution_profile_id=str(ctx.execution_profile.profile_id),
+    )
+    record = PolicyEngine(ctx.state_dir).pin_scaling(
+        pin, ctx.model_identity, ctx.execution_profile
+    )
+    return {
+        "schema_version": ImmutableStateStore.schema_version,
+        "interface": "compute_scaling_pin",
+        "pin_id": pin_id,
+        "record_hash": record.record_hash,
+        "scaling_policy": {
+            "variations": scaling_policy.variations,
+            "temperature_schedule": list(scaling_policy.temperature_schedule),
+            "consensus_strategy": scaling_policy.consensus_strategy,
+            "feedback_loop_enabled": scaling_policy.feedback_loop_enabled,
+        },
+    }
+
+
+@mcp.tool(name="compute_scaling_pin")
+def compute_scaling_pin_tool(
+    workspace: str,
+    variations: int = 3,
+    temperature_schedule: list[float] | None = None,
+    consensus_strategy: str = "min_diff",
+    feedback_loop_enabled: bool = True,
+    mode: str = "coding",
+    task_category: str = "unknown",
+    state_dir: str | None = None,
+) -> dict[str, Any]:
+    """Pin and lock compute scaling parameters for the workspace."""
+    return run_compute_scaling_pin(
+        workspace=workspace,
+        variations=variations,
+        temperature_schedule=temperature_schedule,
+        consensus_strategy=consensus_strategy,
+        feedback_loop_enabled=feedback_loop_enabled,
+        mode=mode,
+        task_category=task_category,
         state_dir=state_dir,
     )
 

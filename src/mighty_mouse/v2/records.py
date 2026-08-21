@@ -132,6 +132,23 @@ class Promotion:
 
 
 @dataclass(frozen=True)
+class ComputeScalingPolicy:
+    variations: int = 3
+    temperature_schedule: tuple[float, ...] = (0.0, 0.35, 0.70)
+    consensus_strategy: str = "min_diff"
+    feedback_loop_enabled: bool = True
+
+
+@dataclass(frozen=True)
+class ComputeScalingPin:
+    pin_id: str
+    scope: Scope
+    scaling_policy: ComputeScalingPolicy
+    model_digest: str
+    execution_profile_id: str
+
+
+@dataclass(frozen=True)
 class ModelIdentity:
     artifact_digest: str | None
 
@@ -440,7 +457,7 @@ def _record_type(value: RecordValue) -> str:
     return {
         Champion: "champion", Candidate: "candidate", Promotion: "promotion", Signal: "signal", HybridHandoff: "hybrid_handoff", EvidenceBundle: "evidence_bundle", FreshHoldout: "fresh_holdout", EligibleSuccessor: "eligible_successor",
         Experiment: "experiment", Generation: "generation", Restriction: "restriction", Pin: "pin",
-        Preview: "preview", Rollback: "rollback", RoutingDecision: "routing_decision",
+        Preview: "preview", Rollback: "rollback", RoutingDecision: "routing_decision", ComputeScalingPin: "compute_scaling_pin",
     }[type(value)]
 
 
@@ -522,6 +539,21 @@ def _record_from_value(record_type: str, value: dict[str, Any]) -> RecordValue:
         return Rollback(value["rollback_id"], _scope_from_document(value["scope"]), value["promotion_id"], value["restored_champion_id"], value["model_digest"], value["execution_profile_id"], value["reason"])
     if record_type == "routing_decision":
         return RoutingDecision(_scope_from_document(value["scope"]), Mode(value["inferred_mode"]), value["confidence_percent"], Mode(value["selected_mode"]), value["reason"], value["model_digest"], value["execution_profile_id"])
+    if record_type == "compute_scaling_pin":
+        sp = value["scaling_policy"]
+        scaling_policy = ComputeScalingPolicy(
+            variations=int(sp.get("variations", 3)),
+            temperature_schedule=tuple(float(t) for t in sp.get("temperature_schedule", (0.0, 0.35, 0.70))),
+            consensus_strategy=str(sp.get("consensus_strategy", "min_diff")),
+            feedback_loop_enabled=bool(sp.get("feedback_loop_enabled", True)),
+        )
+        return ComputeScalingPin(
+            pin_id=value["pin_id"],
+            scope=_scope_from_document(value["scope"]),
+            scaling_policy=scaling_policy,
+            model_digest=value["model_digest"],
+            execution_profile_id=value["execution_profile_id"],
+        )
     raise ValueError(f"unknown state record type: {record_type}")
 
 

@@ -7,6 +7,8 @@ from typing import Any, Callable
 
 from .promotion import PromotionController
 from .records import (
+    ComputeScalingPin,
+    ComputeScalingPolicy,
     EligibleSuccessor,
     ExecutionProfile,
     HybridHandoff,
@@ -243,3 +245,83 @@ class PolicyEngine:
             execution_profile,
             self,
         )
+
+    def get_scaling_status(
+        self,
+        scope: Scope,
+        model_identity: ModelIdentity,
+        execution_profile: ExecutionProfile,
+    ) -> dict[str, Any]:
+        """Return active compute scaling policy status for the given scope."""
+        scaling_pin = next(
+            (
+                record.value
+                for record in reversed(self._store.records())
+                if isinstance(record.value, ComputeScalingPin)
+                and record.value.scope == scope
+                and record.value.model_digest == model_identity.artifact_digest
+                and record.value.execution_profile_id == execution_profile.profile_id
+            ),
+            None,
+        )
+        effective = scaling_pin.scaling_policy if scaling_pin else ComputeScalingPolicy()
+        return {
+            "scope": {
+                "mode": scope.mode.value,
+                "repository": scope.repository,
+                "task_category": scope.task_category.value,
+                "model_class": scope.model_class,
+            },
+            "is_pinned": scaling_pin is not None,
+            "pin_id": scaling_pin.pin_id if scaling_pin else None,
+            "scaling_policy": {
+                "variations": effective.variations,
+                "temperature_schedule": list(effective.temperature_schedule),
+                "consensus_strategy": effective.consensus_strategy,
+                "feedback_loop_enabled": effective.feedback_loop_enabled,
+            },
+        }
+
+    def preview_scaling(
+        self,
+        scope: Scope,
+        model_identity: ModelIdentity,
+        execution_profile: ExecutionProfile,
+        *,
+        variations: int = 3,
+        temperature_schedule: tuple[float, ...] = (0.0, 0.35, 0.70),
+        consensus_strategy: str = "min_diff",
+        feedback_loop_enabled: bool = True,
+    ) -> dict[str, Any]:
+        """Preview compute scaling parameters without persisting them."""
+        policy = ComputeScalingPolicy(
+            variations=variations,
+            temperature_schedule=temperature_schedule,
+            consensus_strategy=consensus_strategy,
+            feedback_loop_enabled=feedback_loop_enabled,
+        )
+        return {
+            "scope": {
+                "mode": scope.mode.value,
+                "repository": scope.repository,
+                "task_category": scope.task_category.value,
+                "model_class": scope.model_class,
+            },
+            "preview_scaling_policy": {
+                "variations": policy.variations,
+                "temperature_schedule": list(policy.temperature_schedule),
+                "consensus_strategy": policy.consensus_strategy,
+                "feedback_loop_enabled": policy.feedback_loop_enabled,
+            },
+        }
+
+    def pin_scaling(
+        self,
+        pin: ComputeScalingPin,
+        model_identity: ModelIdentity,
+        execution_profile: ExecutionProfile,
+    ) -> StoredRecord:
+        """Persist a bounded ComputeScalingPin record locking scaling parameters."""
+        if not model_identity.is_complete or not execution_profile.is_complete:
+            raise ValueError("Incomplete model identity or execution profile")
+        return self._store.append(pin)

@@ -11,6 +11,8 @@ from .promotion import PromotionController
 from .records import (
     Candidate,
     Champion,
+    ComputeScalingPin,
+    ComputeScalingPolicy,
     Eligibility,
     EligibleSuccessor,
     EvaluationOutcome,

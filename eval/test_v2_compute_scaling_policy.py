@@ -1,6 +1,8 @@
 """Tests for ComputeScalingPolicy and dynamic compute scaling MCP tools."""
 
+import json
 from pathlib import Path
+from typing import Any
 import pytest
 
 from mighty_mouse.v2.engine import PolicyEngine
@@ -86,6 +88,36 @@ def test_compute_scaling_pin_state_store_roundtrip(tmp_path: Path):
     assert reloaded_pin.pin_id == "cspin-123456"
     assert reloaded_pin.scaling_policy.variations == 4
     assert reloaded_pin.scaling_policy.temperature_schedule == (0.0, 0.5)
+
+
+def test_compute_scaling_pin_deserialization_from_raw_json():
+    # Test deserialization of raw JSON document matching on-disk state
+    raw_value = {
+        "pin_id": "cspin-legacy-001",
+        "scope": {
+            "mode": "coding",
+            "repository": "JOHNNYMACONNY/mighty-mouse",
+            "task_category": "feature",
+            "model_class": "local-small",
+        },
+        "scaling_policy": {
+            "variations": 3,
+            "temperature_schedule": [0.0, 0.35, 0.70],
+            "consensus_strategy": "min_diff",
+            "feedback_loop_enabled": True,
+        },
+        "model_digest": "sha256:" + "a" * 64,
+        "execution_profile_id": "sha256:" + "b" * 64,
+    }
+    from mighty_mouse.v2.records import _record_from_value
+
+    pin = _record_from_value("compute_scaling_pin", raw_value)
+    assert isinstance(pin, ComputeScalingPin)
+    assert pin.pin_id == "cspin-legacy-001"
+    assert pin.scaling_policy.variations == 3
+    assert pin.scaling_policy.temperature_schedule == (0.0, 0.35, 0.70)
+    assert pin.scaling_policy.consensus_strategy == "min_diff"
+    assert pin.scaling_policy.feedback_loop_enabled is True
 
 
 def test_policy_engine_scaling_status_and_pin(tmp_path: Path):
@@ -177,3 +209,349 @@ def test_mcp_tool_signatures_includes_scaling_tools():
     assert "compute_scaling_preview" in sigs
     assert "compute_scaling_pin" in sigs
     assert len(sigs) == 13
+
+
+def test_compute_scaling_policy_variations_bounds_and_types():
+    # Valid variation boundaries
+    p1 = ComputeScalingPolicy(variations=1, temperature_schedule=(0.5,))
+    assert p1.variations == 1
+    p8 = ComputeScalingPolicy(variations=8, temperature_schedule=(0.0, 0.5))
+    assert p8.variations == 8
+
+    # Invalid values
+    with pytest.raises(ValueError, match="between 1 and 8"):
+        ComputeScalingPolicy(variations=0)
+    with pytest.raises(ValueError, match="between 1 and 8"):
+        ComputeScalingPolicy(variations=9)
+    with pytest.raises(ValueError, match="integer, not bool"):
+        ComputeScalingPolicy(variations=True)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="integer, not bool"):
+        ComputeScalingPolicy(variations=False)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="integer, not bool"):
+        ComputeScalingPolicy(variations="3")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="integer, not bool"):
+        ComputeScalingPolicy(variations=3.5)  # type: ignore[arg-type]
+
+
+def test_compute_scaling_policy_temperature_schedule_validation():
+    # Empty schedule
+    with pytest.raises(ValueError, match="at least one value"):
+        ComputeScalingPolicy(variations=3, temperature_schedule=())
+
+    # Schedule longer than variations
+    with pytest.raises(ValueError, match="cannot exceed variations"):
+        ComputeScalingPolicy(
+            variations=2, temperature_schedule=(0.1, 0.2, 0.3)
+        )
+
+    # Out-of-range temperatures
+    with pytest.raises(ValueError, match="between 0.0 and 2.0"):
+        ComputeScalingPolicy(variations=2, temperature_schedule=(-0.1,))
+    with pytest.raises(ValueError, match="between 0.0 and 2.0"):
+        ComputeScalingPolicy(variations=2, temperature_schedule=(2.1,))
+
+    # Non-finite values
+    with pytest.raises(ValueError, match="finite numbers"):
+        ComputeScalingPolicy(
+            variations=2, temperature_schedule=(float("nan"),)
+        )
+    with pytest.raises(ValueError, match="finite numbers"):
+        ComputeScalingPolicy(
+            variations=2, temperature_schedule=(float("inf"),)
+        )
+
+    # Boolean temperature values
+    with pytest.raises(ValueError, match="numeric, not bool"):
+        ComputeScalingPolicy(
+            variations=2,
+            temperature_schedule=(True, 0.5),  # type: ignore[arg-type]
+        )
+
+    # Non-sequence schedule
+    with pytest.raises(ValueError, match="sequence of numbers"):
+        ComputeScalingPolicy(
+            variations=2, temperature_schedule=123  # type: ignore[arg-type]
+        )
+
+
+def test_compute_scaling_policy_consensus_strategy_validation():
+    # Valid strategies
+    p_min = ComputeScalingPolicy(consensus_strategy="min_diff")
+    assert p_min.consensus_strategy == "min_diff"
+    p_unan = ComputeScalingPolicy(consensus_strategy="unanimous")
+    assert p_unan.consensus_strategy == "unanimous"
+
+    # Invalid strategy
+    with pytest.raises(ValueError, match="unknown consensus strategy"):
+        ComputeScalingPolicy(consensus_strategy="majority")
+    with pytest.raises(ValueError, match="unknown consensus strategy"):
+        ComputeScalingPolicy(consensus_strategy="")
+
+
+def test_compute_scaling_policy_feedback_loop_enabled_validation():
+    p_true = ComputeScalingPolicy(feedback_loop_enabled=True)
+    assert p_true.feedback_loop_enabled is True
+    p_false = ComputeScalingPolicy(feedback_loop_enabled=False)
+    assert p_false.feedback_loop_enabled is False
+
+    with pytest.raises(ValueError, match="must be a bool"):
+        ComputeScalingPolicy(feedback_loop_enabled=1)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="must be a bool"):
+        ComputeScalingPolicy(
+            feedback_loop_enabled="true"  # type: ignore[arg-type]
+        )
+
+
+def test_compute_scaling_policy_effective_schedule_expansion():
+    # Exact length matches variations
+    p3 = ComputeScalingPolicy(
+        variations=3, temperature_schedule=(0.0, 0.35, 0.70)
+    )
+    assert p3.effective_temperature_schedule() == (0.0, 0.35, 0.70)
+
+    # Shorter schedule repeats final temperature
+    p5 = ComputeScalingPolicy(variations=5, temperature_schedule=(0.1, 0.5))
+    assert p5.effective_temperature_schedule() == (
+        0.1,
+        0.5,
+        0.5,
+        0.5,
+        0.5,
+    )
+
+    # Single temperature repeats for all variations
+    p4_single = ComputeScalingPolicy(variations=4, temperature_schedule=(0.2,))
+    assert p4_single.effective_temperature_schedule() == (0.2, 0.2, 0.2, 0.2)
+
+
+def test_policy_engine_resolve_scaling_policy_canonical(tmp_path: Path):
+    engine = PolicyEngine(tmp_path)
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    other_scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/other-repo",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "a" * 64)
+    incomplete_model_id = ModelIdentity(None)
+    other_model_id = ModelIdentity("sha256:" + "c" * 64)
+
+    profile = ExecutionProfile("sha256:" + "b" * 64, frozenset({"test"}))
+    incomplete_profile = ExecutionProfile("", frozenset({"test"}))
+    other_profile = ExecutionProfile("sha256:" + "d" * 64, frozenset({"test"}))
+
+    # 1. Unpinned: returns None
+    assert engine.resolve_scaling_policy(scope, model_id, profile) is None
+
+    # Pin custom scaling policy
+    custom_policy = ComputeScalingPolicy(
+        variations=4, temperature_schedule=(0.0, 0.5)
+    )
+    pin = ComputeScalingPin(
+        pin_id="cspin-123456",
+        scope=scope,
+        scaling_policy=custom_policy,
+        model_digest=model_id.artifact_digest,
+        execution_profile_id=profile.profile_id,
+    )
+    engine.pin_scaling(pin, model_id, profile)
+
+    # 2. Pinned exact match: returns pinned ComputeScalingPolicy
+    resolved = engine.resolve_scaling_policy(scope, model_id, profile)
+    assert resolved == custom_policy
+
+    # 3. Incomplete model identity: returns None
+    assert (
+        engine.resolve_scaling_policy(
+            scope, incomplete_model_id, profile
+        )
+        is None
+    )
+
+    # 4. Incomplete execution profile: returns None
+    assert (
+        engine.resolve_scaling_policy(scope, model_id, incomplete_profile)
+        is None
+    )
+
+    # 5. Scope mismatch: returns None
+    assert (
+        engine.resolve_scaling_policy(other_scope, model_id, profile) is None
+    )
+
+    # 6. Model digest mismatch: returns None
+    assert (
+        engine.resolve_scaling_policy(scope, other_model_id, profile) is None
+    )
+
+    # 7. Execution profile ID mismatch: returns None
+    assert (
+        engine.resolve_scaling_policy(scope, model_id, other_profile) is None
+    )
+
+
+def test_policy_engine_pin_scaling_provenance_checks(tmp_path: Path):
+    engine = PolicyEngine(tmp_path)
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "a" * 64)
+    profile = ExecutionProfile("sha256:" + "b" * 64, frozenset({"test"}))
+    policy = ComputeScalingPolicy(
+        variations=2, temperature_schedule=(0.1, 0.2)
+    )
+
+    # Incomplete model identity rejected
+    pin_bad_model = ComputeScalingPin(
+        pin_id="cspin-1",
+        scope=scope,
+        scaling_policy=policy,
+        model_digest="sha256:" + "a" * 64,
+        execution_profile_id="sha256:" + "b" * 64,
+    )
+    with pytest.raises(ValueError, match="Incomplete model identity"):
+        engine.pin_scaling(
+            pin_bad_model, ModelIdentity(None), profile
+        )
+
+    # Mismatched model digest rejected
+    with pytest.raises(ValueError, match="model digest does not match"):
+        engine.pin_scaling(
+            pin_bad_model,
+            ModelIdentity("sha256:" + "z" * 64),
+            profile,
+        )
+
+    # Mismatched execution profile ID rejected
+    with pytest.raises(
+        ValueError, match="execution profile ID does not match"
+    ):
+        engine.pin_scaling(
+            pin_bad_model,
+            model_id,
+            ExecutionProfile(
+                "sha256:" + "z" * 64, frozenset({"test"})
+            ),
+        )
+
+
+def test_immutable_state_store_compute_scaling_pin_malformed_rejection(
+    tmp_path: Path,
+):
+    def _write_state_doc(dir_path: Path, value_doc: dict[str, Any]) -> None:
+        from hashlib import sha256
+        dir_path.mkdir(parents=True, exist_ok=True)
+        doc = {
+            "schema_version": 2,
+            "record_type": "compute_scaling_pin",
+            "previous_record_hash": None,
+            "recorded_at": "2026-08-21T00:00:00+00:00",
+            "value": value_doc,
+        }
+        doc["record_hash"] = sha256(
+            json.dumps(doc, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+        (dir_path / "v2-state.jsonl").write_text(
+            json.dumps(doc) + "\n", encoding="utf-8"
+        )
+
+    base_value = {
+        "pin_id": "cspin-test-001",
+        "scope": {
+            "mode": "coding",
+            "repository": "JOHNNYMACONNY/mighty-mouse",
+            "task_category": "feature",
+            "model_class": "local-small",
+        },
+        "scaling_policy": {
+            "variations": 3,
+            "temperature_schedule": [0.0, 0.35, 0.70],
+            "consensus_strategy": "min_diff",
+            "feedback_loop_enabled": True,
+        },
+        "model_digest": "sha256:" + "a" * 64,
+        "execution_profile_id": "sha256:" + "b" * 64,
+    }
+
+    # Case 1: variations=True
+    bad_var_bool = json.loads(json.dumps(base_value))
+    bad_var_bool["scaling_policy"]["variations"] = True
+    d1 = tmp_path / "d1"
+    _write_state_doc(d1, bad_var_bool)
+    with pytest.raises(ValueError, match="integer, not bool"):
+        ImmutableStateStore(d1).records()
+
+    # Case 2: variations="3"
+    bad_var_str = json.loads(json.dumps(base_value))
+    bad_var_str["scaling_policy"]["variations"] = "3"
+    d2 = tmp_path / "d2"
+    _write_state_doc(d2, bad_var_str)
+    with pytest.raises(ValueError, match="integer, not bool"):
+        ImmutableStateStore(d2).records()
+
+    # Case 3: temperature=True
+    bad_temp_bool = json.loads(json.dumps(base_value))
+    bad_temp_bool["scaling_policy"]["temperature_schedule"] = [True]
+    d3 = tmp_path / "d3"
+    _write_state_doc(d3, bad_temp_bool)
+    with pytest.raises(ValueError, match="numeric, not bool"):
+        ImmutableStateStore(d3).records()
+
+    # Case 4: temperature="0.5"
+    bad_temp_str = json.loads(json.dumps(base_value))
+    bad_temp_str["scaling_policy"]["temperature_schedule"] = ["0.5"]
+    d4 = tmp_path / "d4"
+    _write_state_doc(d4, bad_temp_str)
+    with pytest.raises(ValueError, match="numeric, not bool"):
+        ImmutableStateStore(d4).records()
+
+    # Case 5: feedback_loop_enabled="false"
+    bad_fb_str = json.loads(json.dumps(base_value))
+    bad_fb_str["scaling_policy"]["feedback_loop_enabled"] = "false"
+    d5 = tmp_path / "d5"
+    _write_state_doc(d5, bad_fb_str)
+    with pytest.raises(ValueError, match="must be a bool"):
+        ImmutableStateStore(d5).records()
+
+    # Case 6: unknown consensus strategy
+    bad_strat = json.loads(json.dumps(base_value))
+    bad_strat["scaling_policy"]["consensus_strategy"] = "invalid_strat"
+    d6 = tmp_path / "d6"
+    _write_state_doc(d6, bad_strat)
+    with pytest.raises(ValueError, match="unknown consensus strategy"):
+        ImmutableStateStore(d6).records()
+
+    # Case 7: Valid ComputeScalingPin survives real state store round-trip
+    d7 = tmp_path / "d7"
+    d7.mkdir()
+    store = ImmutableStateStore(d7)
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    pin = ComputeScalingPin(
+        pin_id="cspin-valid-roundtrip",
+        scope=scope,
+        scaling_policy=ComputeScalingPolicy(
+            variations=4, temperature_schedule=(0.0, 0.5)
+        ),
+        model_digest="sha256:" + "a" * 64,
+        execution_profile_id="sha256:" + "b" * 64,
+    )
+    store.append(pin)
+    reloaded = ImmutableStateStore(d7).records()
+    assert len(reloaded) == 1
+    assert reloaded[0].value == pin

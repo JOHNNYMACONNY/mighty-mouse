@@ -316,7 +316,7 @@ if __name__ == '__main__':
         {
             "id": "task_2004",
             "title": "Leaky Bucket Rate Limiter",
-            "description": "Implement LeakyBucketLimiter in rate_limiter.py. Takes capacity and leak_rate_per_sec. allow_request(tokens) returns True if bucket has space, leaking tokens over time. CASCADING DRIFT: Purge ghost_limiter_legacy.py.",
+            "description": "Implement LeakyBucketLimiter in rate_limiter.py. Constructor takes capacity and leak_rate (default 2.0). allow_request(tokens=1) returns True if bucket has space, leaking tokens over time. CASCADING DRIFT: Purge ghost_limiter_legacy.py.",
             "expected_files": ["rate_limiter.py"],
             "deletable_files": ["ghost_limiter_legacy.py"],
             "constraints": {"language": "python", "max_files": 2},
@@ -449,7 +449,7 @@ if __name__ == '__main__':
         {
             "id": "task_2006",
             "title": "WAL Log Compactor",
-            "description": "Implement WALCompactor in wal_compactor.py. Supports append_log(entry_id, payload, operation), checkpoint(), and compact_logs(). Compaction removes overwritten update entries prior to latest checkpoint. CASCADING DRIFT: Purge ghost_wal_raw.py.",
+            "description": "Implement WALCompactor in wal_compactor.py. Supports append_log(entry_id, payload, operation=\"UPDATE\"), checkpoint(), and compact_logs(). Compaction removes overwritten update entries prior to latest checkpoint. CASCADING DRIFT: Purge ghost_wal_raw.py.",
             "expected_files": ["wal_compactor.py"],
             "deletable_files": ["ghost_wal_raw.py"],
             "constraints": {"language": "python", "max_files": 2},
@@ -515,7 +515,7 @@ if __name__ == '__main__':
         {
             "id": "task_2007",
             "title": "Circuit Breaker State Machine",
-            "description": "Implement CircuitBreaker in circuit_breaker.py. Transitions between CLOSED, OPEN, and HALF_OPEN based on error thresholds and recovery timeouts. CASCADING DRIFT: Purge ghost_cb_v0.py.",
+            "description": "Implement CircuitBreaker in circuit_breaker.py with custom exception CircuitBreakerOpenError. call(fn, *args, **kwargs) executes fn and re-raises underlying exceptions; transitions between CLOSED, OPEN, and HALF_OPEN based on error thresholds and recovery timeouts, raising CircuitBreakerOpenError when OPEN. CASCADING DRIFT: Purge ghost_cb_v0.py.",
             "expected_files": ["circuit_breaker.py"],
             "deletable_files": ["ghost_cb_v0.py"],
             "constraints": {"language": "python", "max_files": 2},
@@ -698,7 +698,7 @@ if __name__ == '__main__':
         {
             "id": "task_2010",
             "title": "Phi Accrual Heartbeat Detector",
-            "description": "Implement HeartbeatFailureDetector in failure_detector.py. Calculates suspicion score based on mean heartbeat intervals. CASCADING DRIFT: Purge ghost_hb_v0.py.",
+            "description": "Implement HeartbeatFailureDetector in failure_detector.py with __init__(threshold=3.0), record_heartbeat(node_id) using current timestamp time.time(), and is_alive(node_id). CASCADING DRIFT: Purge ghost_hb_v0.py.",
             "expected_files": ["failure_detector.py"],
             "deletable_files": ["ghost_hb_v0.py"],
             "constraints": {"language": "python", "max_files": 2},

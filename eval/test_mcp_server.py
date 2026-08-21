@@ -805,6 +805,9 @@ def test_stdio_server_lists_and_calls_tools():
                         "policy_preview",
                         "policy_pin",
                         "policy_rollback",
+                        "compute_scaling_status",
+                        "compute_scaling_preview",
+                        "compute_scaling_pin",
                     }
                     response = await session.call_tool(
                         "protocol",

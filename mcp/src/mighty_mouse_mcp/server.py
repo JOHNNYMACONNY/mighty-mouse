@@ -605,7 +605,9 @@ def compute_scaling_status_tool(
     task_category: str = "unknown",
     state_dir: str | None = None,
 ) -> dict[str, Any]:
-    """Inspect the active compute scaling policy configuration for this workspace."""
+    """Inspect the active compute scaling policy configuration
+    for this workspace.
+    """
     return run_compute_scaling_status(
         workspace=workspace,
         mode=mode,
@@ -638,7 +640,11 @@ def run_compute_scaling_preview(
         task_category=TaskCategory(task_category),
         model_class=ctx.model_class,
     )
-    temp_sched = tuple(temperature_schedule) if temperature_schedule is not None else (0.0, 0.35, 0.70)
+    temp_sched = (
+        tuple(temperature_schedule)
+        if temperature_schedule is not None
+        else (0.0, 0.35, 0.70)
+    )
     preview = PolicyEngine(ctx.state_dir).preview_scaling(
         scope=scope,
         model_identity=ctx.model_identity,
@@ -704,7 +710,11 @@ def run_compute_scaling_pin(
         task_category=TaskCategory(task_category),
         model_class=ctx.model_class,
     )
-    temp_sched = tuple(temperature_schedule) if temperature_schedule is not None else (0.0, 0.35, 0.70)
+    temp_sched = (
+        tuple(temperature_schedule)
+        if temperature_schedule is not None
+        else (0.0, 0.35, 0.70)
+    )
     scaling_policy = ComputeScalingPolicy(
         variations=variations,
         temperature_schedule=temp_sched,

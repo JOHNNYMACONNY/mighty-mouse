@@ -260,11 +260,18 @@ class PolicyEngine:
                 if isinstance(record.value, ComputeScalingPin)
                 and record.value.scope == scope
                 and record.value.model_digest == model_identity.artifact_digest
-                and record.value.execution_profile_id == execution_profile.profile_id
+                and (
+                    record.value.execution_profile_id
+                    == execution_profile.profile_id
+                )
             ),
             None,
         )
-        effective = scaling_pin.scaling_policy if scaling_pin else ComputeScalingPolicy()
+        effective = (
+            scaling_pin.scaling_policy
+            if scaling_pin
+            else ComputeScalingPolicy()
+        )
         return {
             "scope": {
                 "mode": scope.mode.value,
@@ -321,7 +328,9 @@ class PolicyEngine:
         model_identity: ModelIdentity,
         execution_profile: ExecutionProfile,
     ) -> StoredRecord:
-        """Persist a bounded ComputeScalingPin record locking scaling parameters."""
+        """Persist a bounded ComputeScalingPin record locking scaling
+        parameters.
+        """
         if not model_identity.is_complete or not execution_profile.is_complete:
             raise ValueError("Incomplete model identity or execution profile")
         return self._store.append(pin)

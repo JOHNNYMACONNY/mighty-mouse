@@ -3,10 +3,6 @@
 from pathlib import Path
 import pytest
 
-from mighty_mouse.host.adapter import (
-    MCP_TOOL_CONTRACT_VERSION,
-    HostAdapter,
-)
 from mighty_mouse.v2.engine import PolicyEngine
 from mighty_mouse.v2.foundation import (
     ComputeScalingPin,
@@ -62,8 +58,15 @@ def test_compute_scaling_policy_defaults_and_immutability():
 
 def test_compute_scaling_pin_state_store_roundtrip(tmp_path: Path):
     store = ImmutableStateStore(tmp_path)
-    scope = Scope(Mode.CODING, "JOHNNYMACONNY/mighty-mouse", TaskCategory.FEATURE, "local-small")
-    scaling_policy = ComputeScalingPolicy(variations=4, temperature_schedule=(0.0, 0.5))
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    scaling_policy = ComputeScalingPolicy(
+        variations=4, temperature_schedule=(0.0, 0.5)
+    )
     pin = ComputeScalingPin(
         pin_id="cspin-123456",
         scope=scope,
@@ -87,7 +90,12 @@ def test_compute_scaling_pin_state_store_roundtrip(tmp_path: Path):
 
 def test_policy_engine_scaling_status_and_pin(tmp_path: Path):
     engine = PolicyEngine(tmp_path)
-    scope = Scope(Mode.CODING, "JOHNNYMACONNY/mighty-mouse", TaskCategory.FEATURE, "local-small")
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
     model_id = ModelIdentity("sha256:" + "a" * 64)
     profile = ExecutionProfile("sha256:" + "b" * 64, frozenset({"test"}))
 
@@ -98,7 +106,10 @@ def test_policy_engine_scaling_status_and_pin(tmp_path: Path):
     assert status_default["scaling_policy"]["variations"] == 3
 
     # Pin custom scaling policy
-    custom_policy = ComputeScalingPolicy(variations=6, temperature_schedule=(0.0, 0.2, 0.4, 0.6, 0.8, 1.0))
+    custom_policy = ComputeScalingPolicy(
+        variations=6,
+        temperature_schedule=(0.0, 0.2, 0.4, 0.6, 0.8, 1.0),
+    )
     pin = ComputeScalingPin(
         pin_id="cspin-custom-001",
         scope=scope,
@@ -131,7 +142,9 @@ def test_mcp_compute_scaling_tools_end_to_end(tmp_path: Path):
     )
     assert preview_res["interface"] == "compute_scaling_preview"
     assert preview_res["preview_scaling_policy"]["variations"] == 5
-    assert len(preview_res["preview_scaling_policy"]["temperature_schedule"]) == 5
+    assert (
+        len(preview_res["preview_scaling_policy"]["temperature_schedule"]) == 5
+    )
 
     # 2. Status before pin
     status_before = run_compute_scaling_status(str(workspace))

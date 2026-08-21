@@ -126,7 +126,8 @@ def _select_consensus_winner(
 ) -> tuple[str, Any] | None:
     """Select single winning candidate via deterministic consensus strategy.
 
-    Each item in valid_candidates is (cand_idx, response_text, plan_or_paths, canonical_rep).
+    Each item in valid_candidates is:
+    (cand_idx, response_text, plan_or_paths, canonical_rep).
     """
     if not valid_candidates:
         return None
@@ -152,7 +153,10 @@ def _select_consensus_winner(
         for j, (_, _, _, canon_j) in enumerate(valid_candidates):
             if i != j:
                 total_dist += _compute_plan_distance(canon_i, canon_j)
-        if total_dist < best_dist or (total_dist == best_dist and idx_i < best_idx):
+        if (
+            total_dist < best_dist
+            or (total_dist == best_dist and idx_i < best_idx)
+        ):
             best_dist = total_dist
             best_idx = idx_i
             best_cand = (resp_i, plan_i)
@@ -192,7 +196,10 @@ def _execute_agent_execution(
         )
         sys.stdout.flush()
 
-        if scaling_policy is not None and response_application_adapter is not None:
+        if (
+            scaling_policy is not None
+            and response_application_adapter is not None
+        ):
             # Scaled candidate execution
             variations = getattr(scaling_policy, "variations", 1)
             temp_schedule = getattr(

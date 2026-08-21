@@ -247,7 +247,9 @@ def _execute_generation_attempt(
     os.makedirs(global_logs_dir, exist_ok=True)
     task_id_str = task_id if task_id else "unknown"
     ts = int(time.time())
-    cand_suffix = f"_cand_{candidate_index}" if candidate_index is not None else ""
+    cand_suffix = (
+        f"_cand_{candidate_index}" if candidate_index is not None else ""
+    )
     with open(
         os.path.join(
             global_logs_dir,

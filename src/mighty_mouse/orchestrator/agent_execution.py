@@ -265,7 +265,7 @@ def _execute_agent_execution(
                 ):
                     resp_str = cand_result.response
                     if cand_collected_plans:
-                        plan_obj = cand_collected_plans[0]
+                        plan_obj = cand_collected_plans[-1]
                     else:
                         plan_obj = cand_result.output_paths
                     if hasattr(plan_obj, "canonical_representation"):

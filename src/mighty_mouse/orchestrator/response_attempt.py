@@ -78,6 +78,11 @@ def execute_response_attempt(
             user_prompt=current_user_prompt,
             attempt=attempt,
         )
+        for attr in ("_sampling_temperature", "_candidate_index"):
+            if hasattr(context, attr):
+                object.__setattr__(
+                    attempt_context, attr, getattr(context, attr)
+                )
         try:
             response = provider_adapter(attempt_context, usage_history)
         except Exception as exc:

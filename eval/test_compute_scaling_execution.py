@@ -561,7 +561,7 @@ def test_plan_response_validates_deletions_and_hygiene(tmp_path: Path):
 def test_invalid_candidate_planning_triggers_schema_retry(tmp_path: Path):
     policy = ComputeScalingPolicy(
         variations=1,
-        temperature_schedule=(0.0,),
+        temperature_schedule=(0.7,),
         consensus_strategy="min_diff",
     )
 
@@ -582,6 +582,8 @@ def test_invalid_candidate_planning_triggers_schema_retry(tmp_path: Path):
         )
 
     events = []
+    observed_temps = []
+    observed_cand_indices = []
     responses = iter([
         "invalid with no code blocks",
         "```python:fixed.py\nfixed\n```",
@@ -589,6 +591,10 @@ def test_invalid_candidate_planning_triggers_schema_retry(tmp_path: Path):
 
     def provider(context, usage_history):
         events.append(context.attempt)
+        observed_temps.append(getattr(context, "_sampling_temperature", None))
+        observed_cand_indices.append(
+            getattr(context, "_candidate_index", None)
+        )
         usage_history.append({"attempt": context.attempt})
         return next(responses)
 
@@ -609,7 +615,67 @@ def test_invalid_candidate_planning_triggers_schema_retry(tmp_path: Path):
 
     assert outcome.pass_type == "clean"
     assert events == [1, 2]
+    assert observed_temps == [0.7, 0.7]
+    assert observed_cand_indices == [0, 0]
     assert (tmp_path / "fixed.py").read_text() == "fixed"
+
+
+def test_unanimous_with_schema_retry_evaluates_corrected_plans(tmp_path: Path):
+    policy = ComputeScalingPolicy(
+        variations=2,
+        temperature_schedule=(0.0, 0.2),
+        consensus_strategy="unanimous",
+    )
+
+    def plan_adapter(response_text, context):
+        return plan_response(
+            ResponseApplicationRequest(
+                raw_response=response_text,
+                policy=ResponseApplicationPolicy(workspace_root=str(tmp_path)),
+            )
+        )
+
+    def app_adapter(response_text, context):
+        return apply_response(
+            ResponseApplicationRequest(
+                raw_response=response_text,
+                policy=ResponseApplicationPolicy(workspace_root=str(tmp_path)),
+            )
+        )
+
+    # Candidate 0 retries and produces fixed1.py
+    # Candidate 1 succeeds immediately and produces fixed2_different.py
+    # Unanimous compares corrected plans (fixed1 vs fixed2) and fails closed
+    cands = {
+        0: iter(["no code", "```python:fixed1.py\ncode1\n```"]),
+        1: iter(["```python:fixed2.py\ncode2\n```"]),
+    }
+
+    def provider(context, usage_history):
+        cand_idx = getattr(context, "_candidate_index", 0)
+        resp = next(cands[cand_idx])
+        usage_history.append({"cand": cand_idx, "attempt": context.attempt})
+        return resp
+
+    def runner(context, parser_adapter):
+        return execute_response_attempt(
+            context,
+            provider,
+            parser_adapter,
+        )
+
+    req = _make_request(tmp_path, scaling_policy=policy)
+    outcome = _execute_agent_execution(
+        req,
+        response_attempt_runner=runner,
+        response_application_adapter=app_adapter,
+        response_planning_adapter=plan_adapter,
+    )
+
+    # Corrected plans disagree, so unanimous MUST fail with zero mutation
+    assert outcome.pass_type == "failed"
+    assert not (tmp_path / "fixed1.py").exists()
+    assert not (tmp_path / "fixed2.py").exists()
 
 
 def test_generation_attempt_preserves_temperature_and_logs(

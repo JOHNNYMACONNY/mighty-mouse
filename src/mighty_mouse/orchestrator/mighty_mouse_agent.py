@@ -27,6 +27,15 @@ try:
         ResponseAttemptContext,
         execute_response_attempt,
     )
+    from mighty_mouse.v2.engine import PolicyEngine
+    from mighty_mouse.v2.records import (
+        ComputeScalingPolicy,
+        ExecutionProfile,
+        Mode,
+        ModelIdentity,
+        Scope,
+        TaskCategory,
+    )
 except ImportError:
     from agent_execution import (
         _AgentExecutionRequest,
@@ -42,6 +51,15 @@ except ImportError:
     from response_attempt import (
         ResponseAttemptContext,
         execute_response_attempt,
+    )
+    from v2.engine import PolicyEngine  # type: ignore[no-redef]
+    from v2.records import (  # type: ignore[no-redef]
+        ComputeScalingPolicy,
+        ExecutionProfile,
+        Mode,
+        ModelIdentity,
+        Scope,
+        TaskCategory,
     )
 
 
@@ -414,6 +432,52 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
     )
 
     workspace_root = workspace or os.getcwd()
+    state_dir = os.path.join(workspace_root, ".mighty-mouse")
+
+    scaling_policy: ComputeScalingPolicy | None = None
+    if stage != "planner":
+        repo_name = (
+            task_data.get("repository")
+            if isinstance(task_data, dict) and task_data.get("repository")
+            else "JOHNNYMACONNY/mighty-mouse"
+        )
+        task_cat_str = (
+            task_data.get("task_category")
+            if isinstance(task_data, dict) and task_data.get("task_category")
+            else "unknown"
+        )
+        try:
+            task_cat = TaskCategory(task_cat_str)
+        except ValueError:
+            task_cat = TaskCategory.UNKNOWN
+
+        model_cls = (
+            p_cfg.get("model_class")
+            or p_cfg.get("model")
+            or "unknown"
+        )
+        model_digest_str = p_cfg.get("model_digest")
+        profile_id_str = p_cfg.get("execution_profile") or "unknown"
+        capabilities = frozenset(p_cfg.get("capabilities", []))
+
+        scope = Scope(
+            mode=Mode.CODING,
+            repository=repo_name,
+            task_category=task_cat,
+            model_class=model_cls,
+        )
+        model_identity = ModelIdentity(artifact_digest=model_digest_str)
+        execution_profile = ExecutionProfile(
+            profile_id=profile_id_str,
+            capabilities=capabilities,
+        )
+
+        scaling_policy = PolicyEngine(state_dir).resolve_scaling_policy(
+            scope=scope,
+            model_identity=model_identity,
+            execution_profile=execution_profile,
+        )
+
     response_context = ResponseAttemptContext(
         system_prompt=full_sys,
         user_prompt=user_prompt,
@@ -432,6 +496,7 @@ def _solve_inner(p_cfg_path, task_input, feedback_str=None, workspace=None, expl
         deletable_expected_files=tuple(
             path for path in expected_files if path in allowed_delete_paths
         ),
+        scaling_policy=scaling_policy,
     )
 
     def provider_adapter(context, attempt_usage_history):

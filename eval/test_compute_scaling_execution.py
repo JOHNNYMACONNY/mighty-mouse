@@ -39,7 +39,16 @@ from mighty_mouse.orchestrator.response_attempt import (
     ResponseAttemptResult,
     execute_response_attempt,
 )
-from mighty_mouse.v2.records import ComputeScalingPolicy
+from mighty_mouse.v2.engine import PolicyEngine
+from mighty_mouse.v2.records import (
+    ComputeScalingPin,
+    ComputeScalingPolicy,
+    ExecutionProfile,
+    Mode,
+    ModelIdentity,
+    Scope,
+    TaskCategory,
+)
 
 
 def _make_request(
@@ -728,3 +737,233 @@ def test_generation_attempt_preserves_temperature_and_logs(
     raw_files = list(raw_dir.glob("raw_test_task_attempt_1_cand_*.txt"))
     assert len(raw_files) == 2
     assert len(usage) == 2
+
+
+def test_production_solve_resolves_pinned_scaling_policy(agent_env):
+    workspace = agent_env.workspace
+    state_dir = workspace / ".mighty-mouse"
+    state_dir.mkdir(parents=True, exist_ok=True)
+
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "a" * 64)
+    profile = ExecutionProfile("codex-local", frozenset({"tools"}))
+
+    pin = ComputeScalingPin(
+        pin_id="cspin-prod-001",
+        scope=scope,
+        scaling_policy=ComputeScalingPolicy(
+            variations=3,
+            temperature_schedule=(0.0, 0.4, 0.8),
+            consensus_strategy="min_diff",
+        ),
+        model_digest=model_id.artifact_digest,
+        execution_profile_id=profile.profile_id,
+    )
+    engine = PolicyEngine(state_dir)
+    engine.pin_scaling(pin, model_id, profile)
+
+    agent_env.config_file.write_text(
+        "provider: sim\n"
+        "allow_simulation: true\n"
+        "model_class: local-small\n"
+        f"model_digest: sha256:{'a' * 64}\n"
+        "execution_profile: codex-local\n"
+        "capabilities:\n"
+        "  - tools\n"
+        "prompt_segments: []\n"
+    )
+
+    task_data = {
+        "id": "task_prod_scaling",
+        "task": "write code",
+        "repository": "JOHNNYMACONNY/mighty-mouse",
+        "task_category": "feature",
+        "expected_files": ["solution.py"],
+    }
+    # Cand 0 and Cand 1 produce the same output; Cand 2 produces an outlier.
+    # min_diff chooses Cand 0 (tied with 1 on distance, lowest index wins).
+    responses = [
+        "```python:solution.py\nx = 100\n```",
+        "```python:solution.py\nx = 100\n```",
+        "```python:solution.py\nx = 9999\n```",
+    ]
+
+    result = agent_env.run(task_data, responses)
+    assert result.metadata["pass_type"] == "clean"
+    assert (workspace / "solution.py").read_text() == "x = 100"
+    assert len(result.metadata["usage_history"]) == 3
+    raw_files = sorted(f.name for f in result.raw_logs)
+    assert any("_cand_0_" in f for f in raw_files)
+    assert any("_cand_1_" in f for f in raw_files)
+    assert any("_cand_2_" in f for f in raw_files)
+
+
+def test_production_solve_unpinned_uses_legacy_single_path(agent_env):
+    workspace = agent_env.workspace
+    state_dir = workspace / ".mighty-mouse"
+    state_dir.mkdir(parents=True, exist_ok=True)
+
+    agent_env.config_file.write_text(
+        "provider: sim\n"
+        "allow_simulation: true\n"
+        "model_class: local-small\n"
+        f"model_digest: sha256:{'a' * 64}\n"
+        "execution_profile: codex-local\n"
+        "prompt_segments: []\n"
+    )
+
+    task_data = {
+        "id": "task_unpinned",
+        "task": "write code",
+        "repository": "JOHNNYMACONNY/mighty-mouse",
+        "task_category": "feature",
+        "expected_files": ["unpinned.py"],
+    }
+    responses = ["```python:unpinned.py\nresult = 42\n```"]
+
+    result = agent_env.run(task_data, responses)
+    assert result.metadata["pass_type"] == "clean"
+    assert (workspace / "unpinned.py").read_text() == "result = 42"
+    assert len(result.metadata["usage_history"]) == 1
+    raw_files = [f.name for f in result.raw_logs]
+    assert len(raw_files) == 1
+    assert "_cand_" not in raw_files[0]
+
+
+@pytest.mark.parametrize(
+    "config_overrides,task_overrides",
+    [
+        # Incomplete model identity (missing model_digest)
+        ({"model_digest": None}, {}),
+        # Incomplete execution profile (empty profile_id)
+        ({"execution_profile": ""}, {}),
+        # Scope mismatch (different repository)
+        ({}, {"repository": "JOHNNYMACONNY/other-repo"}),
+        # Scope mismatch (different task_category)
+        ({}, {"task_category": "debugging"}),
+        # Model digest mismatch
+        ({"model_digest": "sha256:" + "f" * 64}, {}),
+        # Execution profile ID mismatch
+        ({"execution_profile": "cursor-remote"}, {}),
+    ],
+)
+def test_production_solve_mismatches_disable_scaling(
+    agent_env, config_overrides, task_overrides
+):
+    workspace = agent_env.workspace
+    state_dir = workspace / ".mighty-mouse"
+    state_dir.mkdir(parents=True, exist_ok=True)
+
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "a" * 64)
+    profile = ExecutionProfile("codex-local", frozenset({"tools"}))
+
+    pin = ComputeScalingPin(
+        pin_id="cspin-prod-002",
+        scope=scope,
+        scaling_policy=ComputeScalingPolicy(
+            variations=3,
+            temperature_schedule=(0.0, 0.35, 0.70),
+            consensus_strategy="min_diff",
+        ),
+        model_digest=model_id.artifact_digest,
+        execution_profile_id=profile.profile_id,
+    )
+    engine = PolicyEngine(state_dir)
+    engine.pin_scaling(pin, model_id, profile)
+
+    cfg = {
+        "provider": "sim",
+        "allow_simulation": True,
+        "model_class": "local-small",
+        "model_digest": f"sha256:{'a' * 64}",
+        "execution_profile": "codex-local",
+        "capabilities": ["tools"],
+        "prompt_segments": [],
+    }
+    cfg.update(config_overrides)
+    import yaml
+    agent_env.config_file.write_text(yaml.dump(cfg))
+
+    task_data = {
+        "id": "task_mismatch",
+        "task": "write code",
+        "repository": "JOHNNYMACONNY/mighty-mouse",
+        "task_category": "feature",
+        "expected_files": ["mismatch.py"],
+    }
+    task_data.update(task_overrides)
+    responses = ["```python:mismatch.py\nlegacy = True\n```"]
+
+    result = agent_env.run(task_data, responses)
+    assert result.metadata["pass_type"] == "clean"
+    assert len(result.metadata["usage_history"]) == 1
+    raw_files = [f.name for f in result.raw_logs]
+    assert len(raw_files) == 1
+    assert "_cand_" not in raw_files[0]
+
+
+def test_production_solve_planner_stage_remains_unscaled(agent_env):
+    workspace = agent_env.workspace
+    state_dir = workspace / ".mighty-mouse"
+    state_dir.mkdir(parents=True, exist_ok=True)
+
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "a" * 64)
+    profile = ExecutionProfile("codex-local", frozenset({"tools"}))
+
+    pin = ComputeScalingPin(
+        pin_id="cspin-prod-planner",
+        scope=scope,
+        scaling_policy=ComputeScalingPolicy(
+            variations=4,
+            temperature_schedule=(0.0, 0.2, 0.4, 0.6),
+            consensus_strategy="min_diff",
+        ),
+        model_digest=model_id.artifact_digest,
+        execution_profile_id=profile.profile_id,
+    )
+    engine = PolicyEngine(state_dir)
+    engine.pin_scaling(pin, model_id, profile)
+
+    agent_env.config_file.write_text(
+        "provider: sim\n"
+        "allow_simulation: true\n"
+        "model_class: local-small\n"
+        f"model_digest: sha256:{'a' * 64}\n"
+        "execution_profile: codex-local\n"
+        "capabilities:\n"
+        "  - tools\n"
+        "prompt_segments: []\n"
+    )
+
+    task_data = {
+        "id": "task_planner_stage",
+        "task": "plan blueprint",
+        "repository": "JOHNNYMACONNY/mighty-mouse",
+        "task_category": "feature",
+        "expected_files": [],
+    }
+    responses = ["<plan>\nblueprint\n</plan>"]
+
+    result = agent_env.run(task_data, responses, stage="planner")
+    assert result.metadata["pass_type"] == "clean"
+    assert len(result.metadata["usage_history"]) == 1
+    raw_files = [f.name for f in result.raw_logs]
+    assert len(raw_files) == 1
+    assert "_cand_" not in raw_files[0]

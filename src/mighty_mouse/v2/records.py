@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from hashlib import sha256
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -131,12 +132,70 @@ class Promotion:
     machine_gates_passed: bool
 
 
+_ALLOWED_CONSENSUS_STRATEGIES = frozenset({"min_diff", "unanimous"})
+
+
 @dataclass(frozen=True)
 class ComputeScalingPolicy:
     variations: int = 3
     temperature_schedule: tuple[float, ...] = (0.0, 0.35, 0.70)
     consensus_strategy: str = "min_diff"
     feedback_loop_enabled: bool = True
+
+    def __post_init__(self) -> None:
+        if type(self.variations) is not int:
+            raise ValueError("variations must be an integer, not bool")
+        if self.variations < 1 or self.variations > 8:
+            raise ValueError("variations must be between 1 and 8")
+
+        if not isinstance(self.temperature_schedule, (list, tuple)):
+            raise ValueError(
+                "temperature_schedule must be a sequence of numbers"
+            )
+
+        temp_tuple = tuple(self.temperature_schedule)
+        object.__setattr__(self, "temperature_schedule", temp_tuple)
+
+        if len(self.temperature_schedule) < 1:
+            raise ValueError(
+                "temperature_schedule must contain at least one value"
+            )
+        if len(self.temperature_schedule) > self.variations:
+            raise ValueError(
+                "temperature_schedule length cannot exceed variations"
+            )
+
+        for t in self.temperature_schedule:
+            if isinstance(t, bool) or not isinstance(t, (int, float)):
+                raise ValueError(
+                    "temperature values must be numeric, not bool"
+                )
+            if not math.isfinite(t):
+                raise ValueError("temperature values must be finite numbers")
+            if t < 0.0 or t > 2.0:
+                raise ValueError(
+                    "temperature values must be between 0.0 and 2.0"
+                )
+
+        if self.consensus_strategy not in _ALLOWED_CONSENSUS_STRATEGIES:
+            raise ValueError(
+                f"unknown consensus strategy: {self.consensus_strategy}"
+            )
+
+        if type(self.feedback_loop_enabled) is not bool:
+            raise ValueError("feedback_loop_enabled must be a bool")
+
+    def effective_temperature_schedule(self) -> tuple[float, ...]:
+        """Return complete temperature schedule for all variations.
+
+        If variations exceeds temperature_schedule length, repeat the final
+        schedule entry for the remaining variations.
+        """
+        if len(self.temperature_schedule) >= self.variations:
+            return self.temperature_schedule[: self.variations]
+        last = self.temperature_schedule[-1]
+        needed = self.variations - len(self.temperature_schedule)
+        return self.temperature_schedule + (last,) * needed
 
 
 @dataclass(frozen=True)
@@ -551,16 +610,16 @@ def _record_from_value(record_type: str, value: dict[str, Any]) -> RecordValue:
         )
     if record_type == "compute_scaling_pin":
         sp = value["scaling_policy"]
+        raw_temp = sp.get("temperature_schedule", (0.0, 0.35, 0.70))
         scaling_policy = ComputeScalingPolicy(
-            variations=int(sp.get("variations", 3)),
-            temperature_schedule=tuple(
-                float(t)
-                for t in sp.get(
-                    "temperature_schedule", (0.0, 0.35, 0.70)
-                )
+            variations=sp.get("variations", 3),
+            temperature_schedule=(
+                tuple(raw_temp)
+                if isinstance(raw_temp, (list, tuple))
+                else raw_temp
             ),
-            consensus_strategy=str(sp.get("consensus_strategy", "min_diff")),
-            feedback_loop_enabled=bool(sp.get("feedback_loop_enabled", True)),
+            consensus_strategy=sp.get("consensus_strategy", "min_diff"),
+            feedback_loop_enabled=sp.get("feedback_loop_enabled", True),
         )
         return ComputeScalingPin(
             pin_id=value["pin_id"],

@@ -246,6 +246,37 @@ class PolicyEngine:
             self,
         )
 
+    def resolve_scaling_policy(
+        self,
+        scope: Scope,
+        model_identity: ModelIdentity,
+        execution_profile: ExecutionProfile,
+    ) -> ComputeScalingPolicy | None:
+        """Resolve active exact-compatible compute scaling policy.
+
+        Returns None when unpinned, when model identity or execution
+        profile is incomplete, or when no exact matching pin exists.
+        """
+        if not model_identity.is_complete or not execution_profile.is_complete:
+            return None
+        scaling_pin = next(
+            (
+                record.value
+                for record in reversed(self._store.records())
+                if isinstance(record.value, ComputeScalingPin)
+                and record.value.scope == scope
+                and record.value.model_digest == model_identity.artifact_digest
+                and (
+                    record.value.execution_profile_id
+                    == execution_profile.profile_id
+                )
+            ),
+            None,
+        )
+        if scaling_pin is None:
+            return None
+        return scaling_pin.scaling_policy
+
     def get_scaling_status(
         self,
         scope: Scope,
@@ -333,4 +364,10 @@ class PolicyEngine:
         """
         if not model_identity.is_complete or not execution_profile.is_complete:
             raise ValueError("Incomplete model identity or execution profile")
+        if pin.model_digest != model_identity.artifact_digest:
+            raise ValueError("Pin model digest does not match model identity")
+        if pin.execution_profile_id != execution_profile.profile_id:
+            raise ValueError(
+                "Pin execution profile ID does not match execution profile"
+            )
         return self._store.append(pin)

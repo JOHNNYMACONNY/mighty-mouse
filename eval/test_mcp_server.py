@@ -785,7 +785,7 @@ def test_stdio_server_lists_and_calls_tools():
                             [
                                 os.path.abspath("src"),
                                 MCP_SRC,
-                                os.environ.get("PYTHONPATH", ""),
+                                *sys.path,
                             ],
                         )
                     ),

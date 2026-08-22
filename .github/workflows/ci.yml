@@ -109,8 +109,18 @@ jobs:
                           "setup_workspace",
                           "recording_audit",
                           "verify_and_record",
+                          "run",
+                          "agent_execute",
+                          "policy_status",
+                          "policy_preview",
+                          "policy_pin",
+                          "policy_rollback",
+                          "compute_scaling_status",
+                          "compute_scaling_preview",
+                          "compute_scaling_pin",
                       }
-                      assert expected.issubset(names), sorted(expected - names)
+                      assert names == expected, sorted(expected ^ names)
+                      assert len(names) == 14
 
 
           asyncio.run(main())

@@ -99,7 +99,9 @@ def test_sdist_normalization_is_deterministic(tmp_path):
             info.mtime = 1000000 + mod_offset
             tar.addfile(info, io.BytesIO(data))
         with open(path, "wb") as f_out:
-            with gzip.GzipFile(filename="orig.tar", mode="wb", fileobj=f_out, mtime=mod_offset) as gz_out:
+            with gzip.GzipFile(
+                filename="orig.tar", mode="wb", fileobj=f_out, mtime=mod_offset
+            ) as gz_out:
                 gz_out.write(tar_path.read_bytes())
 
     epoch = 1787434999

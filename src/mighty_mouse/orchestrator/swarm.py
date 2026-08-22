@@ -11,19 +11,26 @@ import sys
 import time
 from typing import Dict, List, Optional, Tuple, Any
 
-from ollama_client import OllamaClient
+try:
+    from mighty_mouse.orchestrator.ollama_client import OllamaClient
+except ImportError:
+    from ollama_client import OllamaClient
 
 try:
     from mighty_mouse.orchestrator.response_application import (
+        PlannedOperation,
         ResponseApplicationPolicy,
         ResponseApplicationRequest,
-        apply_response,
+        ResponsePlan,
+        plan_response,
     )
 except ImportError:
     from response_application import (
+        PlannedOperation,
         ResponseApplicationPolicy,
         ResponseApplicationRequest,
-        apply_response,
+        ResponsePlan,
+        plan_response,
     )
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -85,6 +92,20 @@ class SwarmPlanner:
         }
 
 
+def _canonicalize_swarm_response(raw_text: str) -> str:
+    """Translate legacy [FILE: path]```lang to canonical ```lang:path."""
+    def _replace_file_tag(match: re.Match) -> str:
+        path = match.group(1).strip()
+        lang = match.group(2) or ""
+        return f"```{lang}:{path}\n"
+
+    return re.sub(
+        r"\[FILE:\s*([^\n\]]+)\]\s*```(\w+)?\n",
+        _replace_file_tag,
+        raw_text,
+    )
+
+
 class SwarmCoder:
     def __init__(self, ollama_client: Optional[Any] = None):
         self.ollama_client = ollama_client or OllamaClient()
@@ -110,32 +131,47 @@ class SwarmCoder:
         system_prompt = self.prompt_segment or "You are the Swarm Coder. Write surgical code modifications wrapped in <act>."
         response_text = _llm_generate(self.ollama_client, user_prompt, system_prompt=system_prompt, temperature=temperature)
 
-        # Parse file blocks from response
-        file_blocks = re.findall(r"\[FILE:\s*([^\n\]]+)\]\s*```(?:\w+)?\n(.*?)```", response_text, re.DOTALL)
-        file_updates = {}
-        for file_path, content in file_blocks:
-            file_updates[file_path.strip()] = content
+        # Unify legacy [FILE: path] syntax into canonical code block format
+        canonical_response = _canonicalize_swarm_response(response_text)
 
-        warnings = []
-        if not file_updates:
-            # Fallback application through canonical response boundary.
-            try:
-                written = apply_response(
-                    ResponseApplicationRequest(
-                        raw_response=response_text,
-                        policy=ResponseApplicationPolicy(
-                            workspace_root=workspace_root or ".",
-                        ),
-                    )
+        response_plan: Optional[Dict[str, Any]] = None
+        planned_output_paths: List[str] = []
+        file_updates: Dict[str, str] = {}
+        warnings: List[str] = []
+
+        try:
+            plan = plan_response(
+                ResponseApplicationRequest(
+                    raw_response=canonical_response,
+                    policy=ResponseApplicationPolicy(
+                        workspace_root=workspace_root or ".",
+                    ),
                 )
-                if isinstance(written, list):
-                    for w in written:
-                        file_updates[w] = "written"
-            except Exception as e:
-                warnings.append(f"Parsing warning: {e}")
+            )
+            response_plan = {
+                "operations": [
+                    {
+                        "kind": op.kind,
+                        "path": op.path,
+                        "content": op.content,
+                    }
+                    for op in plan.operations
+                ],
+                "output_paths": list(plan.output_paths),
+            }
+            planned_output_paths = list(plan.output_paths)
+            for op in plan.operations:
+                if op.kind == "write":
+                    file_updates[op.path] = op.content
+                elif op.kind == "delete":
+                    file_updates[op.path] = "deleted"
+        except Exception as e:
+            warnings.append(f"Parsing warning: {e}")
 
         return {
             "file_updates": file_updates,
+            "planned_output_paths": planned_output_paths,
+            "response_plan": response_plan,
             "warnings": warnings,
             "raw_response": response_text
         }

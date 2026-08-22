@@ -19,7 +19,6 @@ SUPPORTED_NON_AGENT_CALLERS = {
     # until its retirement receives a separate disposition.
     "eval/run_decomposed.py": ("apply_response",),
     "eval/run_decomposed_v2.py": ("apply_response",),
-    "src/mighty_mouse/orchestrator/swarm.py": ("apply_response",),
 }
 AGENT_CALLERS = {
     "src/mighty_mouse/orchestrator/mighty_mouse_agent.py": ("apply_response",),

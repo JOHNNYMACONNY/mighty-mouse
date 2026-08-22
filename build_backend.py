@@ -16,9 +16,6 @@ import shutil
 import tarfile
 import tempfile
 
-from setuptools import build_meta as _setuptools
-
-
 _ROOT = Path(__file__).resolve().parent
 _RELEASE_INPUTS = (
     "pyproject.toml",
@@ -28,6 +25,11 @@ _RELEASE_INPUTS = (
     "LICENSE",
     "src",
 )
+
+
+def _get_setuptools():
+    from setuptools import build_meta
+    return build_meta
 
 
 def _parse_source_date_epoch() -> int | None:
@@ -113,7 +115,7 @@ def _staged_call(function, *args, **kwargs):
 def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
     _parse_source_date_epoch()
     return _staged_call(
-        _setuptools.build_wheel,
+        _get_setuptools().build_wheel,
         wheel_directory,
         config_settings,
         metadata_directory,
@@ -123,7 +125,7 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
 def build_sdist(sdist_directory, config_settings=None):
     epoch = _parse_source_date_epoch()
     result = _staged_call(
-        _setuptools.build_sdist, sdist_directory, config_settings
+        _get_setuptools().build_sdist, sdist_directory, config_settings
     )
     if epoch is not None:
         archive_path = Path(sdist_directory) / result
@@ -132,16 +134,16 @@ def build_sdist(sdist_directory, config_settings=None):
 
 
 def get_requires_for_build_wheel(config_settings=None):
-    return _setuptools.get_requires_for_build_wheel(config_settings)
+    return _get_setuptools().get_requires_for_build_wheel(config_settings)
 
 
 def get_requires_for_build_sdist(config_settings=None):
-    return _setuptools.get_requires_for_build_sdist(config_settings)
+    return _get_setuptools().get_requires_for_build_sdist(config_settings)
 
 
 def prepare_metadata_for_build_wheel(metadata_directory, config_settings=None):
     return _staged_call(
-        _setuptools.prepare_metadata_for_build_wheel,
+        _get_setuptools().prepare_metadata_for_build_wheel,
         metadata_directory,
         config_settings,
     )
@@ -150,7 +152,7 @@ def prepare_metadata_for_build_wheel(metadata_directory, config_settings=None):
 # Editable installs must reference the live checkout rather than the temporary
 # release staging tree, so delegate the PEP 660 hooks directly to setuptools.
 def build_editable(wheel_directory, config_settings=None, metadata_directory=None):
-    return _setuptools.build_editable(
+    return _get_setuptools().build_editable(
         wheel_directory,
         config_settings,
         metadata_directory,
@@ -158,11 +160,11 @@ def build_editable(wheel_directory, config_settings=None, metadata_directory=Non
 
 
 def get_requires_for_build_editable(config_settings=None):
-    return _setuptools.get_requires_for_build_editable(config_settings)
+    return _get_setuptools().get_requires_for_build_editable(config_settings)
 
 
 def prepare_metadata_for_build_editable(metadata_directory, config_settings=None):
-    return _setuptools.prepare_metadata_for_build_editable(
+    return _get_setuptools().prepare_metadata_for_build_editable(
         metadata_directory,
         config_settings,
     )

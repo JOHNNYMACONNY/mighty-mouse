@@ -1,13 +1,11 @@
 import os
 import sys
 import unittest
-from unittest.mock import patch
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator"))
 
 try:
-    from mighty_mouse.orchestrator import swarm
     from mighty_mouse.orchestrator.swarm import (
         SwarmPlanner,
         SwarmCoder,
@@ -15,8 +13,7 @@ try:
         SwarmOrchestrator,
     )
 except ImportError:
-    import swarm
-    from swarm import (
+    from swarm import (  # noqa: F401
         SwarmPlanner,
         SwarmCoder,
         SwarmReviewer,
@@ -101,7 +98,10 @@ class TestSwarmOrchestrator(unittest.TestCase):
             workspace_root="/tmp/swarm-workspace",
         )
 
-        self.assertEqual(result["file_updates"], {"answer.py": "answer = True"})
+        self.assertEqual(
+            result["file_updates"],
+            {"answer.py": "answer = True"},
+        )
         self.assertEqual(result["planned_output_paths"], ("answer.py",))
         self.assertIsNotNone(result["response_plan"])
         self.assertEqual(len(result["warnings"]), 0)
@@ -109,7 +109,10 @@ class TestSwarmOrchestrator(unittest.TestCase):
     def test_swarm_coder_legacy_file_block_planning(self):
         class LegacyBlockClient:
             def generate(self, prompt, system_prompt="", temperature=0.0):
-                return "<act>\n[FILE: answer.py]\n```python\nanswer = True\n```\n</act>"
+                return (
+                    "<act>\n[FILE: answer.py]\n"
+                    "```python\nanswer = True\n```\n</act>"
+                )
 
         coder = SwarmCoder(ollama_client=LegacyBlockClient())
         result = coder.code(
@@ -118,7 +121,10 @@ class TestSwarmOrchestrator(unittest.TestCase):
             workspace_root="/tmp/swarm-workspace",
         )
 
-        self.assertEqual(result["file_updates"], {"answer.py": "answer = True"})
+        self.assertEqual(
+            result["file_updates"],
+            {"answer.py": "answer = True"},
+        )
         self.assertEqual(result["planned_output_paths"], ("answer.py",))
         self.assertIsNotNone(result["response_plan"])
         self.assertEqual(len(result["warnings"]), 0)
@@ -126,11 +132,23 @@ class TestSwarmOrchestrator(unittest.TestCase):
     def test_swarm_coder_legacy_absolute_path_rejection(self):
         class AbsolutePathClient:
             def generate(self, prompt, system_prompt="", temperature=0.0):
-                return "<act>\n[FILE: /tmp/outside.py]\n```python\nval = 1\n```\n</act>"
+                return (
+                    "<act>\n[FILE: /tmp/outside.py]\n"
+                    "```python\nval = 1\n```\n</act>"
+                )
 
         coder = SwarmCoder(ollama_client=AbsolutePathClient())
-        result = coder.code(self.task_data, {"plan_text": "Outside"}, workspace_root="/tmp/safe")
-        self.assertTrue(any("Absolute paths are not allowed" in w for w in result["warnings"]))
+        result = coder.code(
+            self.task_data,
+            {"plan_text": "Outside"},
+            workspace_root="/tmp/safe",
+        )
+        self.assertTrue(
+            any(
+                "Absolute paths are not allowed" in w
+                for w in result["warnings"]
+            )
+        )
         self.assertEqual(result["file_updates"], {})
         self.assertEqual(result["planned_output_paths"], ())
         self.assertIsNone(result["response_plan"])
@@ -138,11 +156,23 @@ class TestSwarmOrchestrator(unittest.TestCase):
     def test_swarm_coder_legacy_traversal_rejection(self):
         class TraversalClient:
             def generate(self, prompt, system_prompt="", temperature=0.0):
-                return "<act>\n[FILE: ../escaped.py]\n```python\nmalicious = True\n```\n</act>"
+                return (
+                    "<act>\n[FILE: ../escaped.py]\n"
+                    "```python\nmalicious = True\n```\n</act>"
+                )
 
         coder = SwarmCoder(ollama_client=TraversalClient())
-        res = coder.code(self.task_data, {"plan_text": "Escape"}, workspace_root="/tmp/safe")
-        self.assertTrue(any("Parent traversal is not allowed" in w for w in res["warnings"]))
+        res = coder.code(
+            self.task_data,
+            {"plan_text": "Escape"},
+            workspace_root="/tmp/safe",
+        )
+        self.assertTrue(
+            any(
+                "Parent traversal is not allowed" in w
+                for w in res["warnings"]
+            )
+        )
         self.assertEqual(res["file_updates"], {})
         self.assertEqual(res["planned_output_paths"], ())
         self.assertIsNone(res["response_plan"])
@@ -150,10 +180,17 @@ class TestSwarmOrchestrator(unittest.TestCase):
     def test_swarm_coder_legacy_mighty_protection_enforced(self):
         class MightyHarnessClient:
             def generate(self, prompt, system_prompt="", temperature=0.0):
-                return "<act>\n[FILE: .mighty/secret.json]\n```json\n{}\n```\n</act>"
+                return (
+                    "<act>\n[FILE: .mighty/secret.json]\n"
+                    "```json\n{}\n```\n</act>"
+                )
 
         coder = SwarmCoder(ollama_client=MightyHarnessClient())
-        res = coder.code(self.task_data, {"plan_text": "Touch mighty"}, workspace_root="/tmp/safe")
+        res = coder.code(
+            self.task_data,
+            {"plan_text": "Touch mighty"},
+            workspace_root="/tmp/safe",
+        )
         self.assertEqual(res["file_updates"], {})
         self.assertEqual(res["planned_output_paths"], ())
         self.assertEqual(len(res["warnings"]), 0)
@@ -165,7 +202,10 @@ class TestSwarmOrchestrator(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             ws = Path(tmpdir)
             sentinel_file = ws / "existing.py"
-            sentinel_file.write_text("INITIAL_STATE = True\n", encoding="utf-8")
+            sentinel_file.write_text(
+                "INITIAL_STATE = True\n",
+                encoding="utf-8",
+            )
             to_delete = ws / "old.py"
             to_delete.write_text("DELETE_ME = True\n", encoding="utf-8")
 
@@ -185,7 +225,11 @@ class TestSwarmOrchestrator(unittest.TestCase):
             coder = SwarmCoder(ollama_client=MutatingAttemptClient())
             res = coder.code(
                 self.task_data,
-                {"plan_text": "Plan modifying existing.py and creating new_file.py"},
+                {
+                    "plan_text": (
+                        "Plan modifying existing.py and creating new_file.py"
+                    )
+                },
                 workspace_root=str(ws),
             )
 
@@ -198,10 +242,16 @@ class TestSwarmOrchestrator(unittest.TestCase):
             # 1. Byte-for-byte exact equality on all files in workspace
             self.assertEqual(snapshot_before, snapshot_after)
             # 2. Sentinel existing file was not modified
-            self.assertEqual(sentinel_file.read_text(encoding="utf-8"), "INITIAL_STATE = True\n")
+            self.assertEqual(
+                sentinel_file.read_text(encoding="utf-8"),
+                "INITIAL_STATE = True\n",
+            )
             # 3. Target delete file was not deleted
             self.assertTrue(to_delete.exists())
-            self.assertEqual(to_delete.read_text(encoding="utf-8"), "DELETE_ME = True\n")
+            self.assertEqual(
+                to_delete.read_text(encoding="utf-8"),
+                "DELETE_ME = True\n",
+            )
             # 4. Planned new file was not created on disk
             self.assertFalse((ws / "new_file.py").exists())
             # 5. Output structure reflects planned paths without side effects
@@ -209,7 +259,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
             self.assertIn("new_file.py", res["planned_output_paths"])
             self.assertEqual(len(res["warnings"]), 0)
 
-    def test_swarm_coder_planned_deletes_require_authorization_and_do_not_delete(self):
+    def test_swarm_coder_planned_deletes_require_authorization(self):
         import tempfile
         from pathlib import Path
 
@@ -223,12 +273,21 @@ class TestSwarmOrchestrator(unittest.TestCase):
                     return "```delete:unauthorized.py\n```"
 
             coder = SwarmCoder(ollama_client=DeleteAttemptClient())
-            res = coder.code(self.task_data, {"plan_text": "Delete"}, workspace_root=str(ws))
+            res = coder.code(
+                self.task_data,
+                {"plan_text": "Delete"},
+                workspace_root=str(ws),
+            )
 
-            # Unauthorized delete yields warning and does not delete file on disk
+            # Unauthorized delete yields warning and does not delete file
             self.assertTrue(to_delete.exists())
-            self.assertEqual(to_delete.read_text(encoding="utf-8"), "STILL_HERE = True\n")
-            self.assertTrue(any("Deletion not permitted" in w for w in res["warnings"]))
+            self.assertEqual(
+                to_delete.read_text(encoding="utf-8"),
+                "STILL_HERE = True\n",
+            )
+            self.assertTrue(
+                any("Deletion not permitted" in w for w in res["warnings"])
+            )
 
     def test_swarm_orchestrator_caller_inventory(self):
         from pathlib import Path
@@ -237,7 +296,9 @@ class TestSwarmOrchestrator(unittest.TestCase):
         src_root = repo_root / "src" / "mighty_mouse"
         mcp_root = repo_root / "mcp" / "src"
 
-        production_files = list(src_root.rglob("*.py")) + list(mcp_root.rglob("*.py"))
+        production_files = (
+            list(src_root.rglob("*.py")) + list(mcp_root.rglob("*.py"))
+        )
         swarm_callers = []
 
         for pf in production_files:
@@ -245,16 +306,28 @@ class TestSwarmOrchestrator(unittest.TestCase):
             if rel.endswith("orchestrator/swarm.py"):
                 continue
             content = pf.read_text(encoding="utf-8")
-            if "SwarmPlanner" in content or "SwarmCoder" in content or "SwarmReviewer" in content or "SwarmOrchestrator" in content:
+            if any(
+                sym in content
+                for sym in (
+                    "SwarmPlanner",
+                    "SwarmCoder",
+                    "SwarmReviewer",
+                    "SwarmOrchestrator",
+                )
+            ):
                 swarm_callers.append(rel)
 
-        # The only production file referencing SwarmOrchestrator is the CLI dispatcher in mighty_mouse_agent.py
         expected = ["src/mighty_mouse/orchestrator/mighty_mouse_agent.py"]
         self.assertEqual(sorted(swarm_callers), sorted(expected))
 
     def test_swarm_reviewer_pass(self):
         reviewer = SwarmReviewer(ollama_client=self.mock_client)
-        verif = {"status": "success", "scope": "PASS", "adherence": "PASS", "test_logs": "1 passed"}
+        verif = {
+            "status": "success",
+            "scope": "PASS",
+            "adherence": "PASS",
+            "test_logs": "1 passed",
+        }
         res = reviewer.review(verif)
         self.assertEqual(res["verdict"], "PASS")
         self.assertEqual(res["feedback"], "")
@@ -266,7 +339,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
             "scope": "FAIL",
             "adherence": "PASS",
             "reason": "Unauthorized file edit: /etc/passwd",
-            "test_logs": "FAILED test_visitor.py"
+            "test_logs": "FAILED test_visitor.py",
         }
         res = reviewer.review(verif)
         self.assertEqual(res["verdict"], "REJECT")
@@ -281,18 +354,37 @@ class TestSwarmOrchestrator(unittest.TestCase):
             sentinel = ws / "baseline.py"
             sentinel.write_text("BASE = 1\n", encoding="utf-8")
 
-            snapshot_before = {p.relative_to(ws): p.read_bytes() for p in ws.rglob("*") if p.is_file()}
+            snapshot_before = {
+                p.relative_to(ws): p.read_bytes()
+                for p in ws.rglob("*")
+                if p.is_file()
+            }
 
-            orchestrator = SwarmOrchestrator(concurrency=1, ollama_client=self.mock_client)
-            res = orchestrator.execute_swarm_pipeline(self.task_data, verifier_func=None)
+            orchestrator = SwarmOrchestrator(
+                concurrency=1,
+                ollama_client=self.mock_client,
+            )
+            res = orchestrator.execute_swarm_pipeline(
+                self.task_data,
+                verifier_func=None,
+            )
             self.assertEqual(res["review"]["verdict"], "PASS")
             self.assertEqual(res["turn"], 1)
-            self.assertIn("visitor.py", res["coder"]["planned_output_paths"])
+            self.assertIn(
+                "visitor.py",
+                res["coder"]["planned_output_paths"],
+            )
 
-            snapshot_after = {p.relative_to(ws): p.read_bytes() for p in ws.rglob("*") if p.is_file()}
+            snapshot_after = {
+                p.relative_to(ws): p.read_bytes()
+                for p in ws.rglob("*")
+                if p.is_file()
+            }
             self.assertEqual(snapshot_before, snapshot_after)
 
-    def test_swarm_orchestrator_concurrent_dual_slot_pipeline_is_non_mutating(self):
+    def test_swarm_orchestrator_concurrent_dual_slot_pipeline_non_mutating(
+        self,
+    ):
         import tempfile
         from pathlib import Path
 
@@ -301,15 +393,32 @@ class TestSwarmOrchestrator(unittest.TestCase):
             sentinel = ws / "baseline.py"
             sentinel.write_text("BASE = 1\n", encoding="utf-8")
 
-            snapshot_before = {p.relative_to(ws): p.read_bytes() for p in ws.rglob("*") if p.is_file()}
+            snapshot_before = {
+                p.relative_to(ws): p.read_bytes()
+                for p in ws.rglob("*")
+                if p.is_file()
+            }
 
-            orchestrator = SwarmOrchestrator(concurrency=2, ollama_client=self.mock_client)
-            res = orchestrator.execute_swarm_pipeline(self.task_data, verifier_func=None)
+            orchestrator = SwarmOrchestrator(
+                concurrency=2,
+                ollama_client=self.mock_client,
+            )
+            res = orchestrator.execute_swarm_pipeline(
+                self.task_data,
+                verifier_func=None,
+            )
             self.assertEqual(res["review"]["verdict"], "PASS")
             self.assertEqual(res["turn"], 1)
-            self.assertIn("visitor.py", res["coder"]["planned_output_paths"])
+            self.assertIn(
+                "visitor.py",
+                res["coder"]["planned_output_paths"],
+            )
 
-            snapshot_after = {p.relative_to(ws): p.read_bytes() for p in ws.rglob("*") if p.is_file()}
+            snapshot_after = {
+                p.relative_to(ws): p.read_bytes()
+                for p in ws.rglob("*")
+                if p.is_file()
+            }
             self.assertEqual(snapshot_before, snapshot_after)
 
 

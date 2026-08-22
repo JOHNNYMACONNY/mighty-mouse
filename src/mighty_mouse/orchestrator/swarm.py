@@ -93,7 +93,7 @@ class SwarmPlanner:
 
 
 def _canonicalize_swarm_response(raw_text: str) -> str:
-    """Translate legacy [FILE: path]```lang syntax to canonical ```lang:path blocks."""
+    """Translate legacy [FILE: path]```lang to canonical ```lang:path."""
     def _replace_file_tag(match: re.Match) -> str:
         path = match.group(1).strip()
         lang = match.group(2) or ""

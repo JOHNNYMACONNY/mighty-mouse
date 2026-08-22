@@ -740,8 +740,8 @@ def test_generation_attempt_preserves_temperature_and_logs(
     assert len(usage) == 2
 
 
-def test_provenance_symmetry_pin_to_production_activation(agent_env):
-    """Proves: pin creation provenance == production activation provenance."""
+def test_provenance_symmetry_pin_to_private_seam_activation(agent_env):
+    """Proves: pin creation provenance == private seam context provenance."""
     workspace = agent_env.workspace
     state_dir = workspace / ".mighty-mouse"
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -812,7 +812,7 @@ def test_provenance_symmetry_pin_to_production_activation(agent_env):
     assert any("_cand_2_" in f for f in raw_files)
 
 
-def test_production_solve_resolves_pinned_scaling_policy(agent_env):
+def test_private_context_solve_resolves_pinned_scaling_policy(agent_env):
     workspace = agent_env.workspace
     state_dir = workspace / ".mighty-mouse"
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -876,7 +876,7 @@ def test_production_solve_resolves_pinned_scaling_policy(agent_env):
     assert any("_cand_2_" in f for f in raw_files)
 
 
-def test_production_solve_unpinned_uses_legacy_single_path(agent_env):
+def test_private_context_solve_unpinned_uses_legacy_single_path(agent_env):
     workspace = agent_env.workspace
     state_dir = workspace / ".mighty-mouse"
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -914,7 +914,7 @@ def test_production_solve_unpinned_uses_legacy_single_path(agent_env):
     assert "_cand_" not in raw_files[0]
 
 
-def test_production_solve_without_runtime_context_remains_unscaled(agent_env):
+def test_legacy_solve_without_runtime_context_remains_unscaled(agent_env):
     """Legacy solve without runtime_context fails closed to single-response."""
     workspace = agent_env.workspace
     state_dir = workspace / ".mighty-mouse"
@@ -997,7 +997,7 @@ def test_production_solve_without_runtime_context_remains_unscaled(agent_env):
         ),
     ],
 )
-def test_production_solve_mismatches_disable_scaling(
+def test_private_context_solve_mismatches_disable_scaling(
     agent_env, context_overrides, task_overrides
 ):
     workspace = agent_env.workspace
@@ -1060,7 +1060,7 @@ def test_production_solve_mismatches_disable_scaling(
     assert "_cand_" not in raw_files[0]
 
 
-def test_production_solve_planner_stage_remains_unscaled(agent_env):
+def test_private_context_solve_planner_stage_remains_unscaled(agent_env):
     workspace = agent_env.workspace
     state_dir = workspace / ".mighty-mouse"
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -1118,3 +1118,403 @@ def test_production_solve_planner_stage_remains_unscaled(agent_env):
     raw_files = [f.name for f in result.raw_logs]
     assert len(raw_files) == 1
     assert "_cand_" not in raw_files[0]
+
+
+def _setup_host_adapter_workspace(
+    workspace: Path,
+    *,
+    repository: str = "JOHNNYMACONNY/mighty-mouse",
+    model_digest: str = "sha256:" + "c" * 64,
+    model_class: str = "local-small",
+    runtime_kind: str = "cline",
+    runtime_version: str = "3.54.0",
+    tool_signatures: dict | None = None,
+):
+    from mighty_mouse.host.adapter import HostAdapter, ADAPTER_CONFIG_FILENAME
+    import json
+
+    sigs = tool_signatures or {"run_check": lambda check_id: None}
+    config = HostAdapter.build_adapter_config(
+        repository=repository,
+        model_digest=model_digest,
+        model_class=model_class,
+        effective_context_limit=8192,
+        runtime_kind=runtime_kind,
+        runtime_version=runtime_version,
+        ollama_model=None,
+        tool_signatures=sigs,
+    )
+    state_dir = workspace / ".mighty-mouse"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / ADAPTER_CONFIG_FILENAME).write_text(
+        json.dumps(config, indent=2), encoding="utf-8"
+    )
+    return config, sigs
+
+
+def test_canonical_host_adapter_production_activation(
+    tmp_path: Path, monkeypatch
+):
+    """Proves: HostAdapter.solve canonical execution activates exact pin."""
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+    from mighty_mouse.host.adapter import HostAdapter
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tool_sigs = {"run_check": lambda cid: None, "verify": lambda ws: None}
+    adapter_cfg, sigs = _setup_host_adapter_workspace(
+        workspace,
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "d" * 64,
+        model_class="local-small",
+        tool_signatures=tool_sigs,
+    )
+    state_dir = workspace / ".mighty-mouse"
+
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "d" * 64)
+    profile_id = adapter_cfg["execution_profile_id"]
+    profile = ExecutionProfile(profile_id, frozenset({"mcp", *sigs}))
+
+    pin = ComputeScalingPin(
+        pin_id="cspin-host-adapter-001",
+        scope=scope,
+        scaling_policy=ComputeScalingPolicy(
+            variations=3,
+            temperature_schedule=(0.0, 0.35, 0.70),
+            consensus_strategy="min_diff",
+        ),
+        model_digest=model_id.artifact_digest,
+        execution_profile_id=profile_id,
+    )
+    engine = PolicyEngine(state_dir)
+    engine.pin_scaling(pin, model_id, profile)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\n"
+        "allow_simulation: true\n"
+        "prompt_segments: []\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_host_prod",
+        "task": "write feature",
+        "task_category": "feature",
+        "expected_files": ["solution.py"],
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    observed_sampling_temps = []
+    responses = iter([
+        "```python:solution.py\nres = 100\n```",
+        "```python:solution.py\nres = 100\n```",
+        "```python:solution.py\nres = 9999\n```",
+    ])
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.config = config
+            self.temperature = config.get("temperature", 0.0)
+            self.last_metadata = {
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                },
+                "latency_seconds": 0.05,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            observed_sampling_temps.append(self.temperature)
+            return next(responses)
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    adapter = HostAdapter()
+    adapter.solve(
+        workspace=str(workspace),
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        tool_signatures=sigs,
+    )
+
+    assert observed_sampling_temps == [0.0, 0.35, 0.70]
+    assert (workspace / "solution.py").read_text() == "res = 100"
+
+    metadata_path = workspace / "logs" / "last_agent_run.json"
+    assert metadata_path.exists()
+    metadata = json.loads(metadata_path.read_text())
+    assert metadata["pass_type"] == "clean"
+    assert len(metadata["usage_history"]) == 3
+
+    raw_dir = tmp_path / "logs" / "raw_responses"
+    raw_files = sorted(
+        f.name for f in raw_dir.glob(
+            "raw_task_host_prod_attempt_1_cand_*.txt"
+        )
+    )
+    assert len(raw_files) == 3
+    assert any("_cand_0_" in f for f in raw_files)
+    assert any("_cand_1_" in f for f in raw_files)
+    assert any("_cand_2_" in f for f in raw_files)
+
+
+def test_canonical_host_adapter_unpinned_uses_single_execution(
+    tmp_path: Path, monkeypatch
+):
+    """HostAdapter.solve without pin remains single-response."""
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+    from mighty_mouse.host.adapter import HostAdapter
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tool_sigs = {"verify": lambda ws: None}
+    _setup_host_adapter_workspace(
+        workspace,
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "e" * 64,
+        model_class="local-small",
+        tool_signatures=tool_sigs,
+    )
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\n"
+        "allow_simulation: true\n"
+        "prompt_segments: []\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_host_unpinned",
+        "task": "write feature",
+        "task_category": "feature",
+        "expected_files": ["single.py"],
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    call_count = 0
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            nonlocal call_count
+            call_count += 1
+            return "```python:single.py\nx = 1\n```"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    HostAdapter().solve(
+        workspace=str(workspace),
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        tool_signatures=tool_sigs,
+    )
+
+    assert call_count == 1
+    assert (workspace / "single.py").read_text() == "x = 1"
+    metadata_path = workspace / "logs" / "last_agent_run.json"
+    metadata = json.loads(metadata_path.read_text())
+    assert len(metadata["usage_history"]) == 1
+
+
+def test_canonical_host_adapter_mismatch_disables_scaling(
+    tmp_path: Path, monkeypatch
+):
+    """HostAdapter.solve with Scope/Model mismatch does not activate pin."""
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+    from mighty_mouse.host.adapter import HostAdapter
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tool_sigs = {"verify": lambda ws: None}
+    adapter_cfg, sigs = _setup_host_adapter_workspace(
+        workspace,
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "1" * 64,
+        model_class="local-large",
+        tool_signatures=tool_sigs,
+    )
+    state_dir = workspace / ".mighty-mouse"
+
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "1" * 64)
+    profile_id = adapter_cfg["execution_profile_id"]
+    profile = ExecutionProfile(profile_id, frozenset({"mcp", *sigs}))
+
+    pin = ComputeScalingPin(
+        pin_id="cspin-host-mismatch",
+        scope=scope,
+        scaling_policy=ComputeScalingPolicy(
+            variations=3,
+            temperature_schedule=(0.0, 0.35, 0.70),
+            consensus_strategy="min_diff",
+        ),
+        model_digest=model_id.artifact_digest,
+        execution_profile_id=profile_id,
+    )
+    PolicyEngine(state_dir).pin_scaling(pin, model_id, profile)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\nallow_simulation: true\nprompt_segments: []\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_host_mismatch",
+        "task": "write feature",
+        "task_category": "feature",
+        "expected_files": ["mismatch.py"],
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    call_count = 0
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            nonlocal call_count
+            call_count += 1
+            return "```python:mismatch.py\nx = 1\n```"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    HostAdapter().solve(
+        workspace=str(workspace),
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        tool_signatures=tool_sigs,
+    )
+
+    assert call_count == 1
+    assert (workspace / "mismatch.py").read_text() == "x = 1"
+
+
+def test_canonical_host_adapter_planner_stage_remains_unscaled(
+    tmp_path: Path, monkeypatch
+):
+    """HostAdapter.solve with stage='planner' remains unscaled."""
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+    from mighty_mouse.host.adapter import HostAdapter
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tool_sigs = {"verify": lambda ws: None}
+    adapter_cfg, sigs = _setup_host_adapter_workspace(
+        workspace,
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "2" * 64,
+        model_class="local-small",
+        tool_signatures=tool_sigs,
+    )
+    state_dir = workspace / ".mighty-mouse"
+
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "2" * 64)
+    profile_id = adapter_cfg["execution_profile_id"]
+    profile = ExecutionProfile(profile_id, frozenset({"mcp", *sigs}))
+
+    pin = ComputeScalingPin(
+        pin_id="cspin-host-planner",
+        scope=scope,
+        scaling_policy=ComputeScalingPolicy(
+            variations=3,
+            temperature_schedule=(0.0, 0.35, 0.70),
+            consensus_strategy="min_diff",
+        ),
+        model_digest=model_id.artifact_digest,
+        execution_profile_id=profile_id,
+    )
+    PolicyEngine(state_dir).pin_scaling(pin, model_id, profile)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\nallow_simulation: true\nprompt_segments: []\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_host_plan",
+        "task": "plan blueprint",
+        "task_category": "feature",
+        "expected_files": [],
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    call_count = 0
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            nonlocal call_count
+            call_count += 1
+            return "<plan>\nblueprint\n</plan>"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    HostAdapter().solve(
+        workspace=str(workspace),
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        tool_signatures=tool_sigs,
+        stage="planner",
+    )
+
+    assert call_count == 1
+
+
+def test_canonical_host_adapter_unconfigured_workspace_fails(tmp_path: Path):
+    """HostAdapter.solve on unconfigured workspace raises ValueError."""
+    from mighty_mouse.host.adapter import HostAdapter
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("provider: sim\n")
+    task_file = tmp_path / "task.json"
+    task_file.write_text('{"id": "t1"}')
+
+    with pytest.raises(ValueError, match="not configured"):
+        HostAdapter().solve(
+            workspace=str(workspace),
+            p_cfg_path=str(config_file),
+            task_input=str(task_file),
+            tool_signatures={"verify": lambda ws: None},
+        )

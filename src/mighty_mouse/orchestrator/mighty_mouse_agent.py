@@ -289,12 +289,50 @@ def solve(p_cfg_path, task_input, feedback_str=None, workspace=None, explicit_sk
         workspace = os.path.abspath(workspace)
         if not os.path.exists(workspace):
             os.makedirs(workspace, exist_ok=True)
-            
+
     original_cwd = os.getcwd()
     try:
         if workspace:
             os.chdir(workspace)
         return _solve_inner(p_cfg_path, task_input, feedback_str, workspace, explicit_skills, temperature=temperature, stage=stage, plan_file=plan_file)
+    finally:
+        os.chdir(original_cwd)
+
+
+def _solve_with_runtime_context(
+    p_cfg_path,
+    task_input,
+    *,
+    runtime_context: AdapterRuntimeContext | None = None,
+    feedback_str=None,
+    workspace=None,
+    explicit_skills=None,
+    temperature=None,
+    stage="unified",
+    plan_file=None,
+):
+    p_cfg_path = os.path.abspath(p_cfg_path)
+    task_input = os.path.abspath(task_input)
+    if workspace:
+        workspace = os.path.abspath(workspace)
+        if not os.path.exists(workspace):
+            os.makedirs(workspace, exist_ok=True)
+
+    original_cwd = os.getcwd()
+    try:
+        if workspace:
+            os.chdir(workspace)
+        return _solve_inner(
+            p_cfg_path,
+            task_input,
+            feedback_str=feedback_str,
+            workspace=workspace,
+            explicit_skills=explicit_skills,
+            temperature=temperature,
+            stage=stage,
+            plan_file=plan_file,
+            runtime_context=runtime_context,
+        )
     finally:
         os.chdir(original_cwd)
 

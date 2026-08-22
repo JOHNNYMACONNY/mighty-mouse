@@ -65,6 +65,12 @@ def _normalize_sdist_archive(archive_path: Path, epoch: int) -> None:
             m.uname = ""
             m.gname = ""
             m.pax_headers = {}
+            if m.isdir():
+                m.mode = 0o755
+            elif m.issym() or m.islnk():
+                m.mode = 0o777
+            else:
+                m.mode = 0o644
             if content is not None:
                 m.size = len(content)
                 tar_out.addfile(m, io.BytesIO(content))
@@ -96,6 +102,11 @@ def _stage() -> tempfile.TemporaryDirectory:
             shutil.copytree(source, target, ignore=_ignore)
         elif source.is_file():
             shutil.copyfile(source, target)
+    for root, dirs, files in os.walk(destination):
+        for d in dirs:
+            os.chmod(Path(root) / d, 0o755)
+        for f in files:
+            os.chmod(Path(root) / f, 0o644)
     return temporary
 
 
@@ -103,16 +114,22 @@ def _staged_call(function, *args, **kwargs):
     wheel_or_sdist_directory = Path(args[0]).resolve() if args else None
     if wheel_or_sdist_directory is not None:
         args = (str(wheel_or_sdist_directory), *args[1:])
-    with _stage() as temporary:
-        previous = Path.cwd()
-        os.chdir(temporary)
-        try:
-            return function(*args, **kwargs)
-        finally:
-            os.chdir(previous)
+    previous_umask = os.umask(0o022)
+    try:
+        with _stage() as temporary:
+            previous = Path.cwd()
+            os.chdir(temporary)
+            try:
+                return function(*args, **kwargs)
+            finally:
+                os.chdir(previous)
+    finally:
+        os.umask(previous_umask)
 
 
-def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
+def build_wheel(
+    wheel_directory, config_settings=None, metadata_directory=None
+):
     _parse_source_date_epoch()
     return _staged_call(
         _get_setuptools().build_wheel,

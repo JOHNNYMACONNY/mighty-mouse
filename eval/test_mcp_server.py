@@ -227,6 +227,7 @@ def test_setup_partitions_profiles_by_exact_host_facts_and_full_tool_contract(tm
         "verify_and_record",
         "recording_audit",
         "run",
+        "agent_execute",
         "policy_status",
         "policy_preview",
         "policy_pin",
@@ -242,7 +243,7 @@ def test_recording_requires_reonboarding_after_a_tool_contract_change(tmp_path, 
     import mighty_mouse_mcp.server as server
 
     configure_cline_adapter(tmp_path, model_digest="sha256:" + "7" * 64)
-    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 5)
+    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 6)
     with pytest.raises(ValueError, match="stale"):
         server.run_verify_and_record(str(tmp_path))
 
@@ -801,6 +802,7 @@ def test_stdio_server_lists_and_calls_tools():
                         "setup_workspace",
                         "recording_audit",
                         "run",
+                        "agent_execute",
                         "policy_status",
                         "policy_preview",
                         "policy_pin",
@@ -858,3 +860,255 @@ def test_stdio_server_lists_and_calls_tools():
                     assert list((Path(workspace) / ".mighty-mouse" / "v2-signal-receipts").glob("*.json"))
 
     anyio.run(exercise_server)
+
+
+def test_mcp_v4_workspace_requires_reonboarding_for_v5_contract(tmp_path):
+    import mighty_mouse_mcp.server as server
+
+    state_dir = tmp_path / ".mighty-mouse"
+    state_dir.mkdir()
+    # Build v4 config with contract_version=4
+    sigs = server._get_mcp_tool_signatures()
+    profile, tool_contract_digest, prompt_template_digest = (
+        server.HostAdapter.build_execution_profile(
+            runtime_kind="cline",
+            runtime_version="3.54.0",
+            effective_context_limit=8192,
+            tool_signatures=sigs,
+            contract_version=4,
+        )
+    )
+    v4_config = {
+        "schema_version": 2,
+        "repository": "JOHNNYMACONNY/mighty-mouse",
+        "model_digest": "sha256:" + "a" * 64,
+        "model_class": "local-large",
+        "model_source": "host",
+        "ollama_model": None,
+        "execution_profile_id": profile.profile_id,
+        "runtime_kind": "cline",
+        "runtime_version": "3.54.0",
+        "effective_context_limit": 8192,
+        "tool_contract_digest": tool_contract_digest,
+        "prompt_template_digest": prompt_template_digest,
+    }
+    (state_dir / "mcp-adapter.json").write_text(
+        json.dumps(v4_config), encoding="utf-8"
+    )
+
+    # With v5 server running, v4 adapter config must fail as stale
+    with pytest.raises(ValueError, match="stale"):
+        server.run_policy_status(str(tmp_path))
+    with pytest.raises(ValueError, match="stale"):
+        server.run_run(str(tmp_path))
+
+    # Reonboard with replace=True to v5
+    setup_res = server.run_setup_workspace(
+        str(tmp_path),
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "a" * 64,
+        model_class="local-large",
+        runtime_kind="cline",
+        runtime_version="3.54.0",
+        replace=True,
+    )
+    assert setup_res["configured"] is True
+
+    # Now operations succeed under v5
+    assert server.run_policy_status(str(tmp_path))["scope"]["mode"] == "coding"
+    assert server.run_run(str(tmp_path))["mode"] == "coding"
+
+
+def test_run_agent_execute_validates_inputs(tmp_path):
+    import mighty_mouse_mcp.server as server
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("provider: sim\n")
+    task = tmp_path / "task.json"
+    task.write_text('{"id": "t1"}')
+
+    # Nonexistent workspace
+    with pytest.raises(ValueError, match="workspace directory does not exist"):
+        server.run_agent_execute(
+            str(tmp_path / "nonexistent"),
+            str(cfg),
+            str(task),
+        )
+
+    # Nonexistent config
+    with pytest.raises(ValueError, match="config file does not exist"):
+        server.run_agent_execute(
+            str(workspace),
+            str(tmp_path / "no_config.yaml"),
+            str(task),
+        )
+
+    # Nonexistent task
+    with pytest.raises(ValueError, match="task input file does not exist"):
+        server.run_agent_execute(
+            str(workspace),
+            str(cfg),
+            str(tmp_path / "no_task.json"),
+        )
+
+    # Invalid stage
+    with pytest.raises(ValueError, match="invalid stage"):
+        server.run_agent_execute(
+            str(workspace),
+            str(cfg),
+            str(task),
+            stage="invalid_stage",
+        )
+
+
+def test_run_agent_execute_end_to_end_with_compute_scaling(
+    tmp_path, monkeypatch
+):
+    import mighty_mouse_mcp.server as server
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    server.run_setup_workspace(
+        str(workspace),
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "f" * 64,
+        model_class="local-small",
+        runtime_kind="antigravity",
+        runtime_version="2.0.0",
+    )
+
+    pin_res = server.run_compute_scaling_pin(
+        str(workspace),
+        variations=3,
+        temperature_schedule=[0.0, 0.5],
+        consensus_strategy="min_diff",
+        feedback_loop_enabled=False,
+        task_category="feature",
+    )
+    assert pin_res["pin_id"] is not None
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "provider: sim\nallow_simulation: true\nprompt_segments: []\n"
+    )
+    task = tmp_path / "task.json"
+    task.write_text(
+        json.dumps({
+            "id": "task_mcp_execute_01",
+            "task": "write feature",
+            "task_category": "feature",
+            "expected_files": ["main.py"],
+        })
+    )
+
+    call_count = 0
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            nonlocal call_count
+            call_count += 1
+            return "```python:main.py\nprint('hello')\n```"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    result = server.run_agent_execute(
+        str(workspace),
+        str(cfg),
+        str(task),
+    )
+
+    assert call_count == 3
+    assert result["schema_version"] == 1
+    assert result["interface"] == "agent_execute"
+    assert result["task_id"] == "task_mcp_execute_01"
+    assert result["pass_type"] == "clean"
+    assert result["output_files"] == ["main.py"]
+    assert result["written_files"] == ["main.py"]
+    assert result["deleted_files"] == []
+    assert result["schema_error"] is False
+    assert result["attempts"] == 3
+    assert result["coverage_recovery"] == {
+        "triggered": False,
+        "attempts": 0,
+        "success": False,
+        "missing_files": [],
+        "disallowed_reason": None,
+    }
+    assert result["compute_scaling"]["active"] is True
+    assert result["compute_scaling"]["pin_id"] == pin_res["pin_id"]
+    assert result["compute_scaling"]["policy"]["variations"] == 3
+    assert (workspace / "main.py").read_text() == "print('hello')"
+
+
+def test_run_agent_execute_unpinned_single_response(tmp_path, monkeypatch):
+    import mighty_mouse_mcp.server as server
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    server.run_setup_workspace(
+        str(workspace),
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "7" * 64,
+        model_class="local-small",
+        runtime_kind="antigravity",
+        runtime_version="2.0.0",
+    )
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "provider: sim\nallow_simulation: true\nprompt_segments: []\n"
+    )
+    task = tmp_path / "task.json"
+    task.write_text(
+        json.dumps({
+            "id": "task_mcp_unpinned",
+            "task": "write feature",
+            "task_category": "feature",
+            "expected_files": ["app.py"],
+        })
+    )
+
+    call_count = 0
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            nonlocal call_count
+            call_count += 1
+            return "```python:app.py\npass\n```"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    result = server.run_agent_execute(
+        str(workspace),
+        str(cfg),
+        str(task),
+    )
+
+    assert call_count == 1
+    assert result["compute_scaling"]["active"] is False
+    assert (
+        result["compute_scaling"]["activation_reason"]
+        == "no_exact_compatible_pin"
+    )
+    assert result["compute_scaling"]["pin_id"] is None
+    assert result["compute_scaling"]["policy"] is None

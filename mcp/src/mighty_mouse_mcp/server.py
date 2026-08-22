@@ -100,6 +100,7 @@ def _get_mcp_tool_signatures() -> dict:
         "verify_and_record": run_verify_and_record,
         "recording_audit": run_recording_audit,
         "run": run_run,
+        "agent_execute": run_agent_execute,
         "policy_status": run_policy_status,
         "policy_preview": run_policy_preview,
         "policy_pin": run_policy_pin,
@@ -335,6 +336,106 @@ def run_tool(
         user_mode=user_mode,
         hybrid_handoff=hybrid_handoff,
         state_dir=state_dir,
+    )
+
+
+def run_agent_execute(
+    workspace: str,
+    p_cfg_path: str,
+    task_input: str,
+    *,
+    state_dir: str | None = None,
+    feedback_str: str | None = None,
+    explicit_skills: str | None = None,
+    temperature: float | None = None,
+    stage: str = "unified",
+    plan_file: str | None = None,
+) -> dict[str, Any]:
+    """Execute canonical agent with compute scaling support."""
+    ws_path = Path(workspace)
+    if not ws_path.exists() or not ws_path.is_dir():
+        raise ValueError(f"workspace directory does not exist: {workspace}")
+
+    cfg_path = Path(p_cfg_path)
+    if not cfg_path.exists() or not cfg_path.is_file():
+        raise ValueError(f"config file does not exist: {p_cfg_path}")
+
+    task_path = Path(task_input)
+    if not task_path.exists() or not task_path.is_file():
+        raise ValueError(f"task input file does not exist: {task_input}")
+
+    if stage not in {"unified", "planner", "coder"}:
+        raise ValueError(
+            f"invalid stage: {stage} (must be unified, planner, or coder)"
+        )
+
+    HostAdapter().solve(
+        workspace=workspace,
+        p_cfg_path=p_cfg_path,
+        task_input=task_input,
+        state_dir=state_dir,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
+        feedback_str=feedback_str,
+        explicit_skills=explicit_skills,
+        temperature=temperature,
+        stage=stage,
+        plan_file=plan_file,
+    )
+
+    metadata_path = ws_path / "logs" / "last_agent_run.json"
+    if not metadata_path.exists():
+        raise RuntimeError(
+            "Agent run did not produce last_agent_run.json metadata"
+        )
+
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    return {
+        "schema_version": 1,
+        "interface": "agent_execute",
+        "task_id": metadata.get("task_id"),
+        "pass_type": metadata.get("pass_type", "clean"),
+        "output_files": metadata.get("output_files", []),
+        "written_files": metadata.get("written_files", []),
+        "deleted_files": metadata.get("deleted_files", []),
+        "schema_error": metadata.get("schema_error", False),
+        "attempts": metadata.get("attempts", 1),
+        "coverage_recovery": {
+            "triggered": metadata.get("coverage_recovery_triggered", False),
+            "attempts": metadata.get("coverage_recovery_attempts", 0),
+            "success": metadata.get("coverage_recovery_success", False),
+            "missing_files": metadata.get("coverage_missing_files", []),
+            "disallowed_reason": metadata.get(
+                "coverage_recovery_disallowed_reason"
+            ),
+        },
+        "compute_scaling": metadata.get("compute_scaling", {}),
+    }
+
+
+@mcp.tool(name="agent_execute")
+def agent_execute_tool(
+    workspace: str,
+    p_cfg_path: str,
+    task_input: str,
+    state_dir: str | None = None,
+    feedback_str: str | None = None,
+    explicit_skills: str | None = None,
+    temperature: float | None = None,
+    stage: str = "unified",
+    plan_file: str | None = None,
+) -> dict[str, Any]:
+    """Execute canonical agent with compute scaling support."""
+    return run_agent_execute(
+        workspace=workspace,
+        p_cfg_path=p_cfg_path,
+        task_input=task_input,
+        state_dir=state_dir,
+        feedback_str=feedback_str,
+        explicit_skills=explicit_skills,
+        temperature=temperature,
+        stage=stage,
+        plan_file=plan_file,
     )
 
 

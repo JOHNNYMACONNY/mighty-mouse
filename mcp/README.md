@@ -1,12 +1,21 @@
 # Mighty Mouse MCP
 
-The MCP server exposes five tools through the `mighty-mouse` server namespace:
+The MCP server exposes tools through the `mighty-mouse` server namespace:
 
 - `verify`: run tests, lint, build, and optional Git scope checks.
 - `protocol`: return the versioned low, medium, or high Mighty Mouse protocol.
 - `verify_and_record`: run verification and persist a content-free v2 Signal receipt.
 - `setup_workspace`: pin an exact local Ollama or host-supplied model identity and MCP execution profile without hand-writing config.
 - `recording_audit`: check that one exact host task receipt was recorded after it began.
+- `run`: adaptive routing and policy selection for a workspace task.
+- `agent_execute`: canonical coding execution with compute scaling support via `HostAdapter.solve`.
+- `policy_status`: inspect the active Champion policy and promotion status.
+- `policy_preview`: preview candidate policy selection without mutation.
+- `policy_pin`: pin an explicit policy for the workspace.
+- `policy_rollback`: roll back to the baseline Champion.
+- `compute_scaling_status`: inspect active compute scaling parameters.
+- `compute_scaling_preview`: preview compute scaling parameters without mutation.
+- `compute_scaling_pin`: pin exact compute scaling configuration for the workspace.
 
 Install both packages from a repository checkout:
 

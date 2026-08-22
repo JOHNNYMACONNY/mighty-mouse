@@ -246,20 +246,20 @@ class PolicyEngine:
             self,
         )
 
-    def resolve_scaling_policy(
+    def resolve_scaling_pin(
         self,
         scope: Scope,
         model_identity: ModelIdentity,
         execution_profile: ExecutionProfile,
-    ) -> ComputeScalingPolicy | None:
-        """Resolve active exact-compatible compute scaling policy.
+    ) -> ComputeScalingPin | None:
+        """Resolve active exact-compatible compute scaling pin.
 
         Returns None when unpinned, when model identity or execution
         profile is incomplete, or when no exact matching pin exists.
         """
         if not model_identity.is_complete or not execution_profile.is_complete:
             return None
-        scaling_pin = next(
+        return next(
             (
                 record.value
                 for record in reversed(self._store.records())
@@ -273,9 +273,24 @@ class PolicyEngine:
             ),
             None,
         )
-        if scaling_pin is None:
-            return None
-        return scaling_pin.scaling_policy
+
+    def resolve_scaling_policy(
+        self,
+        scope: Scope,
+        model_identity: ModelIdentity,
+        execution_profile: ExecutionProfile,
+    ) -> ComputeScalingPolicy | None:
+        """Resolve active exact-compatible compute scaling policy.
+
+        Returns None when unpinned, when model identity or execution
+        profile is incomplete, or when no exact matching pin exists.
+        """
+        pin = self.resolve_scaling_pin(
+            scope,
+            model_identity,
+            execution_profile,
+        )
+        return pin.scaling_policy if pin is not None else None
 
     def get_scaling_status(
         self,

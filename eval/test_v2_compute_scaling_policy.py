@@ -366,9 +366,21 @@ def test_policy_engine_resolve_scaling_policy_canonical(tmp_path: Path):
     resolved = engine.resolve_scaling_policy(scope, model_id, profile)
     assert resolved == custom_policy
 
+    # 2b. Canonical pin resolution returns exact ComputeScalingPin
+    resolved_pin = engine.resolve_scaling_pin(scope, model_id, profile)
+    assert resolved_pin == pin
+    assert resolved_pin.pin_id == "cspin-123456"
+    assert resolved_pin.scaling_policy == custom_policy
+
     # 3. Incomplete model identity: returns None
     assert (
         engine.resolve_scaling_policy(
+            scope, incomplete_model_id, profile
+        )
+        is None
+    )
+    assert (
+        engine.resolve_scaling_pin(
             scope, incomplete_model_id, profile
         )
         is None
@@ -379,20 +391,33 @@ def test_policy_engine_resolve_scaling_policy_canonical(tmp_path: Path):
         engine.resolve_scaling_policy(scope, model_id, incomplete_profile)
         is None
     )
+    assert (
+        engine.resolve_scaling_pin(scope, model_id, incomplete_profile)
+        is None
+    )
 
     # 5. Scope mismatch: returns None
     assert (
         engine.resolve_scaling_policy(other_scope, model_id, profile) is None
+    )
+    assert (
+        engine.resolve_scaling_pin(other_scope, model_id, profile) is None
     )
 
     # 6. Model digest mismatch: returns None
     assert (
         engine.resolve_scaling_policy(scope, other_model_id, profile) is None
     )
+    assert (
+        engine.resolve_scaling_pin(scope, other_model_id, profile) is None
+    )
 
     # 7. Execution profile ID mismatch: returns None
     assert (
         engine.resolve_scaling_policy(scope, model_id, other_profile) is None
+    )
+    assert (
+        engine.resolve_scaling_pin(scope, model_id, other_profile) is None
     )
 
 

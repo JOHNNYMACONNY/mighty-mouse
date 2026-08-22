@@ -83,6 +83,27 @@ jobs:
           set -euo pipefail
           python -m build --wheel --sdist --outdir dist .
           python -m build --wheel --sdist --outdir dist ./mcp
+          python -m build --wheel --sdist --outdir dist2 .
+          python -m build --wheel --sdist --outdir dist2 ./mcp
+
+      - name: Verify byte-for-byte reproducibility of release artifacts
+        run: |
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          def get_hashes(directory: Path):
+              return {
+                  p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                  for p in directory.iterdir() if p.is_file()
+              }
+
+          h1 = get_hashes(Path("dist"))
+          h2 = get_hashes(Path("dist2"))
+          assert len(h1) == 4, f"Expected 4 artifacts, found {len(h1)}"
+          assert h1 == h2, f"Reproducibility mismatch: {h1} vs {h2}"
+          print("All 4 release artifacts verified byte-for-byte reproducible")
+          PY
 
       - name: Check distribution contents
         run: |

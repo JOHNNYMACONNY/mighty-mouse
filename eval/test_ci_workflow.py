@@ -37,14 +37,30 @@ def test_complete_python_matrix_installs_both_packages_and_runs_full_suite():
 
 def test_packaging_builds_and_installs_only_both_wheels():
     job = load_workflow()["jobs"]["package"]
-    setup = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/setup-python@"))
+    setup = next(
+        step
+        for step in job["steps"]
+        if step.get("uses", "").startswith("actions/setup-python@")
+    )
     assert setup["with"]["python-version"] == "3.13"
 
-    build = step_named(job, "Build both wheels")["run"]
-    assert "python -m build --wheel --outdir dist ." in build
-    assert "python -m build --wheel --outdir dist ./mcp" in build
+    step_title = (
+        "Build both wheels and source distributions with "
+        "reproducible timestamps"
+    )
+    build = step_named(job, step_title)["run"]
+    assert "python -m build --wheel --sdist --outdir dist ." in build
+    assert "python -m build --wheel --sdist --outdir dist ./mcp" in build
+    assert "SOURCE_DATE_EPOCH" in build
 
-    install = step_named(job, "Install only built wheels in a clean environment")["run"]
+    verify_step = step_named(
+        job, "Verify byte-for-byte reproducibility of all release artifacts"
+    )
+    assert "Reproducibility mismatch" in verify_step["run"]
+
+    install = step_named(
+        job, "Install only built wheels in a clean environment"
+    )["run"]
     assert "python -m venv /tmp/" in install
     assert "pip install dist/mighty_mouse-*.whl dist/mighty_mouse_mcp-*.whl" in install
     assert "-e " not in install

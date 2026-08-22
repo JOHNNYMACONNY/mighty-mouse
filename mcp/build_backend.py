@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import gzip
+import io
 import os
 from pathlib import Path
 import shutil
+import tarfile
 import tempfile
 
 from setuptools import build_meta as _setuptools
@@ -18,6 +21,53 @@ _RELEASE_INPUTS = (
     "README.md",
     "src",
 )
+
+
+def _parse_source_date_epoch() -> int | None:
+    raw = os.environ.get("SOURCE_DATE_EPOCH")
+    if raw is None or raw == "":
+        return None
+    try:
+        epoch = int(raw)
+    except ValueError:
+        raise ValueError(f"Invalid SOURCE_DATE_EPOCH: {raw!r}") from None
+    if epoch < 0:
+        raise ValueError(f"Invalid negative SOURCE_DATE_EPOCH: {raw!r}")
+    return epoch
+
+
+def _normalize_sdist_archive(archive_path: Path, epoch: int) -> None:
+    with gzip.GzipFile(archive_path, "rb") as gz_in:
+        with tarfile.open(fileobj=gz_in, mode="r:*") as tar_in:
+            members = tar_in.getmembers()
+            member_data = []
+            for m in members:
+                content = tar_in.extractfile(m).read() if m.isfile() else None
+                member_data.append((m, content))
+
+    tar_buf = io.BytesIO()
+    with tarfile.open(
+        fileobj=tar_buf, mode="w", format=tarfile.PAX_FORMAT
+    ) as tar_out:
+        for m, content in member_data:
+            m.mtime = epoch
+            m.uid = 0
+            m.gid = 0
+            m.uname = ""
+            m.gname = ""
+            m.pax_headers = {}
+            if content is not None:
+                m.size = len(content)
+                tar_out.addfile(m, io.BytesIO(content))
+            else:
+                tar_out.addfile(m)
+
+    tar_bytes = tar_buf.getvalue()
+    with open(archive_path, "wb") as f_out:
+        with gzip.GzipFile(
+            filename="", mode="wb", fileobj=f_out, mtime=epoch
+        ) as gz_out:
+            gz_out.write(tar_bytes)
 
 
 def _ignore(_directory: str, names: list[str]) -> set[str]:
@@ -54,6 +104,7 @@ def _staged_call(function, *args, **kwargs):
 
 
 def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
+    _parse_source_date_epoch()
     return _staged_call(
         _setuptools.build_wheel,
         wheel_directory,
@@ -63,7 +114,14 @@ def build_wheel(wheel_directory, config_settings=None, metadata_directory=None):
 
 
 def build_sdist(sdist_directory, config_settings=None):
-    return _staged_call(_setuptools.build_sdist, sdist_directory, config_settings)
+    epoch = _parse_source_date_epoch()
+    result = _staged_call(
+        _setuptools.build_sdist, sdist_directory, config_settings
+    )
+    if epoch is not None:
+        archive_path = Path(sdist_directory) / result
+        _normalize_sdist_archive(archive_path, epoch)
+    return result
 
 
 def get_requires_for_build_wheel(config_settings=None):

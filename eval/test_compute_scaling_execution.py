@@ -1715,3 +1715,516 @@ def test_canonical_host_adapter_scaled_feedback_enabled_runs_recovery(
     assert metadata["coverage_recovery_triggered"] is True
     assert metadata["coverage_recovery_success"] is True
     assert metadata["pass_type"] == "recovered"
+
+
+def test_canonical_host_adapter_records_scaling_telemetry_active_pin(
+    tmp_path: Path, monkeypatch
+):
+    """HostAdapter.solve records active compute scaling telemetry."""
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+    from mighty_mouse.host.adapter import HostAdapter
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tool_sigs = {"verify": lambda ws: None}
+    adapter_cfg, sigs = _setup_host_adapter_workspace(
+        workspace,
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "a" * 64,
+        model_class="local-small",
+        tool_signatures=tool_sigs,
+    )
+    state_dir = workspace / ".mighty-mouse"
+
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "a" * 64)
+    profile_id = adapter_cfg["execution_profile_id"]
+    profile = ExecutionProfile(profile_id, frozenset({"mcp", *sigs}))
+
+    pin = ComputeScalingPin(
+        pin_id="cspin-telemetry-active",
+        scope=scope,
+        scaling_policy=ComputeScalingPolicy(
+            variations=3,
+            temperature_schedule=(0.0, 0.4),
+            consensus_strategy="min_diff",
+            feedback_loop_enabled=True,
+        ),
+        model_digest=model_id.artifact_digest,
+        execution_profile_id=profile_id,
+    )
+    PolicyEngine(state_dir).pin_scaling(pin, model_id, profile)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\nallow_simulation: true\nprompt_segments: []\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_host_telem",
+        "task": "write feature",
+        "task_category": "feature",
+        "expected_files": ["a.py"],
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            return "```python:a.py\nx = 1\n```"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    HostAdapter().solve(
+        workspace=str(workspace),
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        tool_signatures=tool_sigs,
+    )
+
+    metadata_path = workspace / "logs" / "last_agent_run.json"
+    metadata = json.loads(metadata_path.read_text())
+    assert "compute_scaling" in metadata
+    cs = metadata["compute_scaling"]
+    assert cs["active"] is True
+    assert cs["activation_reason"] == "exact_compatible_pin"
+    assert cs["pin_id"] == "cspin-telemetry-active"
+    assert cs["scope"] == {
+        "mode": "coding",
+        "repository": "JOHNNYMACONNY/mighty-mouse",
+        "task_category": "feature",
+        "model_class": "local-small",
+    }
+    assert cs["model_digest"] == "sha256:" + "a" * 64
+    assert cs["execution_profile_id"] == profile_id
+    assert cs["policy"] == {
+        "variations": 3,
+        "temperature_schedule": [0.0, 0.4],
+        "effective_temperature_schedule": [0.0, 0.4, 0.4],
+        "consensus_strategy": "min_diff",
+        "feedback_loop_enabled": True,
+    }
+
+
+def test_canonical_host_adapter_records_scaling_telemetry_unpinned(
+    tmp_path: Path, monkeypatch
+):
+    """HostAdapter.solve without pin records no_exact_compatible_pin."""
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+    from mighty_mouse.host.adapter import HostAdapter
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tool_sigs = {"verify": lambda ws: None}
+    adapter_cfg, _ = _setup_host_adapter_workspace(
+        workspace,
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "b" * 64,
+        model_class="local-small",
+        tool_signatures=tool_sigs,
+    )
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\nallow_simulation: true\nprompt_segments: []\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_host_telem_unpinned",
+        "task": "write feature",
+        "task_category": "feature",
+        "expected_files": ["a.py"],
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            return "```python:a.py\nx = 1\n```"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    HostAdapter().solve(
+        workspace=str(workspace),
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        tool_signatures=tool_sigs,
+    )
+
+    metadata_path = workspace / "logs" / "last_agent_run.json"
+    metadata = json.loads(metadata_path.read_text())
+    cs = metadata["compute_scaling"]
+    assert cs["active"] is False
+    assert cs["activation_reason"] == "no_exact_compatible_pin"
+    assert cs["pin_id"] is None
+    assert cs["policy"] is None
+    assert cs["model_digest"] == "sha256:" + "b" * 64
+    assert cs["execution_profile_id"] == adapter_cfg["execution_profile_id"]
+    assert cs["scope"] == {
+        "mode": "coding",
+        "repository": "JOHNNYMACONNY/mighty-mouse",
+        "task_category": "feature",
+        "model_class": "local-small",
+    }
+
+
+def test_legacy_solve_records_scaling_telemetry_no_runtime_context(
+    tmp_path: Path, monkeypatch
+):
+    """Legacy solve() call records no_runtime_context telemetry."""
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\nallow_simulation: true\nprompt_segments: []\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_legacy_telem",
+        "task": "write feature",
+        "task_category": "feature",
+        "expected_files": ["a.py"],
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            return "```python:a.py\nx = 1\n```"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    mm_agent.solve(
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        workspace=str(workspace),
+    )
+
+    metadata_path = workspace / "logs" / "last_agent_run.json"
+    metadata = json.loads(metadata_path.read_text())
+    cs = metadata["compute_scaling"]
+    assert cs["active"] is False
+    assert cs["activation_reason"] == "no_runtime_context"
+    assert cs["pin_id"] is None
+    assert cs["policy"] is None
+    assert cs["scope"] is None
+    assert cs["model_digest"] is None
+    assert cs["execution_profile_id"] is None
+
+
+def test_planner_stage_records_scaling_telemetry_planner_stage(
+    tmp_path: Path, monkeypatch
+):
+    """Planner stage execution records planner_stage telemetry."""
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+    from mighty_mouse.host.adapter import HostAdapter
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tool_sigs = {"verify": lambda ws: None}
+    _setup_host_adapter_workspace(
+        workspace,
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "c" * 64,
+        model_class="local-small",
+        tool_signatures=tool_sigs,
+    )
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\nallow_simulation: true\nprompt_segments: []\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_planner_telem",
+        "task": "plan blueprint",
+        "task_category": "feature",
+        "expected_files": [],
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            return "<plan>blueprint</plan>"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    HostAdapter().solve(
+        workspace=str(workspace),
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        tool_signatures=tool_sigs,
+        stage="planner",
+    )
+
+    metadata_path = workspace / "logs" / "last_agent_run.json"
+    metadata = json.loads(metadata_path.read_text())
+    cs = metadata["compute_scaling"]
+    assert cs["active"] is False
+    assert cs["activation_reason"] == "planner_stage"
+    assert cs["pin_id"] is None
+    assert cs["policy"] is None
+    assert cs["scope"] is None
+    assert cs["model_digest"] is None
+    assert cs["execution_profile_id"] is None
+
+
+def test_canonical_host_adapter_missing_task_category_telemetry(
+    tmp_path: Path, monkeypatch
+):
+    """Missing or invalid task category records controlled inactive reason."""
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+    from mighty_mouse.host.adapter import HostAdapter
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tool_sigs = {"verify": lambda ws: None}
+    adapter_cfg, _ = _setup_host_adapter_workspace(
+        workspace,
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "d" * 64,
+        model_class="local-small",
+        tool_signatures=tool_sigs,
+    )
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\nallow_simulation: true\nprompt_segments: []\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_bad_cat_telem",
+        "task": "write feature",
+        "task_category": "nonexistent_category",
+        "expected_files": ["a.py"],
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            return "```python:a.py\nx = 1\n```"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    HostAdapter().solve(
+        workspace=str(workspace),
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        tool_signatures=tool_sigs,
+    )
+
+    metadata_path = workspace / "logs" / "last_agent_run.json"
+    metadata = json.loads(metadata_path.read_text())
+    cs = metadata["compute_scaling"]
+    assert cs["active"] is False
+    assert cs["activation_reason"] == "missing_or_invalid_task_category"
+    assert cs["pin_id"] is None
+    assert cs["policy"] is None
+    assert cs["scope"] is None
+    assert cs["model_digest"] == "sha256:" + "d" * 64
+    assert cs["execution_profile_id"] == adapter_cfg["execution_profile_id"]
+
+
+def test_spoofed_task_provenance_cannot_activate_scaling_or_alter_telemetry(
+    tmp_path: Path, monkeypatch
+):
+    """Spoofed config/task provenance cannot activate scaling or telemetry."""
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\n"
+        "allow_simulation: true\n"
+        "model_digest: sha256:spoofed\n"
+        "model_class: local-small\n"
+        "repository: JOHNNYMACONNY/mighty-mouse\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_spoofed_telem",
+        "task": "write feature",
+        "task_category": "feature",
+        "expected_files": ["a.py"],
+        "model_digest": "sha256:spoofed",
+        "model_class": "local-small",
+        "repository": "JOHNNYMACONNY/mighty-mouse",
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    call_count = 0
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            nonlocal call_count
+            call_count += 1
+            return "```python:a.py\nx = 1\n```"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    mm_agent.solve(
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        workspace=str(workspace),
+    )
+
+    assert call_count == 1
+    metadata_path = workspace / "logs" / "last_agent_run.json"
+    metadata = json.loads(metadata_path.read_text())
+    cs = metadata["compute_scaling"]
+    assert cs["active"] is False
+    assert cs["activation_reason"] == "no_runtime_context"
+    assert cs["pin_id"] is None
+    assert cs["scope"] is None
+    assert cs["model_digest"] is None
+    assert cs["execution_profile_id"] is None
+    assert cs["policy"] is None
+
+
+def test_scaling_telemetry_is_observational_only_preserves_execution(
+    tmp_path: Path, monkeypatch
+):
+    """Telemetry collection does not change provider calls or output."""
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+    from mighty_mouse.host.adapter import HostAdapter
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tool_sigs = {"verify": lambda ws: None}
+    adapter_cfg, sigs = _setup_host_adapter_workspace(
+        workspace,
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "e" * 64,
+        model_class="local-small",
+        tool_signatures=tool_sigs,
+    )
+    state_dir = workspace / ".mighty-mouse"
+
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "e" * 64)
+    profile_id = adapter_cfg["execution_profile_id"]
+    profile = ExecutionProfile(profile_id, frozenset({"mcp", *sigs}))
+
+    pin = ComputeScalingPin(
+        pin_id="cspin-telemetry-observational",
+        scope=scope,
+        scaling_policy=ComputeScalingPolicy(
+            variations=3,
+            temperature_schedule=(0.0, 0.35, 0.70),
+            consensus_strategy="min_diff",
+            feedback_loop_enabled=False,
+        ),
+        model_digest=model_id.artifact_digest,
+        execution_profile_id=profile_id,
+    )
+    PolicyEngine(state_dir).pin_scaling(pin, model_id, profile)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\nallow_simulation: true\nprompt_segments: []\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_host_obs_telem",
+        "task": "write feature",
+        "task_category": "feature",
+        "expected_files": ["a.py"],
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    call_count = 0
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            nonlocal call_count
+            call_count += 1
+            return f"```python:a.py\nx = {call_count}\n```"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    HostAdapter().solve(
+        workspace=str(workspace),
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        tool_signatures=tool_sigs,
+    )
+
+    # 3 variations were called
+    assert call_count == 3
+    # Consensus winner selected and written cleanly
+    assert (workspace / "a.py").exists()
+
+    metadata_path = workspace / "logs" / "last_agent_run.json"
+    metadata = json.loads(metadata_path.read_text())
+    assert metadata["compute_scaling"]["active"] is True
+    assert (
+        metadata["compute_scaling"]["pin_id"]
+        == "cspin-telemetry-observational"
+    )
+    assert metadata["compute_scaling"]["policy"]["variations"] == 3

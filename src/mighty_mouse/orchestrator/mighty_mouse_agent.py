@@ -1,15 +1,16 @@
 import argparse
+from enum import Enum
 import json
 import logging
 import os
+from pathlib import Path
 import sys
 import time
-
-logger = logging.getLogger(__name__)
-
-from pathlib import Path
+from typing import Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 try:
     from mighty_mouse.orchestrator.agent_execution import (
@@ -30,6 +31,7 @@ try:
     from mighty_mouse.host.adapter import AdapterRuntimeContext
     from mighty_mouse.v2.engine import PolicyEngine
     from mighty_mouse.v2.records import (
+        ComputeScalingPin,
         ComputeScalingPolicy,
         ExecutionProfile,
         Mode,
@@ -56,6 +58,7 @@ except ImportError:
     )
     from v2.engine import PolicyEngine  # type: ignore[no-redef]
     from v2.records import (  # type: ignore[no-redef]
+        ComputeScalingPin,
         ComputeScalingPolicy,
         ExecutionProfile,
         Mode,
@@ -486,7 +489,29 @@ def _solve_inner(
     state_dir = os.path.join(workspace_root, ".mighty-mouse")
 
     scaling_policy: ComputeScalingPolicy | None = None
-    if stage != "planner" and runtime_context is not None:
+    scaling_telemetry: dict[str, Any]
+
+    if stage == "planner":
+        scaling_telemetry = {
+            "active": False,
+            "activation_reason": "planner_stage",
+            "pin_id": None,
+            "scope": None,
+            "model_digest": None,
+            "execution_profile_id": None,
+            "policy": None,
+        }
+    elif runtime_context is None:
+        scaling_telemetry = {
+            "active": False,
+            "activation_reason": "no_runtime_context",
+            "pin_id": None,
+            "scope": None,
+            "model_digest": None,
+            "execution_profile_id": None,
+            "policy": None,
+        }
+    else:
         task_cat_str = (
             task_data.get("task_category")
             if isinstance(task_data, dict) and task_data.get("task_category")
@@ -512,13 +537,104 @@ def _solve_inner(
                 model_class=runtime_context.model_class,
             )
             resolved_state_dir = runtime_context.state_dir or Path(state_dir)
-            scaling_policy = PolicyEngine(
+            scaling_pin = PolicyEngine(
                 resolved_state_dir
-            ).resolve_scaling_policy(
+            ).resolve_scaling_pin(
                 scope=scope,
                 model_identity=runtime_context.model_identity,
                 execution_profile=runtime_context.execution_profile,
             )
+            if scaling_pin is not None:
+                scaling_policy = scaling_pin.scaling_policy
+                scope_mode = (
+                    scaling_pin.scope.mode.value
+                    if isinstance(scaling_pin.scope.mode, Enum)
+                    else str(scaling_pin.scope.mode)
+                )
+                scope_cat = (
+                    scaling_pin.scope.task_category.value
+                    if isinstance(scaling_pin.scope.task_category, Enum)
+                    else str(scaling_pin.scope.task_category)
+                )
+                scaling_telemetry = {
+                    "active": True,
+                    "activation_reason": "exact_compatible_pin",
+                    "pin_id": scaling_pin.pin_id,
+                    "scope": {
+                        "mode": scope_mode,
+                        "repository": scaling_pin.scope.repository,
+                        "task_category": scope_cat,
+                        "model_class": scaling_pin.scope.model_class,
+                    },
+                    "model_digest": scaling_pin.model_digest,
+                    "execution_profile_id": scaling_pin.execution_profile_id,
+                    "policy": {
+                        "variations": scaling_policy.variations,
+                        "temperature_schedule": list(
+                            scaling_policy.temperature_schedule
+                        ),
+                        "effective_temperature_schedule": list(
+                            scaling_policy.effective_temperature_schedule()
+                        ),
+                        "consensus_strategy": (
+                            scaling_policy.consensus_strategy
+                        ),
+                        "feedback_loop_enabled": (
+                            scaling_policy.feedback_loop_enabled
+                        ),
+                    },
+                }
+            else:
+                scope_mode = (
+                    scope.mode.value
+                    if isinstance(scope.mode, Enum)
+                    else str(scope.mode)
+                )
+                scope_cat = (
+                    scope.task_category.value
+                    if isinstance(scope.task_category, Enum)
+                    else str(scope.task_category)
+                )
+                scaling_telemetry = {
+                    "active": False,
+                    "activation_reason": "no_exact_compatible_pin",
+                    "pin_id": None,
+                    "scope": {
+                        "mode": scope_mode,
+                        "repository": scope.repository,
+                        "task_category": scope_cat,
+                        "model_class": scope.model_class,
+                    },
+                    "model_digest": (
+                        runtime_context.model_identity.artifact_digest
+                        if runtime_context.model_identity
+                        else None
+                    ),
+                    "execution_profile_id": (
+                        runtime_context.execution_profile.profile_id
+                        if runtime_context.execution_profile
+                        else None
+                    ),
+                    "policy": None,
+                }
+        else:
+            scaling_telemetry = {
+                "active": False,
+                "activation_reason": "missing_or_invalid_task_category",
+                "pin_id": None,
+                "scope": None,
+                "model_digest": (
+                    runtime_context.model_identity.artifact_digest
+                    if runtime_context.model_identity
+                    else None
+                ),
+                "execution_profile_id": (
+                    runtime_context.execution_profile.profile_id
+                    if runtime_context.execution_profile
+                    else None
+                ),
+                "policy": None,
+            }
 
     response_context = ResponseAttemptContext(
         system_prompt=full_sys,
@@ -656,8 +772,11 @@ def _solve_inner(
             "coverage_missing_files": coverage_missing_files,
             "coverage_recovery_attempts": coverage_recovery_attempts,
             "coverage_recovery_success": coverage_recovery_success,
-            "coverage_recovery_disallowed_reason": coverage_recovery_disallowed_reason,
-            "pass_type": pass_type
+            "coverage_recovery_disallowed_reason": (
+                coverage_recovery_disallowed_reason
+            ),
+            "pass_type": pass_type,
+            "compute_scaling": scaling_telemetry,
         },
     )
 

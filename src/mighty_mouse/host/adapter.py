@@ -78,6 +78,50 @@ class HostAdapter:
     ) -> PromotionNotice:
         return self._policy_engine().rollback(scope, model_identity, execution_profile, reason, security_breach)
 
+    def solve(
+        self,
+        workspace: str,
+        p_cfg_path: str,
+        task_input: str,
+        *,
+        state_dir: str | None = None,
+        tool_signatures: dict[str, Any],
+        contract_version: int = MCP_TOOL_CONTRACT_VERSION,
+        feedback_str: str | None = None,
+        explicit_skills: str | None = None,
+        temperature: float | None = None,
+        stage: str = "unified",
+        plan_file: str | None = None,
+    ) -> None:
+        """Execute coding task using authoritatively resolved host
+        runtime context.
+        """
+        ctx = self.resolve_adapter_context(
+            workspace=workspace,
+            state_dir=state_dir,
+            tool_signatures=tool_signatures,
+            contract_version=contract_version,
+        )
+        try:
+            from mighty_mouse.orchestrator.mighty_mouse_agent import (
+                _solve_with_runtime_context,
+            )
+        except ImportError:
+            from mighty_mouse_agent import (  # type: ignore[no-redef]
+                _solve_with_runtime_context,
+            )
+        return _solve_with_runtime_context(
+            p_cfg_path,
+            task_input,
+            runtime_context=ctx,
+            feedback_str=feedback_str,
+            workspace=workspace,
+            explicit_skills=explicit_skills,
+            temperature=temperature,
+            stage=stage,
+            plan_file=plan_file,
+        )
+
     @staticmethod
     def get_tool_contract(
         tool_signatures: dict[str, Any],

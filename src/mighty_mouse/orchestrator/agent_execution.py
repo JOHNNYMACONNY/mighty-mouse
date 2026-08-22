@@ -341,6 +341,14 @@ def _execute_agent_execution(
             deletable_expected_files=request.deletable_expected_files,
             coverage_recovery_attempts=coverage_recovery_attempts,
         )
+        if (
+            missing_files
+            and disallowed_reason is None
+            and scaling_policy is not None
+            and not getattr(scaling_policy, "feedback_loop_enabled", True)
+        ):
+            disallowed_reason = "SCALING_FEEDBACK_DISABLED"
+
         if missing_files:
             coverage_missing_files = missing_files
 

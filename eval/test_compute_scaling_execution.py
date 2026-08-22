@@ -1518,3 +1518,200 @@ def test_canonical_host_adapter_unconfigured_workspace_fails(tmp_path: Path):
             task_input=str(task_file),
             tool_signatures={"verify": lambda ws: None},
         )
+
+
+def test_canonical_host_adapter_scaled_feedback_disabled_suppresses_recovery(
+    tmp_path: Path, monkeypatch
+):
+    """HostAdapter.solve with feedback_loop_enabled=False suppresses
+    recovery.
+    """
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+    from mighty_mouse.host.adapter import HostAdapter
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tool_sigs = {"verify": lambda ws: None}
+    adapter_cfg, sigs = _setup_host_adapter_workspace(
+        workspace,
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "8" * 64,
+        model_class="local-small",
+        tool_signatures=tool_sigs,
+    )
+    state_dir = workspace / ".mighty-mouse"
+
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "8" * 64)
+    profile_id = adapter_cfg["execution_profile_id"]
+    profile = ExecutionProfile(profile_id, frozenset({"mcp", *sigs}))
+
+    pin = ComputeScalingPin(
+        pin_id="cspin-host-feedback-disabled",
+        scope=scope,
+        scaling_policy=ComputeScalingPolicy(
+            variations=2,
+            temperature_schedule=(0.0, 0.4),
+            consensus_strategy="min_diff",
+            feedback_loop_enabled=False,
+        ),
+        model_digest=model_id.artifact_digest,
+        execution_profile_id=profile_id,
+    )
+    PolicyEngine(state_dir).pin_scaling(pin, model_id, profile)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\nallow_simulation: true\nprompt_segments: []\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_host_fb_disabled",
+        "task": "write feature",
+        "task_category": "feature",
+        "expected_files": ["a.py", "b.py"],
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    call_count = 0
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            nonlocal call_count
+            call_count += 1
+            return "```python:a.py\nx = 1\n```"
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    HostAdapter().solve(
+        workspace=str(workspace),
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        tool_signatures=tool_sigs,
+    )
+
+    assert call_count == 2
+    assert (workspace / "a.py").read_text() == "x = 1"
+    assert not (workspace / "b.py").exists()
+
+    metadata_path = workspace / "logs" / "last_agent_run.json"
+    metadata = json.loads(metadata_path.read_text())
+    assert metadata["coverage_recovery_attempts"] == 0
+    assert metadata["coverage_recovery_triggered"] is False
+    assert (
+        metadata["coverage_recovery_disallowed_reason"]
+        == "SCALING_FEEDBACK_DISABLED"
+    )
+    assert metadata["pass_type"] == "failed"
+
+
+def test_canonical_host_adapter_scaled_feedback_enabled_runs_recovery(
+    tmp_path: Path, monkeypatch
+):
+    """HostAdapter.solve with feedback_loop_enabled=True performs recovery."""
+    import json
+    import mighty_mouse.orchestrator.mighty_mouse_agent as mm_agent
+    from mighty_mouse.host.adapter import HostAdapter
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    tool_sigs = {"verify": lambda ws: None}
+    adapter_cfg, sigs = _setup_host_adapter_workspace(
+        workspace,
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "9" * 64,
+        model_class="local-small",
+        tool_signatures=tool_sigs,
+    )
+    state_dir = workspace / ".mighty-mouse"
+
+    scope = Scope(
+        Mode.CODING,
+        "JOHNNYMACONNY/mighty-mouse",
+        TaskCategory.FEATURE,
+        "local-small",
+    )
+    model_id = ModelIdentity("sha256:" + "9" * 64)
+    profile_id = adapter_cfg["execution_profile_id"]
+    profile = ExecutionProfile(profile_id, frozenset({"mcp", *sigs}))
+
+    pin = ComputeScalingPin(
+        pin_id="cspin-host-feedback-enabled",
+        scope=scope,
+        scaling_policy=ComputeScalingPolicy(
+            variations=2,
+            temperature_schedule=(0.0, 0.4),
+            consensus_strategy="min_diff",
+            feedback_loop_enabled=True,
+        ),
+        model_digest=model_id.artifact_digest,
+        execution_profile_id=profile_id,
+    )
+    PolicyEngine(state_dir).pin_scaling(pin, model_id, profile)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "provider: sim\nallow_simulation: true\nprompt_segments: []\n"
+    )
+    task_file = tmp_path / "task.json"
+    task_data = {
+        "id": "task_host_fb_enabled",
+        "task": "write feature",
+        "task_category": "feature",
+        "expected_files": ["a.py", "b.py"],
+    }
+    task_file.write_text(json.dumps(task_data))
+
+    responses = iter([
+        "```python:a.py\nx = 1\n```",
+        "```python:a.py\nx = 1\n```",
+        "```python:b.py\ny = 2\n```",
+        "```python:b.py\ny = 2\n```",
+    ])
+    call_count = 0
+
+    class MockGeminiClient:
+        def __init__(self, config):
+            self.last_metadata = {
+                "usage": {"total_tokens": 5},
+                "latency_seconds": 0.01,
+            }
+
+        def generate_content(self, sys_prompt, user_prompt):
+            nonlocal call_count
+            call_count += 1
+            return next(responses)
+
+    monkeypatch.setattr(mm_agent, "GeminiClient", MockGeminiClient)
+    monkeypatch.setattr(mm_agent, "_REPO_ROOT", str(tmp_path))
+
+    HostAdapter().solve(
+        workspace=str(workspace),
+        p_cfg_path=str(config_file),
+        task_input=str(task_file),
+        tool_signatures=tool_sigs,
+    )
+
+    assert call_count == 4
+    assert (workspace / "a.py").read_text() == "x = 1"
+    assert (workspace / "b.py").read_text() == "y = 2"
+
+    metadata_path = workspace / "logs" / "last_agent_run.json"
+    metadata = json.loads(metadata_path.read_text())
+    assert metadata["coverage_recovery_attempts"] == 1
+    assert metadata["coverage_recovery_triggered"] is True
+    assert metadata["coverage_recovery_success"] is True
+    assert metadata["pass_type"] == "recovered"

@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import unittest
@@ -76,15 +77,18 @@ class TestSwarmOrchestrator(unittest.TestCase):
         res = planner.plan(self.task_data)
         self.assertIn("plan_text", res)
         self.assertIn("visitor.py", res["authorized_files"])
+        self.assertIsInstance(json.dumps(res), str)
 
     def test_swarm_coder(self):
         coder = SwarmCoder(ollama_client=self.mock_client)
         plan_info = {"plan_text": "Authorized file: visitor.py"}
         res = coder.code(self.task_data, plan_info)
         self.assertIn("visitor.py", res["file_updates"])
-        self.assertEqual(res["planned_output_paths"], ("visitor.py",))
+        self.assertEqual(res["planned_output_paths"], ["visitor.py"])
         self.assertIsNotNone(res["response_plan"])
         self.assertEqual(len(res["warnings"]), 0)
+        # Verify JSON serializability of coder result
+        self.assertIsInstance(json.dumps(res), str)
 
     def test_swarm_coder_canonical_fenced_response_planning(self):
         class CanonicalFencedClient:
@@ -102,9 +106,10 @@ class TestSwarmOrchestrator(unittest.TestCase):
             result["file_updates"],
             {"answer.py": "answer = True"},
         )
-        self.assertEqual(result["planned_output_paths"], ("answer.py",))
+        self.assertEqual(result["planned_output_paths"], ["answer.py"])
         self.assertIsNotNone(result["response_plan"])
         self.assertEqual(len(result["warnings"]), 0)
+        self.assertIsInstance(json.dumps(result), str)
 
     def test_swarm_coder_legacy_file_block_planning(self):
         class LegacyBlockClient:
@@ -125,9 +130,10 @@ class TestSwarmOrchestrator(unittest.TestCase):
             result["file_updates"],
             {"answer.py": "answer = True"},
         )
-        self.assertEqual(result["planned_output_paths"], ("answer.py",))
+        self.assertEqual(result["planned_output_paths"], ["answer.py"])
         self.assertIsNotNone(result["response_plan"])
         self.assertEqual(len(result["warnings"]), 0)
+        self.assertIsInstance(json.dumps(result), str)
 
     def test_swarm_coder_legacy_absolute_path_rejection(self):
         class AbsolutePathClient:
@@ -150,8 +156,9 @@ class TestSwarmOrchestrator(unittest.TestCase):
             )
         )
         self.assertEqual(result["file_updates"], {})
-        self.assertEqual(result["planned_output_paths"], ())
+        self.assertEqual(result["planned_output_paths"], [])
         self.assertIsNone(result["response_plan"])
+        self.assertIsInstance(json.dumps(result), str)
 
     def test_swarm_coder_legacy_traversal_rejection(self):
         class TraversalClient:
@@ -174,8 +181,9 @@ class TestSwarmOrchestrator(unittest.TestCase):
             )
         )
         self.assertEqual(res["file_updates"], {})
-        self.assertEqual(res["planned_output_paths"], ())
+        self.assertEqual(res["planned_output_paths"], [])
         self.assertIsNone(res["response_plan"])
+        self.assertIsInstance(json.dumps(res), str)
 
     def test_swarm_coder_legacy_mighty_protection_enforced(self):
         class MightyHarnessClient:
@@ -192,8 +200,9 @@ class TestSwarmOrchestrator(unittest.TestCase):
             workspace_root="/tmp/safe",
         )
         self.assertEqual(res["file_updates"], {})
-        self.assertEqual(res["planned_output_paths"], ())
+        self.assertEqual(res["planned_output_paths"], [])
         self.assertEqual(len(res["warnings"]), 0)
+        self.assertIsInstance(json.dumps(res), str)
 
     def test_swarm_coder_is_strictly_non_mutating_on_workspace(self):
         import tempfile
@@ -258,6 +267,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
             self.assertIn("existing.py", res["planned_output_paths"])
             self.assertIn("new_file.py", res["planned_output_paths"])
             self.assertEqual(len(res["warnings"]), 0)
+            self.assertIsInstance(json.dumps(res), str)
 
     def test_swarm_coder_planned_deletes_require_authorization(self):
         import tempfile
@@ -288,6 +298,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
             self.assertTrue(
                 any("Deletion not permitted" in w for w in res["warnings"])
             )
+            self.assertIsInstance(json.dumps(res), str)
 
     def test_swarm_orchestrator_caller_inventory(self):
         from pathlib import Path
@@ -331,6 +342,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
         res = reviewer.review(verif)
         self.assertEqual(res["verdict"], "PASS")
         self.assertEqual(res["feedback"], "")
+        self.assertIsInstance(json.dumps(res), str)
 
     def test_swarm_reviewer_reject_with_feedback(self):
         reviewer = SwarmReviewer(ollama_client=self.mock_client)
@@ -344,6 +356,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
         res = reviewer.review(verif)
         self.assertEqual(res["verdict"], "REJECT")
         self.assertIn("SCOPE VIOLATION", res["feedback"])
+        self.assertIsInstance(json.dumps(res), str)
 
     def test_swarm_orchestrator_sequential_pipeline_is_non_mutating(self):
         import tempfile
@@ -381,6 +394,8 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 if p.is_file()
             }
             self.assertEqual(snapshot_before, snapshot_after)
+            # Verify full pipeline result is JSON serializable
+            self.assertIsInstance(json.dumps(res), str)
 
     def test_swarm_orchestrator_concurrent_dual_slot_pipeline_non_mutating(
         self,
@@ -420,6 +435,24 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 if p.is_file()
             }
             self.assertEqual(snapshot_before, snapshot_after)
+            # Verify concurrent pipeline result is JSON serializable
+            self.assertIsInstance(json.dumps(res), str)
+
+    def test_swarm_cli_dispatcher_json_serialization_characterization(self):
+        orchestrator = SwarmOrchestrator(
+            concurrency=1,
+            ollama_client=self.mock_client,
+        )
+        res = orchestrator.execute_swarm_pipeline(
+            self.task_data,
+            verifier_func=None,
+        )
+        serialized = json.dumps(res, indent=2)
+        self.assertIsInstance(serialized, str)
+        loaded = json.loads(serialized)
+        self.assertEqual(loaded["review"]["verdict"], "PASS")
+        self.assertIn("visitor.py", loaded["coder"]["planned_output_paths"])
+        self.assertIn("operations", loaded["coder"]["response_plan"])
 
 
 if __name__ == "__main__":

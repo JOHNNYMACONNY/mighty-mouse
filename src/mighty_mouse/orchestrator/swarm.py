@@ -134,8 +134,8 @@ class SwarmCoder:
         # Unify legacy [FILE: path] syntax into canonical code block format
         canonical_response = _canonicalize_swarm_response(response_text)
 
-        response_plan: Optional[ResponsePlan] = None
-        planned_output_paths: tuple[str, ...] = ()
+        response_plan: Optional[Dict[str, Any]] = None
+        planned_output_paths: List[str] = []
         file_updates: Dict[str, str] = {}
         warnings: List[str] = []
 
@@ -148,8 +148,18 @@ class SwarmCoder:
                     ),
                 )
             )
-            response_plan = plan
-            planned_output_paths = plan.output_paths
+            response_plan = {
+                "operations": [
+                    {
+                        "kind": op.kind,
+                        "path": op.path,
+                        "content": op.content,
+                    }
+                    for op in plan.operations
+                ],
+                "output_paths": list(plan.output_paths),
+            }
+            planned_output_paths = list(plan.output_paths)
             for op in plan.operations:
                 if op.kind == "write":
                     file_updates[op.path] = op.content

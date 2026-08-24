@@ -478,28 +478,54 @@ def run_swarm_execute(
     verification = pipeline_result.get("verification", {})
     application = pipeline_result.get("application", {})
     applied_paths = list(application.get("applied_output_paths", []))
+
+    review_reason = str(review.get("reason", ""))
+    verification_result = verification.get("result")
+    verification_summary = (
+        str(verification_result.get("summary", ""))
+        if isinstance(verification_result, dict)
+        else str(verification.get("summary", ""))
+    )
+
+    raw_provenance = solve_result.get("host_provenance", {})
+    bounded_provenance = {
+        "repository": str(raw_provenance.get("repository", "")),
+        "model_class": str(raw_provenance.get("model_class", "")),
+        "model_digest": str(raw_provenance.get("model_digest", "")),
+        "execution_profile_id": str(
+            raw_provenance.get("execution_profile_id", "")
+        ),
+        "model_source": str(raw_provenance.get("model_source", "")),
+        "ollama_model": raw_provenance.get("ollama_model"),
+        "contract_version": int(
+            raw_provenance.get(
+                "contract_version", MCP_TOOL_CONTRACT_VERSION
+            )
+        ),
+    }
+
     return {
         "schema_version": 1,
         "interface": "swarm_execute",
-        "host_provenance": solve_result.get("host_provenance", {}),
-        "turn": pipeline_result.get("turn", 1),
+        "host_provenance": bounded_provenance,
+        "turn": int(pipeline_result.get("turn", 1)),
         "review": {
-            "verdict": review.get("verdict", "UNKNOWN"),
-            "reason": review.get("feedback", ""),
+            "verdict": str(review.get("verdict", "UNKNOWN")),
+            "reason": review_reason,
         },
         "verification": {
-            "available": verification.get("available", False),
-            "occurred": verification.get("occurred", False),
-            "passed": verification.get("passed", False),
-            "summary": verification.get("summary", ""),
+            "available": bool(verification.get("available", False)),
+            "occurred": bool(verification.get("occurred", False)),
+            "passed": bool(verification.get("passed", False)),
+            "summary": verification_summary,
         },
         "application": {
-            "available": application.get("available", False),
-            "occurred": application.get("occurred", False),
+            "available": bool(application.get("available", False)),
+            "occurred": bool(application.get("occurred", False)),
             "applied_output_paths": applied_paths,
         },
         "output_files": applied_paths,
-        "elapsed_sec": pipeline_result.get("elapsed_sec", 0.0),
+        "elapsed_sec": float(pipeline_result.get("elapsed_sec", 0.0)),
     }
 
 

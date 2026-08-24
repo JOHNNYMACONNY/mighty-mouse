@@ -1329,39 +1329,11 @@ def test_run_swarm_execute_delegates_to_host_adapter_and_projects_clean_result(
     assert delegation_kwargs["allowed_paths"] == ["app.py", "utils.py"]
     assert delegation_kwargs["timeout_sec"] == 60
 
-    # Check projected bounded result
-    assert result["schema_version"] == 1
-    assert result["interface"] == "swarm_execute"
-    assert result["host_provenance"]["model_source"] == "ollama"
-    assert result["host_provenance"]["contract_version"] == 6
-    assert result["turn"] == 1
-    assert result["review"] == {"verdict": "PASS", "reason": "Code is solid"}
-    assert result["verification"] == {
-        "available": True,
-        "occurred": True,
-        "passed": True,
-        "summary": "All tests passed",
-    }
-    assert result["application"] == {
-        "available": True,
-        "occurred": True,
-        "applied_output_paths": ["app.py", "utils.py"],
-    }
-    assert result["output_files"] == ["app.py", "utils.py"]
-    assert result["elapsed_sec"] == 1.25
-
-    # Check strictly excluded fields (0 source leakage)
-    assert "raw_response" not in result
-    assert "canonical_response" not in result
-    assert "plan" not in result
-    assert "file_updates" not in result
-    assert "command_output" not in result["verification"]
-
     # Check JSON serializability
     assert json.loads(json.dumps(result)) == result
 
 
-def test_run_swarm_execute_reject_projects_zero_application(
+def test_run_swarm_execute_pass_projects_bounded_canonical_summary(
     tmp_path, monkeypatch
 ):
     import mighty_mouse_mcp.server as server
@@ -1385,14 +1357,128 @@ def test_run_swarm_execute_reject_projects_zero_application(
             "pipeline_result": {
                 "turn": 1,
                 "review": {
-                    "verdict": "REJECT",
-                    "feedback": "Syntax error in candidate",
+                    "verdict": "PASS",
+                    "reason": "All executable verification checks passed.",
+                    "feedback": "CHECK 'tests' PASSED: verbose output",
                 },
                 "verification": {
                     "available": True,
-                    "occurred": False,
+                    "occurred": True,
+                    "passed": True,
+                    "result": {
+                        "passed": True,
+                        "summary": (
+                            "All executable verification checks passed."
+                        ),
+                        "checks": [
+                            {
+                                "name": "tests",
+                                "passed": True,
+                                "output": "sensitive_log",
+                            }
+                        ],
+                    },
+                },
+                "application": {
+                    "available": True,
+                    "occurred": True,
+                    "applied_output_paths": ["app.py", "utils.py"],
+                },
+                "elapsed_sec": 1.25,
+                "raw_response": "```python:app.py\nprint('hello')\n```",
+                "canonical_response": "```python:app.py\nprint('hello')\n```",
+                "plan": "Step 1: implement app.py",
+                "file_updates": {"app.py": "print('hello')"},
+            },
+        }
+
+    monkeypatch.setattr(server.HostAdapter, "solve_swarm", mock_solve_swarm)
+
+    result = server.run_swarm_execute(
+        workspace=str(workspace),
+        verification_workspace=str(iso_ws),
+        task={"id": "swarm_pass", "task": "test pass"},
+    )
+
+    # Check projected bounded result
+    assert result["schema_version"] == 1
+    assert result["interface"] == "swarm_execute"
+    assert result["host_provenance"]["model_source"] == "ollama"
+    assert result["host_provenance"]["contract_version"] == 6
+    assert result["turn"] == 1
+    assert result["review"] == {
+        "verdict": "PASS",
+        "reason": "All executable verification checks passed.",
+    }
+    assert result["verification"] == {
+        "available": True,
+        "occurred": True,
+        "passed": True,
+        "summary": "All executable verification checks passed.",
+    }
+    assert result["application"] == {
+        "available": True,
+        "occurred": True,
+        "applied_output_paths": ["app.py", "utils.py"],
+    }
+    assert result["output_files"] == ["app.py", "utils.py"]
+    assert result["elapsed_sec"] == 1.25
+
+    # Check strictly excluded fields (0 source leakage)
+    assert "feedback" not in result["review"]
+    assert "checks" not in result["verification"]
+    assert "sensitive_log" not in json.dumps(result)
+    assert "raw_response" not in result
+    assert "canonical_response" not in result
+    assert "plan" not in result
+    assert "file_updates" not in result
+
+
+def test_run_swarm_execute_reject_suppresses_failure_feedback_leakage(
+    tmp_path, monkeypatch
+):
+    import mighty_mouse_mcp.server as server
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    iso_ws = tmp_path / "iso_workspace"
+    iso_ws.mkdir()
+
+    sentinel_output = "SECRET_OR_VERBOSE_COMMAND_OUTPUT"
+
+    def mock_solve_swarm(self, **kwargs):
+        return {
+            "host_provenance": {
+                "repository": "JOHNNYMACONNY/mighty-mouse",
+                "model_class": "local-small",
+                "model_digest": "sha256:abcd",
+                "execution_profile_id": "profile_123",
+                "model_source": "ollama",
+                "ollama_model": "qwen2.5-coder:7b",
+                "contract_version": 6,
+            },
+            "pipeline_result": {
+                "turn": 1,
+                "review": {
+                    "verdict": "REJECT",
+                    "reason": "Tests failed.",
+                    "feedback": f"CHECK 'tests' FAILED:\n{sentinel_output}",
+                },
+                "verification": {
+                    "available": True,
+                    "occurred": True,
                     "passed": False,
-                    "summary": "",
+                    "result": {
+                        "passed": False,
+                        "summary": "Tests failed on assertion error",
+                        "checks": [
+                            {
+                                "name": "tests",
+                                "passed": False,
+                                "output": sentinel_output,
+                            }
+                        ],
+                    },
                 },
                 "application": {
                     "available": True,
@@ -1412,11 +1498,74 @@ def test_run_swarm_execute_reject_projects_zero_application(
     )
 
     assert result["review"]["verdict"] == "REJECT"
-    assert result["verification"]["occurred"] is False
+    assert result["review"]["reason"] == "Tests failed."
+    assert "feedback" not in result["review"]
+    assert result["verification"]["occurred"] is True
     assert result["verification"]["passed"] is False
+    assert result["verification"]["summary"] == "Tests failed on assertion error"
+    assert "checks" not in result["verification"]
     assert result["application"]["occurred"] is False
     assert result["application"]["applied_output_paths"] == []
     assert result["output_files"] == []
+
+    # Verify complete absence of sensitive / verbose command output
+    assert sentinel_output not in json.dumps(result)
+
+
+def test_run_swarm_execute_whitelists_host_provenance_fields(
+    tmp_path, monkeypatch
+):
+    import mighty_mouse_mcp.server as server
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    iso_ws = tmp_path / "iso_workspace"
+    iso_ws.mkdir()
+
+    def mock_solve_swarm(self, **kwargs):
+        return {
+            "host_provenance": {
+                "repository": "JOHNNYMACONNY/mighty-mouse",
+                "model_class": "local-small",
+                "model_digest": "sha256:abcd",
+                "execution_profile_id": "profile_123",
+                "model_source": "ollama",
+                "ollama_model": "qwen2.5-coder:7b",
+                "contract_version": 6,
+                "internal_state_path": "/secret/path/internal",
+                "future_sensitive_field": "DO_NOT_EXPOSE",
+            },
+            "pipeline_result": {
+                "turn": 1,
+                "review": {"verdict": "PASS", "reason": "ok"},
+                "verification": {"available": True, "occurred": True, "passed": True, "result": {"summary": "ok"}},
+                "application": {"available": True, "occurred": True, "applied_output_paths": ["out.py"]},
+                "elapsed_sec": 0.1,
+            },
+        }
+
+    monkeypatch.setattr(server.HostAdapter, "solve_swarm", mock_solve_swarm)
+
+    result = server.run_swarm_execute(
+        workspace=str(workspace),
+        verification_workspace=str(iso_ws),
+        task={"id": "swarm_adv", "task": "provenance test"},
+    )
+
+    prov = result["host_provenance"]
+    assert set(prov.keys()) == {
+        "repository",
+        "model_class",
+        "model_digest",
+        "execution_profile_id",
+        "model_source",
+        "ollama_model",
+        "contract_version",
+    }
+    assert "internal_state_path" not in prov
+    assert "future_sensitive_field" not in prov
+    assert "/secret/path/internal" not in json.dumps(result)
+    assert "DO_NOT_EXPOSE" not in json.dumps(result)
 
 
 def test_run_swarm_execute_propagates_host_adapter_exceptions(
@@ -1465,12 +1614,12 @@ def test_run_swarm_execute_no_side_effect_signals_or_policy_mutations(
             },
             "pipeline_result": {
                 "turn": 1,
-                "review": {"verdict": "PASS", "feedback": "ok"},
+                "review": {"verdict": "PASS", "reason": "ok"},
                 "verification": {
                     "available": True,
                     "occurred": True,
                     "passed": True,
-                    "summary": "ok",
+                    "result": {"summary": "ok"},
                 },
                 "application": {
                     "available": True,

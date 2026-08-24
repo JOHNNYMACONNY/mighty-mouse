@@ -167,6 +167,39 @@ class HostAdapter:
         except json.JSONDecodeError as exc:
             raise ValueError("task_input is invalid JSON") from exc
 
+        allowed_delete_paths: tuple[str, ...] = ()
+        if "deletable_files" in task_data:
+            raw_deletables = task_data["deletable_files"]
+            if not isinstance(raw_deletables, list):
+                raise ValueError(
+                    "task_input deletable_files must be a list of relative "
+                    f"path strings, got {type(raw_deletables).__name__}"
+                )
+            validated_paths: list[str] = []
+            for item in raw_deletables:
+                if not isinstance(item, str):
+                    raise ValueError(
+                        "task_input deletable_files entry must be a string, "
+                        f"got {type(item).__name__}"
+                    )
+                trimmed = item.strip()
+                if not trimmed:
+                    raise ValueError(
+                        "task_input deletable_files entry cannot be empty"
+                    )
+                if trimmed.startswith("/") or Path(trimmed).is_absolute():
+                    raise ValueError(
+                        "task_input deletable_files entry cannot be "
+                        f"absolute: {item}"
+                    )
+                if ".." in Path(trimmed).parts:
+                    raise ValueError(
+                        "task_input deletable_files entry cannot contain "
+                        f"parent traversal '..': {item}"
+                    )
+                validated_paths.append(trimmed)
+            allowed_delete_paths = tuple(validated_paths)
+
         ctx = self.resolve_adapter_context(
             workspace=workspace,
             state_dir=state_dir,
@@ -199,10 +232,9 @@ class HostAdapter:
                 create_isolated_verification_adapter,
             )
 
-        deletable_files = task_data.get("deletable_files", [])
         real_policy = ResponseApplicationPolicy(
             workspace_root=workspace,
-            allowed_delete_paths=tuple(deletable_files),
+            allowed_delete_paths=allowed_delete_paths,
         )
 
         iso_verifier = create_isolated_verification_adapter(

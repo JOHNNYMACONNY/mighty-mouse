@@ -589,3 +589,130 @@ def test_direct_swarm_orchestrator_unchanged():
     assert orch.model_name == "test-model"
     assert orch.concurrency == 1
     assert orch.ollama_client is mock_client
+
+
+@pytest.mark.parametrize(
+    "bad_deletable",
+    [
+        "old.py",
+        1,
+        True,
+        {},
+        ["ok.py", 1],
+        [""],
+        ["   "],
+        ["../outside.py"],
+        ["/tmp/outside.py"],
+    ],
+)
+def test_solve_swarm_rejects_malformed_deletable_files_before_generation(
+    monkeypatch, tmp_path, bad_deletable
+):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    setup_test_manifest(tmp_path / "home")
+    real_ws = tmp_path / "real_ws"
+    real_ws.mkdir()
+    (real_ws / "keep.py").write_text("keep_me\n")
+
+    iso_ws = tmp_path / "iso_ws"
+    iso_ws.mkdir()
+    (iso_ws / "keep.py").write_text("keep_me\n")
+
+    configure_adapter(real_ws)
+    adapter = HostAdapter()
+
+    task_input = json.dumps(
+        {
+            "id": "T1",
+            "instruction": "Do work",
+            "deletable_files": bad_deletable,
+        }
+    )
+
+    mock_generate = MagicMock()
+
+    with patch(CLIENT_CLS, mock_generate):
+        with pytest.raises(
+            ValueError, match="task_input deletable_files"
+        ):
+            adapter.solve_swarm(
+                workspace=str(real_ws),
+                task_input=task_input,
+                verification_workspace=str(iso_ws),
+                tool_signatures=TOOL_SIGNATURES,
+            )
+
+    # Prove zero generation calls, zero real application, workspace untouched
+    assert mock_generate.call_count == 0
+    assert (real_ws / "keep.py").read_text() == "keep_me\n"
+    assert (iso_ws / "keep.py").read_text() == "keep_me\n"
+
+
+def test_solve_swarm_valid_authorized_delete_applied_on_pass(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    setup_test_manifest(tmp_path / "home")
+    real_ws = tmp_path / "real_ws"
+    real_ws.mkdir()
+    (real_ws / "obsolete.py").write_text("delete_me\n")
+    (real_ws / "keep.py").write_text("keep_me\n")
+
+    iso_ws = tmp_path / "iso_ws"
+    iso_ws.mkdir()
+    (iso_ws / "obsolete.py").write_text("delete_me\n")
+    (iso_ws / "keep.py").write_text("keep_me\n")
+
+    configure_adapter(real_ws)
+    adapter = HostAdapter()
+
+    task_input = json.dumps(
+        {
+            "id": "T1",
+            "instruction": "Delete obsolete.py",
+            "deletable_files": ["obsolete.py"],
+        }
+    )
+
+    plan_resp = """<swarm_plan>
+## 1. Task Understanding
+Delete obsolete.py
+## 2. Mandatory Dependency Audit
+- obsolete.py (DELETE)
+## 3. Authorized File Impact Map
+- obsolete.py (DELETE)
+## 4. Implementation Steps
+1. Delete obsolete.py
+</swarm_plan>"""
+
+    code_resp = """<act>
+```delete:obsolete.py
+```
+```python:keep.py
+keep_me_updated
+```
+</act>"""
+
+    def mock_generate(self, sys_instr, user_prompt):
+        if "PLANNER" in sys_instr or "blueprint" in sys_instr.lower():
+            return plan_resp
+        if "CODER" in sys_instr or "code" in sys_instr.lower():
+            return code_resp
+        return ""
+
+    with patch(CLIENT_CLS, mock_generate):
+        result = adapter.solve_swarm(
+            workspace=str(real_ws),
+            task_input=task_input,
+            verification_workspace=str(iso_ws),
+            tool_signatures=TOOL_SIGNATURES,
+            test_command=[sys.executable, "-c", "print('ok')"],
+        )
+
+    # Real workspace has obsolete.py deleted and keep.py updated
+    assert not (real_ws / "obsolete.py").exists()
+    assert (real_ws / "keep.py").read_text() == "keep_me_updated"
+    # Isolated baseline is pristine
+    assert (iso_ws / "obsolete.py").exists()
+    assert (iso_ws / "keep.py").read_text() == "keep_me\n"
+    assert result["pipeline_result"]["application"]["occurred"] is True

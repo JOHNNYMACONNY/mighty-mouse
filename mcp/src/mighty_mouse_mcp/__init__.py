@@ -1,3 +1,3 @@
 """MCP transport for Mighty Mouse."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

@@ -47,7 +47,7 @@ Mighty Mouse acts as a high-reliability **cognitive exoskeleton** built around 4
 
 ## 🚀 Future Evolution & Roadmap
 
-- [ ] **Multi-Agent Swarm Orchestration**: Splitting execution into specialized Planner, Coder, and Reviewer subagents.
+- [x] **Multi-Agent Swarm Orchestration**: Splitting execution into specialized Planner, Coder, and Reviewer subagents.
 - [ ] **Real-Time IDE & MCP Hooks**: Background self-healing directly inside Antigravity, Cursor, Claude Code, and Windsurf.
 - [ ] **Cross-Model Frontier Parity**: Expanding perpetual benchmark evaluation to Llama 3 and Qwen models.
 
@@ -57,10 +57,11 @@ Mighty Mouse acts as a high-reliability **cognitive exoskeleton** built around 4
 
 Mighty Mouse can be used as a **Python Library**, exposed as an **MCP Server**, or integrated into IDE workflows:
 - **Integrations**: Antigravity, Claude Code, Codex, Cursor, Hermes, OpenClaw, and Windsurf.
-- **MCP Tools (v5)**:
+- **MCP Tools (v6)**:
   - `protocol`, `verify`, `setup_workspace`, `recording_audit`, `verify_and_record`
   - `run`: adaptive mode and policy selection for a workspace task
   - `agent_execute`: canonical coding execution with compute scaling support via `HostAdapter.solve`
+  - `swarm_execute`: canonical multi-agent swarm execution with isolated verification and single winner application via `HostAdapter.solve_swarm`
   - Policy controls: `policy_status`, `policy_preview`, `policy_pin`, `policy_rollback`
   - Compute scaling controls: `compute_scaling_status`, `compute_scaling_preview`, `compute_scaling_pin`
 

@@ -29,6 +29,24 @@ SUPPORTED_FILE_WRITE_TOOLS = frozenset(
 )
 SUPPORTED_SHELL_TOOLS = frozenset({"run_command"})
 
+# Bounded privacy-safe host reason projections for canonical reason codes
+_CANONICAL_REASON_DESCRIPTIONS: dict[str, str] = {
+    "not_applicable": "Action is not applicable",
+    "malformed_event": "Malformed host event",
+    "unsupported_phase": "Unsupported hook phase",
+    "unsupported_action": "Unsupported host action",
+    "invalid_workspace": "Invalid workspace",
+    "runtime_context_unavailable": "Runtime context unavailable",
+    "verification_passed": "Verification passed",
+    "verification_failed": "Verification failed",
+    "recovery_not_enabled": "Recovery not enabled",
+    "recovery_succeeded": "Recovery succeeded",
+    "recovery_failed": "Recovery failed",
+    "retry_budget_exhausted": "Retry budget exhausted",
+    "recursive_hook_suppressed": "Recursive hook suppressed",
+    "internal_error": "Internal hook error",
+}
+
 
 def _resolve_string_alias(
     payload: Mapping[str, Any],
@@ -299,23 +317,31 @@ def adapt_antigravity_pre_tool_use(
 def render_antigravity_pre_tool_use_result(
     result: HostHookResult,
 ) -> dict[str, str]:
-    """Project pre-action HostHookResult into Antigravity decision JSON."""
+    """Project pre-action HostHookResult into Antigravity decision JSON.
+
+    Projects controlled, privacy-safe host reason strings derived from
+    canonical reason codes rather than echoing arbitrary summary text.
+    """
     if not isinstance(result, HostHookResult):
         raise ValueError("result must be an instance of HostHookResult")
+
+    host_reason = _CANONICAL_REASON_DESCRIPTIONS.get(
+        result.reason_code, "Internal hook error"
+    )
 
     if result.disposition == "allow":
         return {
             "decision": "allow",
             "status": "allow",
             "action": "allow",
-            "reason": result.summary,
+            "reason": host_reason,
         }
     elif result.disposition == "deny":
         return {
             "decision": "deny",
             "status": "deny",
             "action": "deny",
-            "reason": result.summary,
+            "reason": host_reason,
         }
     else:
         raise ValueError(

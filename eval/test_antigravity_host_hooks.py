@@ -382,7 +382,7 @@ def test_authority_resistance() -> None:
 
 
 def test_render_antigravity_pre_tool_use_result() -> None:
-    """Result rendering projects allow/deny accurately and rejects others."""
+    """Result rendering projects controlled reason codes and rejects others."""
     allow_res = HostHookResult(
         schema_version=1,
         event_id="e1",
@@ -395,7 +395,7 @@ def test_render_antigravity_pre_tool_use_result() -> None:
         "decision": "allow",
         "status": "allow",
         "action": "allow",
-        "reason": "Action allowed by policy",
+        "reason": "Verification passed",
     }
 
     deny_res = HostHookResult(
@@ -410,7 +410,7 @@ def test_render_antigravity_pre_tool_use_result() -> None:
         "decision": "deny",
         "status": "deny",
         "action": "deny",
-        "reason": "Malformed tool input",
+        "reason": "Malformed host event",
     }
 
     # Reject non-pre-action dispositions
@@ -434,3 +434,34 @@ def test_render_antigravity_pre_tool_use_result() -> None:
         render_antigravity_pre_tool_use_result(
             {"fake": "dict"}  # type: ignore[arg-type]
         )
+
+
+def test_renderer_privacy_leakage_resistance() -> None:
+    """Renderer ignores raw HostHookResult.summary and uses mapped reason."""
+    # Deny side with sensitive summary
+    deny_leak = HostHookResult(
+        schema_version=1,
+        event_id="e-leak-deny",
+        disposition="deny",
+        reason_code="malformed_event",
+        summary="SECRET_COMMAND /private/token raw verifier output",
+    )
+    rendered_deny = render_antigravity_pre_tool_use_result(deny_leak)
+    assert "SECRET_COMMAND" not in str(rendered_deny)
+    assert "/private/token" not in str(rendered_deny)
+    assert "raw verifier output" not in str(rendered_deny)
+    assert rendered_deny["reason"] == "Malformed host event"
+
+    # Allow side with sensitive summary
+    allow_leak = HostHookResult(
+        schema_version=1,
+        event_id="e-leak-allow",
+        disposition="allow",
+        reason_code="verification_passed",
+        summary="SECRET_ALLOW_INTERNAL /sensitive/allow/path pass detail",
+    )
+    rendered_allow = render_antigravity_pre_tool_use_result(allow_leak)
+    assert "SECRET_ALLOW_INTERNAL" not in str(rendered_allow)
+    assert "/sensitive/allow/path" not in str(rendered_allow)
+    assert "pass detail" not in str(rendered_allow)
+    assert rendered_allow["reason"] == "Verification passed"

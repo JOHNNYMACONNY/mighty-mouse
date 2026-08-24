@@ -9,7 +9,9 @@ Dual-Slot (concurrency=2) execution modes.
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from typing import (
@@ -83,6 +85,21 @@ SwarmVerificationAdapter = Callable[
 ]
 
 
+def _paths_overlap(path_a: str, path_b: str) -> bool:
+    """Return True if path_a and path_b resolve to same or nested paths."""
+    real_a = os.path.realpath(os.path.abspath(path_a))
+    real_b = os.path.realpath(os.path.abspath(path_b))
+    if real_a == real_b:
+        return True
+    try:
+        common = os.path.commonpath([real_a, real_b])
+        if common in (real_a, real_b):
+            return True
+    except ValueError:
+        pass
+    return False
+
+
 def create_isolated_verification_adapter(
     isolated_workspace: str,
     test_command: Optional[Union[str, Sequence[str]]] = None,
@@ -92,33 +109,54 @@ def create_isolated_verification_adapter(
     task_config: Optional[Dict[str, Any]] = None,
     timeout_sec: int = 120,
 ) -> SwarmVerificationAdapter:
-    """Create verification adapter executing against an isolated workspace."""
+    """Create verification adapter executing against an isolated workspace.
+
+    The isolated_workspace is treated as a pristine baseline/template.
+    For each verification attempt, a fresh disposable workspace is created
+    and populated from the baseline, ensuring candidates never mutate
+    the template or cross-contaminate retry turns.
+    """
     def _adapter(request: SwarmVerificationRequest) -> VerificationResult:
         real_policy = request.application_request.policy
-        # Rebind workspace_root to isolated workspace while preserving
-        # allowed_delete_paths, max_file_bytes, system_mode,
-        # strict_code_hygiene
-        isolated_policy = ResponseApplicationPolicy(
-            workspace_root=isolated_workspace,
-            allowed_delete_paths=real_policy.allowed_delete_paths,
-            max_file_bytes=real_policy.max_file_bytes,
-            system_mode=real_policy.system_mode,
-            strict_code_hygiene=real_policy.strict_code_hygiene,
-        )
-        isolated_req = ResponseApplicationRequest(
-            raw_response=request.application_request.raw_response,
-            policy=isolated_policy,
-        )
-        apply_response(isolated_req)
-        return verify(
-            workspace=isolated_workspace,
-            test_command=test_command,
-            lint_command=lint_command,
-            build_command=build_command,
-            allowed_paths=allowed_paths,
-            task_config=task_config,
-            timeout_sec=timeout_sec,
-        )
+        real_ws = real_policy.workspace_root
+        if _paths_overlap(real_ws, isolated_workspace):
+            raise ValueError(
+                f"Isolated verification workspace '{isolated_workspace}' "
+                f"overlaps with real workspace '{real_ws}'."
+            )
+
+        with tempfile.TemporaryDirectory(
+            prefix="mighty_swarm_verify_"
+        ) as disposable_dir:
+            if os.path.exists(isolated_workspace):
+                shutil.copytree(
+                    isolated_workspace,
+                    disposable_dir,
+                    symlinks=True,
+                    dirs_exist_ok=True,
+                )
+
+            disposable_policy = ResponseApplicationPolicy(
+                workspace_root=disposable_dir,
+                allowed_delete_paths=real_policy.allowed_delete_paths,
+                max_file_bytes=real_policy.max_file_bytes,
+                system_mode=real_policy.system_mode,
+                strict_code_hygiene=real_policy.strict_code_hygiene,
+            )
+            disposable_req = ResponseApplicationRequest(
+                raw_response=request.application_request.raw_response,
+                policy=disposable_policy,
+            )
+            apply_response(disposable_req)
+            return verify(
+                workspace=disposable_dir,
+                test_command=test_command,
+                lint_command=lint_command,
+                build_command=build_command,
+                allowed_paths=allowed_paths,
+                task_config=task_config,
+                timeout_sec=timeout_sec,
+            )
 
     return _adapter
 

@@ -1637,8 +1637,8 @@ class TestSwarmOrchestrator(unittest.TestCase):
             self.assertTrue(res["application"]["occurred"])
             # File exists in real workspace
             self.assertTrue((real_ws / "visitor.py").exists())
-            # File was also placed in isolated workspace during verification
-            self.assertTrue((iso_ws / "visitor.py").exists())
+            # Baseline template workspace was NOT mutated
+            self.assertFalse((iso_ws / "visitor.py").exists())
 
     def test_no_executable_checks_detected_cannot_authorize_application(
         self,
@@ -1781,6 +1781,201 @@ class TestSwarmOrchestrator(unittest.TestCase):
         self.assertFalse(res["application"]["occurred"])
         self.assertEqual(len(adapter_calls), 0)
         self.assertFalse(res["verification"]["passed"])
+
+    def test_overlap_rejection_exact_same_path_raises_value_error(self):
+        """Isolated workspace == real workspace raises ValueError."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_ws:
+            adapter = create_isolated_verification_adapter(
+                isolated_workspace=tmp_ws,
+            )
+            policy = ResponseApplicationPolicy(workspace_root=tmp_ws)
+            req = SwarmVerificationRequest(
+                task_data=self.task_data,
+                coder_result={"raw_response": "```python:a.py\n# code\n```"},
+                application_request=ResponseApplicationRequest(
+                    raw_response="```python:a.py\n# code\n```",
+                    policy=policy,
+                ),
+            )
+            with self.assertRaises(ValueError) as ctx:
+                adapter(req)
+
+            self.assertIn("overlaps with real workspace", str(ctx.exception))
+            self.assertFalse(os.path.exists(os.path.join(tmp_ws, "a.py")))
+
+    def test_overlap_rejection_symlink_alias_raises_value_error(self):
+        """Symlink to real workspace raises ValueError."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_parent:
+            real_ws = os.path.join(tmp_parent, "real")
+            os.makedirs(real_ws)
+            symlink_ws = os.path.join(tmp_parent, "symlink_iso")
+            os.symlink(real_ws, symlink_ws)
+
+            adapter = create_isolated_verification_adapter(
+                isolated_workspace=symlink_ws,
+            )
+            policy = ResponseApplicationPolicy(workspace_root=real_ws)
+            req = SwarmVerificationRequest(
+                task_data=self.task_data,
+                coder_result={"raw_response": "```python:b.py\n# code\n```"},
+                application_request=ResponseApplicationRequest(
+                    raw_response="```python:b.py\n# code\n```",
+                    policy=policy,
+                ),
+            )
+            with self.assertRaises(ValueError) as ctx:
+                adapter(req)
+
+            self.assertIn("overlaps with real workspace", str(ctx.exception))
+            self.assertFalse(os.path.exists(os.path.join(real_ws, "b.py")))
+
+    def test_overlap_rejection_nested_workspaces_raise_value_error(self):
+        """Nested verification or real workspace raises ValueError."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_parent:
+            real_ws = os.path.join(tmp_parent, "real")
+            iso_nested = os.path.join(real_ws, "nested_iso")
+            os.makedirs(iso_nested)
+
+            # Isolated inside real
+            adapter1 = create_isolated_verification_adapter(
+                isolated_workspace=iso_nested,
+            )
+            policy1 = ResponseApplicationPolicy(workspace_root=real_ws)
+            req1 = SwarmVerificationRequest(
+                task_data=self.task_data,
+                coder_result={"raw_response": "```python:c.py\n# code\n```"},
+                application_request=ResponseApplicationRequest(
+                    raw_response="```python:c.py\n# code\n```",
+                    policy=policy1,
+                ),
+            )
+            with self.assertRaises(ValueError) as ctx:
+                adapter1(req1)
+            self.assertIn("overlaps with real workspace", str(ctx.exception))
+
+            # Real inside isolated
+            adapter2 = create_isolated_verification_adapter(
+                isolated_workspace=real_ws,
+            )
+            policy2 = ResponseApplicationPolicy(workspace_root=iso_nested)
+            req2 = SwarmVerificationRequest(
+                task_data=self.task_data,
+                coder_result={"raw_response": "```python:d.py\n# code\n```"},
+                application_request=ResponseApplicationRequest(
+                    raw_response="```python:d.py\n# code\n```",
+                    policy=policy2,
+                ),
+            )
+            with self.assertRaises(ValueError) as ctx:
+                adapter2(req2)
+            self.assertIn("overlaps with real workspace", str(ctx.exception))
+
+    def test_retry_isolation_rejected_turn1_leaves_no_stale_files_for_turn2(
+        self,
+    ):
+        """Turn 1 created file does not pollute Turn 2 verification attempt."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp_real, (
+            tempfile.TemporaryDirectory()
+        ) as tmp_iso:
+            real_ws = Path(tmp_real)
+            iso_ws = Path(tmp_iso)
+
+            # Pristine baseline: main.py exists, helper.py absent
+            (iso_ws / "main.py").write_text("# main\n", encoding="utf-8")
+            (iso_ws / "test_check.py").write_text(
+                "import os\n"
+                "def test_check():\n"
+                "    # Test passes ONLY if helper.py is ABSENT\n"
+                "    assert not os.path.exists('helper.py'), 'Stale helper!'\n",
+                encoding="utf-8",
+            )
+
+            iso_verifier = create_isolated_verification_adapter(
+                isolated_workspace=str(iso_ws),
+                test_command=[
+                    sys.executable, "-m", "pytest", "test_check.py"
+                ],
+            )
+
+            # Turn 1 emits helper.py (should fail because test expects no helper)
+            # Turn 2 emits main.py only (should pass because helper.py is absent)
+            turn_responses = [
+                "```python:helper.py\n# helper\n```",
+                "```python:main.py\n# updated main\n```",
+            ]
+            current_turn = [0]
+
+            class MultiTurnCoder:
+                def code(self, *args, **kwargs):
+                    idx = current_turn[0]
+                    current_turn[0] += 1
+                    resp = turn_responses[idx]
+                    return {
+                        "canonical_response": resp,
+                        "raw_response": resp,
+                        "response_plan": {
+                            "operations": [
+                                {"target_path": "helper.py"}
+                                if idx == 0
+                                else {"target_path": "main.py"}
+                            ]
+                        },
+                        "warnings": [],
+                    }
+
+            class MultiTurnClient:
+                def generate(self, prompt, system_prompt="", temperature=0.0):
+                    if "SWARM PLANNER ROLE" in system_prompt:
+                        return "<swarm_plan>Plan</swarm_plan>"
+                    if "SWARM REVIEWER ROLE" in system_prompt:
+                        return "<swarm_review>\nVERDICT: PASS\n</swarm_review>"
+                    return ""
+
+            orchestrator = SwarmOrchestrator(
+                concurrency=1,
+                ollama_client=MultiTurnClient(),
+            )
+            orchestrator.coder = MultiTurnCoder()
+
+            real_policy = ResponseApplicationPolicy(
+                workspace_root=str(real_ws)
+            )
+            real_adapter_calls = []
+
+            res = orchestrator.execute_swarm_pipeline(
+                self.task_data,
+                max_retries=2,
+                application_policy=real_policy,
+                verification_adapter=iso_verifier,
+                application_adapter=lambda r: (
+                    real_adapter_calls.append(r) or apply_response(r)
+                ),
+            )
+
+            # Turn 1 failed verification (helper.py present in disposable dir)
+            # Turn 2 passed verification (helper.py absent in fresh disposable dir)
+            self.assertEqual(res["turn"], 2)
+            self.assertEqual(res["review"]["verdict"], "PASS")
+            self.assertTrue(res["verification"]["passed"])
+            self.assertTrue(res["application"]["occurred"])
+            self.assertEqual(len(real_adapter_calls), 1)
+
+            # Baseline template itself was never mutated
+            self.assertFalse((iso_ws / "helper.py").exists())
+            self.assertTrue((iso_ws / "main.py").exists())
+
+            # Real workspace received Turn 2 response only
+            self.assertTrue((real_ws / "main.py").exists())
+            self.assertFalse((real_ws / "helper.py").exists())
 
 
 if __name__ == "__main__":

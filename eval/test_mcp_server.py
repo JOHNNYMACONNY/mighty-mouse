@@ -1720,7 +1720,7 @@ def test_swarm_execute_tool_forwards_task_config_to_host_adapter(
 def test_mcp_swarm_execute_honors_task_config_verification_reject(
     tmp_path, monkeypatch
 ):
-    """Prove task_config expected_files failure rejects candidate and prevents mutation."""
+    """Prove task_config expected_files failure rejects candidate."""
     import mighty_mouse_mcp.server as server
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
@@ -1779,10 +1779,11 @@ def test_mcp_swarm_execute_honors_task_config_verification_reject(
             "```"
         )
 
-    monkeypatch.setattr(
-        "mighty_mouse.orchestrator.ollama_client.OllamaClient.generate_content",
-        mock_generate_content,
+    target_attr = (
+        "mighty_mouse.orchestrator.ollama_client."
+        "OllamaClient.generate_content"
     )
+    monkeypatch.setattr(target_attr, mock_generate_content)
 
     result = server.swarm_execute_tool(
         workspace=str(real_ws),
@@ -1805,7 +1806,7 @@ def test_mcp_swarm_execute_honors_task_config_verification_reject(
 def test_mcp_swarm_execute_honors_task_config_verification_pass(
     tmp_path, monkeypatch
 ):
-    """Prove task_config expected_files success passes and performs single winner application."""
+    """Prove task_config expected_files success applies single winner."""
     import mighty_mouse_mcp.server as server
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
@@ -1865,10 +1866,11 @@ def test_mcp_swarm_execute_honors_task_config_verification_pass(
             "```"
         )
 
-    monkeypatch.setattr(
-        "mighty_mouse.orchestrator.ollama_client.OllamaClient.generate_content",
-        mock_generate_content,
+    target_attr = (
+        "mighty_mouse.orchestrator.ollama_client."
+        "OllamaClient.generate_content"
     )
+    monkeypatch.setattr(target_attr, mock_generate_content)
 
     result = server.swarm_execute_tool(
         workspace=str(real_ws),
@@ -1891,7 +1893,7 @@ def test_mcp_swarm_execute_honors_task_config_verification_pass(
 def test_mcp_swarm_execute_omitted_task_config_backwards_compatible(
     tmp_path, monkeypatch
 ):
-    """Prove omitting task_config executes generic verification without error."""
+    """Prove omitting task_config executes generic verification."""
     import mighty_mouse_mcp.server as server
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
@@ -1951,10 +1953,11 @@ def test_mcp_swarm_execute_omitted_task_config_backwards_compatible(
             "```"
         )
 
-    monkeypatch.setattr(
-        "mighty_mouse.orchestrator.ollama_client.OllamaClient.generate_content",
-        mock_generate_content,
+    target_attr = (
+        "mighty_mouse.orchestrator.ollama_client."
+        "OllamaClient.generate_content"
     )
+    monkeypatch.setattr(target_attr, mock_generate_content)
 
     result = server.swarm_execute_tool(
         workspace=str(real_ws),

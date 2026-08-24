@@ -7,7 +7,7 @@ from hashlib import sha256
 import inspect
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from mighty_mouse.v2.engine import PolicyEngine
 from mighty_mouse.v2.foundation import (
@@ -40,6 +40,8 @@ class AdapterRuntimeContext:
     model_class: str
     model_identity: ModelIdentity
     execution_profile: ExecutionProfile
+    model_source: str = "host"
+    ollama_model: str | None = None
 
 
 class HostAdapter:
@@ -121,6 +123,124 @@ class HostAdapter:
             stage=stage,
             plan_file=plan_file,
         )
+
+    def solve_swarm(
+        self,
+        workspace: str,
+        task_input: str,
+        *,
+        verification_workspace: str,
+        state_dir: str | None = None,
+        tool_signatures: dict[str, Any],
+        contract_version: int = MCP_TOOL_CONTRACT_VERSION,
+        concurrency: int = 1,
+        test_command: str | Sequence[str] | None = None,
+        lint_command: str | Sequence[str] | None = None,
+        build_command: str | Sequence[str] | None = None,
+        allowed_paths: list[str] | None = None,
+        task_config: dict[str, Any] | None = None,
+        timeout_sec: int = 120,
+    ) -> dict[str, Any]:
+        """Execute coding task using Multi-Agent Swarm bound to canonical
+        host provenance and isolated verification.
+        """
+        ws_path = Path(workspace)
+        if not ws_path.is_dir():
+            raise ValueError(
+                f"Workspace must be an existing directory: {workspace}"
+            )
+        iso_ws_path = Path(verification_workspace)
+        if not iso_ws_path.is_dir():
+            raise ValueError(
+                "Verification workspace must be an existing directory: "
+                f"{verification_workspace}"
+            )
+        if concurrency not in (1, 2):
+            raise ValueError(
+                f"Swarm concurrency must be 1 or 2, got {concurrency}"
+            )
+
+        try:
+            task_data = json.loads(task_input)
+            if not isinstance(task_data, dict):
+                raise ValueError("task_input must be a valid JSON object")
+        except json.JSONDecodeError as exc:
+            raise ValueError("task_input is invalid JSON") from exc
+
+        ctx = self.resolve_adapter_context(
+            workspace=workspace,
+            state_dir=state_dir,
+            tool_signatures=tool_signatures,
+            contract_version=contract_version,
+        )
+
+        if ctx.model_source != "ollama" or not ctx.ollama_model:
+            raise ValueError(
+                "Swarm execution requires an Ollama-backed model identity, "
+                f"got model_source='{ctx.model_source}'"
+            )
+
+        try:
+            from mighty_mouse.orchestrator.response_application import (
+                ResponseApplicationPolicy,
+                apply_response,
+            )
+            from mighty_mouse.orchestrator.swarm import (
+                SwarmOrchestrator,
+                create_isolated_verification_adapter,
+            )
+        except ImportError:
+            from response_application import (  # type: ignore[no-redef]
+                ResponseApplicationPolicy,
+                apply_response,
+            )
+            from swarm import (  # type: ignore[no-redef]
+                SwarmOrchestrator,
+                create_isolated_verification_adapter,
+            )
+
+        deletable_files = task_data.get("deletable_files", [])
+        real_policy = ResponseApplicationPolicy(
+            workspace_root=workspace,
+            allowed_delete_paths=tuple(deletable_files),
+        )
+
+        iso_verifier = create_isolated_verification_adapter(
+            isolated_workspace=verification_workspace,
+            test_command=test_command,
+            lint_command=lint_command,
+            build_command=build_command,
+            allowed_paths=allowed_paths,
+            task_config=task_config,
+            timeout_sec=timeout_sec,
+        )
+
+        orchestrator = SwarmOrchestrator(
+            model_name=ctx.ollama_model,
+            concurrency=concurrency,
+        )
+
+        pipeline_result = orchestrator.execute_swarm_pipeline(
+            task_data=task_data,
+            application_policy=real_policy,
+            verification_adapter=iso_verifier,
+            application_adapter=apply_response,
+        )
+
+        host_provenance = {
+            "repository": ctx.repository,
+            "model_class": ctx.model_class,
+            "model_digest": str(ctx.model_identity.artifact_digest),
+            "execution_profile_id": str(ctx.execution_profile.profile_id),
+            "model_source": ctx.model_source,
+            "ollama_model": ctx.ollama_model,
+            "contract_version": contract_version,
+        }
+
+        return {
+            "host_provenance": host_provenance,
+            "pipeline_result": pipeline_result,
+        }
 
     @staticmethod
     def get_tool_contract(
@@ -309,6 +429,8 @@ class HostAdapter:
             model_class=str(config["model_class"]),
             model_identity=model_identity,
             execution_profile=profile,
+            model_source=str(config.get("model_source", "host")),
+            ollama_model=config.get("ollama_model"),
         )
 
     @staticmethod

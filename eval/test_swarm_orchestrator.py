@@ -389,7 +389,10 @@ class TestSwarmOrchestrator(unittest.TestCase):
             ):
                 swarm_callers.append(rel)
 
-        expected = ["src/mighty_mouse/orchestrator/mighty_mouse_agent.py"]
+        expected = [
+            "src/mighty_mouse/host/adapter.py",
+            "src/mighty_mouse/orchestrator/mighty_mouse_agent.py",
+        ]
         self.assertEqual(sorted(swarm_callers), sorted(expected))
 
     def test_swarm_reviewer_pass(self):

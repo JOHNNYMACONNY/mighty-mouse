@@ -1,7 +1,9 @@
 """
 Multi-Agent Swarm Orchestrator for Mighty Mouse.
-Decomposes execution into specialized subagents: SwarmPlanner, SwarmCoder, and SwarmReviewer.
-Supports both Sequential (concurrency=1) and Concurrent Dual-Slot (concurrency=2) execution modes.
+Decomposes execution into specialized subagents:
+SwarmPlanner, SwarmCoder, and SwarmReviewer.
+Supports Sequential (concurrency=1) and Concurrent
+Dual-Slot (concurrency=2) execution modes.
 """
 
 import json
@@ -9,7 +11,7 @@ import os
 import re
 import sys
 import time
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Any
 
 try:
     from mighty_mouse.orchestrator.ollama_client import OllamaClient
@@ -32,6 +34,13 @@ except ImportError:
         ResponsePlan,
         plan_response,
     )
+
+# Narrow typed application adapter: receives the authoritative
+# ResponseApplicationRequest (with canonical raw response and
+# effective policy) and returns applied output paths.
+ResponseApplicationAdapter = Callable[
+    [ResponseApplicationRequest], Sequence[str]
+]
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 PROMPT_SEGMENTS_DIR = os.path.join(_REPO_ROOT, "configs", "prompt_segments")
@@ -111,25 +120,47 @@ class SwarmCoder:
         self.ollama_client = ollama_client or OllamaClient()
         self.prompt_segment = _read_prompt_segment("coder")
 
-    def code(self, task_data: Dict[str, Any], plan_info: Dict[str, Any], reviewer_feedback: Optional[str] = None, temperature: float = 0.0, workspace_root: Optional[str] = None) -> Dict[str, Any]:
+    def code(
+        self,
+        task_data: Dict[str, Any],
+        plan_info: Dict[str, Any],
+        reviewer_feedback: Optional[str] = None,
+        temperature: float = 0.0,
+        workspace_root: Optional[str] = None,
+        allowed_delete_paths: tuple = (),
+        application_policy: Optional[ResponseApplicationPolicy] = None,
+    ) -> Dict[str, Any]:
         task_id = task_data.get("id", "unknown_task")
         instruction = task_data.get("instruction", "")
         plan_text = plan_info.get("plan_text", "")
 
         feedback_str = ""
         if reviewer_feedback:
-            feedback_str = f"\n\nREVIEWER FEEDBACK FROM PREVIOUS ATTEMPT:\n{reviewer_feedback}\n"
+            feedback_str = (
+                f"\n\nREVIEWER FEEDBACK FROM PREVIOUS ATTEMPT:\n"
+                f"{reviewer_feedback}\n"
+            )
 
         user_prompt = (
             f"TASK ID: {task_id}\n\n"
             f"APPROVED ARCHITECTURAL PLAN:\n{plan_text}\n"
             f"{feedback_str}\n"
             f"INSTRUCTION:\n{instruction}\n\n"
-            "Please output your surgical file modifications wrapped in <act> tags."
+            "Please output your surgical file modifications wrapped"
+            " in <act> tags."
         )
 
-        system_prompt = self.prompt_segment or "You are the Swarm Coder. Write surgical code modifications wrapped in <act>."
-        response_text = _llm_generate(self.ollama_client, user_prompt, system_prompt=system_prompt, temperature=temperature)
+        system_prompt = (
+            self.prompt_segment
+            or "You are the Swarm Coder. Write surgical code "
+            "modifications wrapped in <act>."
+        )
+        response_text = _llm_generate(
+            self.ollama_client,
+            user_prompt,
+            system_prompt=system_prompt,
+            temperature=temperature,
+        )
 
         # Unify legacy [FILE: path] syntax into canonical code block format
         canonical_response = _canonicalize_swarm_response(response_text)
@@ -139,13 +170,16 @@ class SwarmCoder:
         file_updates: Dict[str, str] = {}
         warnings: List[str] = []
 
+        effective_policy = application_policy or ResponseApplicationPolicy(
+            workspace_root=workspace_root or ".",
+            allowed_delete_paths=tuple(allowed_delete_paths),
+        )
+
         try:
             plan = plan_response(
                 ResponseApplicationRequest(
                     raw_response=canonical_response,
-                    policy=ResponseApplicationPolicy(
-                        workspace_root=workspace_root or ".",
-                    ),
+                    policy=effective_policy,
                 )
             )
             response_plan = {
@@ -173,7 +207,8 @@ class SwarmCoder:
             "planned_output_paths": planned_output_paths,
             "response_plan": response_plan,
             "warnings": warnings,
-            "raw_response": response_text
+            "raw_response": response_text,
+            "canonical_response": canonical_response,
         }
 
 
@@ -230,47 +265,123 @@ class SwarmOrchestrator:
         self,
         task_data: Dict[str, Any],
         max_retries: int = 3,
-        verifier_func=None
+        verifier_func=None,
+        application_adapter: Optional[ResponseApplicationAdapter] = None,
+        allowed_delete_paths: tuple = (),
+        application_policy: Optional[ResponseApplicationPolicy] = None,
     ) -> Dict[str, Any]:
-        """
-        Executes the Planner -> Coder -> Reviewer swarm pipeline.
-        Supports temperature annealing across retries and optional dual-slot (concurrency=2) candidate generation.
+        """Execute the Planner -> Coder -> Reviewer swarm pipeline.
+
+        Supports temperature annealing across retries and optional
+        dual-slot (concurrency=2) candidate generation.
+
+        ``application_adapter`` is an opt-in, bound callable that
+        accepts the selected winner's canonicalized response text and
+        returns the applied output paths.  When omitted, the pipeline
+        remains strictly non-mutating (Ticket 1 invariant).
+
+        ``application_policy`` binds the authoritative
+        ResponseApplicationPolicy (workspace_root, allowed_delete_paths,
+        max_file_bytes, system_mode, strict_code_hygiene) used
+        symmetrically for both candidate planning and winner
+        application.
+
+        ``allowed_delete_paths`` provides backwards-compatible delete
+        authorization if no explicit application_policy is passed.
+
+        Application is triggered exactly once, only after the reviewer
+        returns PASS, and only for the single selected winner candidate.
+        Losing candidates and reviewer-rejected candidates are never
+        applied.  Application errors fail visibly; no silent swallow
+        and no automatic retry.
         """
         start_time = time.time()
         temperatures = [0.0, 0.35, 0.70]
 
+        effective_policy = application_policy or ResponseApplicationPolicy(
+            workspace_root=".",
+            allowed_delete_paths=tuple(allowed_delete_paths),
+        )
+
         # Stage 1: Architectural Planning
-        print(f"[SwarmOrchestrator] Step 1: Running SwarmPlanner (Concurrency={self.concurrency})...", file=sys.stderr)
+        print(
+            f"[SwarmOrchestrator] Step 1: Running SwarmPlanner "
+            f"(Concurrency={self.concurrency})...",
+            file=sys.stderr,
+        )
         plan_result = self.planner.plan(task_data, temperature=0.0)
-        print(f"[SwarmOrchestrator] Plan generated. Authorized files: {plan_result.get('authorized_files', [])}", file=sys.stderr)
+        print(
+            f"[SwarmOrchestrator] Plan generated. Authorized files: "
+            f"{plan_result.get('authorized_files', [])}",
+            file=sys.stderr,
+        )
 
         reviewer_feedback = None
         best_candidate = None
 
         for turn in range(max_retries):
             temp = temperatures[min(turn, len(temperatures) - 1)]
-            print(f"[SwarmOrchestrator] Step 2: Running SwarmCoder (Turn {turn+1}/{max_retries}, T={temp})...", file=sys.stderr)
+            print(
+                f"[SwarmOrchestrator] Step 2: Running SwarmCoder "
+                f"(Turn {turn+1}/{max_retries}, T={temp})...",
+                file=sys.stderr,
+            )
 
-            # Support dual-slot (concurrency=2) candidate generation if requested
+            # Dual-slot (concurrency=2) candidate generation — NON-MUTATING
             candidates = []
-            num_slots = self.concurrency if self.concurrency in (1, 2) else 1
+            num_slots = (
+                self.concurrency if self.concurrency in (1, 2) else 1
+            )
 
             for slot in range(num_slots):
-                slot_temp = temp if slot == 0 else min(temp + 0.15, 0.70)
-                coder_res = self.coder.code(task_data, plan_result, reviewer_feedback=reviewer_feedback, temperature=slot_temp)
+                slot_temp = (
+                    temp if slot == 0 else min(temp + 0.15, 0.70)
+                )
+                coder_res = self.coder.code(
+                    task_data,
+                    plan_result,
+                    reviewer_feedback=reviewer_feedback,
+                    temperature=slot_temp,
+                    application_policy=effective_policy,
+                )
                 candidates.append(coder_res)
 
-            # Pick primary candidate (or rank by fewest warnings)
-            coder_result = min(candidates, key=lambda c: len(c.get("warnings", [])))
+            # Deterministic candidate ranking:
+            # 1. Candidates with validated operations first
+            # 2. Fewer planning/validation warnings
+            # 3. Slot index ascending (stable tie-break)
+            def _rank_key(item: Tuple[int, Dict[str, Any]]) -> tuple:
+                slot_idx, cand = item
+                rplan = cand.get("response_plan")
+                has_ops = bool(rplan and rplan.get("operations"))
+                return (
+                    0 if has_ops else 1,
+                    len(cand.get("warnings", [])),
+                    slot_idx,
+                )
 
-            # Apply surgical changes if verifier_func provided
-            verification_result = {"status": "success", "scope": "PASS", "adherence": "PASS", "test_logs": ""}
+            coder_result = min(
+                enumerate(candidates),
+                key=_rank_key,
+            )[1]
+
+            # Verifier runs before reviewer (separate seam from application)
+            verification_result = {
+                "status": "success",
+                "scope": "PASS",
+                "adherence": "PASS",
+                "test_logs": "",
+            }
             if verifier_func:
                 verification_result = verifier_func(task_data, coder_result)
 
             # Stage 3: Independent Review
             review_result = self.reviewer.review(verification_result)
-            print(f"[SwarmOrchestrator] Step 3: SwarmReviewer Verdict: {review_result['verdict']}", file=sys.stderr)
+            print(
+                f"[SwarmOrchestrator] Step 3: SwarmReviewer Verdict: "
+                f"{review_result['verdict']}",
+                file=sys.stderr,
+            )
 
             best_candidate = {
                 "turn": turn + 1,
@@ -278,21 +389,82 @@ class SwarmOrchestrator:
                 "coder": coder_result,
                 "review": review_result,
                 "verification": verification_result,
-                "elapsed_sec": round(time.time() - start_time, 2)
+                "elapsed_sec": round(time.time() - start_time, 2),
             }
 
             if review_result["verdict"] == "PASS":
-                print(f"[SwarmOrchestrator] Pipeline SUCCEEDED on Turn {turn+1}!", file=sys.stderr)
+                print(
+                    f"[SwarmOrchestrator] Pipeline SUCCEEDED on "
+                    f"Turn {turn+1}!",
+                    file=sys.stderr,
+                )
+
+                # Winner-only application: strictly after PASS, once.
+                application: Dict[str, Any] = {
+                    "available": application_adapter is not None,
+                    "occurred": False,
+                    "applied_output_paths": [],
+                }
+
+                if application_adapter is not None:
+                    # Only apply if candidate has validated operations
+                    # (writes or authorized deletes); skip empty plans.
+                    rplan = coder_result.get("response_plan")
+                    has_validated_operations = bool(
+                        rplan and rplan.get("operations")
+                    )
+                    if has_validated_operations:
+                        # Use stored canonical artifact from coder stage;
+                        # avoids a second canonicalization pass.
+                        canonical = coder_result.get(
+                            "canonical_response",
+                            coder_result.get("raw_response", ""),
+                        )
+                        app_request = ResponseApplicationRequest(
+                            raw_response=canonical,
+                            policy=effective_policy,
+                        )
+                        # Fail-closed: application errors propagate
+                        applied_paths = application_adapter(app_request)
+                        application["occurred"] = True
+                        application["applied_output_paths"] = list(
+                            applied_paths
+                        )
+                        print(
+                            f"[SwarmOrchestrator] Applied winner to: "
+                            f"{application['applied_output_paths']}",
+                            file=sys.stderr,
+                        )
+
+                best_candidate["application"] = application
                 break
 
             reviewer_feedback = review_result["feedback"]
-            print(f"[SwarmOrchestrator] Reviewer feedback recorded for retry turn {turn+2}.", file=sys.stderr)
+            print(
+                f"[SwarmOrchestrator] Reviewer feedback recorded for "
+                f"retry turn {turn+2}.",
+                file=sys.stderr,
+            )
 
-        return best_candidate or {
-            "turn": max_retries,
-            "plan": plan_result,
-            "coder": {},
-            "review": {"verdict": "REJECT", "reason": "Max retries reached"},
-            "verification": {"status": "failed"},
-            "elapsed_sec": round(time.time() - start_time, 2)
-        }
+        if best_candidate is None:
+            best_candidate = {
+                "turn": max_retries,
+                "plan": plan_result,
+                "coder": {},
+                "review": {
+                    "verdict": "REJECT",
+                    "reason": "Max retries reached",
+                },
+                "verification": {"status": "failed"},
+                "elapsed_sec": round(time.time() - start_time, 2),
+            }
+
+        # Ensure application metadata present on all paths (JSON safe)
+        if "application" not in best_candidate:
+            best_candidate["application"] = {
+                "available": application_adapter is not None,
+                "occurred": False,
+                "applied_output_paths": [],
+            }
+
+        return best_candidate

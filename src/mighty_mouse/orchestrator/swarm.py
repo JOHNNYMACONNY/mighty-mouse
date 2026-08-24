@@ -367,7 +367,7 @@ class SwarmReviewer:
         if test_logs and status != "success":
             lines = test_logs.strip().split("\n")
             feedback_parts.append(
-                f"TEST FAILURE:\n" + "\n".join(lines[-20:])[:800]
+                "TEST FAILURE:\n" + "\n".join(lines[-20:])[:800]
             )
 
         feedback_str = (
@@ -556,7 +556,8 @@ class SwarmOrchestrator:
                     "result": v_res.to_dict(),
                 }
             elif verifier_func is not None:
-                # Legacy verifier_func supported only when application is disabled
+                # Legacy verifier_func supported only when
+                # application is disabled
                 v_res = verifier_func(task_data, coder_result)
                 if isinstance(v_res, VerificationResult):
                     verification_payload = v_res

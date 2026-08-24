@@ -1286,7 +1286,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
     def test_application_enabled_missing_canonical_verifier_fails_closed(
         self,
     ):
-        """application_adapter without verifier fails closed (0 applications)."""
+        """application_adapter without verifier fails closed."""
         adapter_calls = []
 
         orchestrator = SwarmOrchestrator(
@@ -1337,7 +1337,9 @@ class TestSwarmOrchestrator(unittest.TestCase):
         res = orchestrator.execute_swarm_pipeline(
             self.task_data,
             verification_adapter=custom_verifier,
-            application_adapter=lambda r: adapter_calls.append(r) or ["visitor.py"],
+            application_adapter=lambda r: (
+                adapter_calls.append(r) or ["visitor.py"]
+            ),
         )
 
         self.assertEqual(res["review"]["verdict"], "PASS")
@@ -1381,7 +1383,9 @@ class TestSwarmOrchestrator(unittest.TestCase):
         res = orchestrator.execute_swarm_pipeline(
             self.task_data,
             verification_adapter=failing_verifier,
-            application_adapter=lambda r: adapter_calls.append(r) or ["visitor.py"],
+            application_adapter=lambda r: (
+                adapter_calls.append(r) or ["visitor.py"]
+            ),
         )
 
         self.assertEqual(res["review"]["verdict"], "REJECT")
@@ -1432,7 +1436,9 @@ class TestSwarmOrchestrator(unittest.TestCase):
             self.task_data,
             max_retries=3,
             verification_adapter=retry_verifier,
-            application_adapter=lambda r: adapter_calls.append(r) or ["visitor.py"],
+            application_adapter=lambda r: (
+                adapter_calls.append(r) or ["visitor.py"]
+            ),
         )
 
         self.assertEqual(res["turn"], 2)
@@ -1466,7 +1472,9 @@ class TestSwarmOrchestrator(unittest.TestCase):
             self.task_data,
             max_retries=3,
             verification_adapter=always_fail_verifier,
-            application_adapter=lambda r: adapter_calls.append(r) or ["visitor.py"],
+            application_adapter=lambda r: (
+                adapter_calls.append(r) or ["visitor.py"]
+            ),
         )
 
         self.assertEqual(res["review"]["verdict"], "REJECT")
@@ -1495,7 +1503,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
         self.assertEqual(len(adapter_calls), 0)
 
     def test_verifier_runs_only_for_selected_winner_never_loser(self):
-        """Two-slot concurrency: verification runs only for selected winner."""
+        """Two-slot concurrency: verification runs only for winner."""
         verifier_requests = []
 
         class SlotClient:
@@ -1529,12 +1537,15 @@ class TestSwarmOrchestrator(unittest.TestCase):
 
         # Only one verification request for the selected winner (slot 0)
         self.assertEqual(len(verifier_requests), 1)
-        self.assertIn("slot0.py", verifier_requests[0].application_request.raw_response)
+        raw_resp = (
+            verifier_requests[0].application_request.raw_response
+        )
+        self.assertIn("slot0.py", raw_resp)
 
-    def test_verification_and_application_share_exact_request_and_policy_identity(
+    def test_verification_and_application_share_request_policy_identity(
         self,
     ):
-        """Verification request and application request share identical policy and response."""
+        """Verification request and application request share policy."""
         v_reqs = []
         app_reqs = []
 
@@ -1575,7 +1586,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
     def test_isolated_verification_adapter_end_to_end_with_real_verify(
         self,
     ):
-        """End-to-end characterization: candidate verified in isolated workspace then applied."""
+        """Candidate verified in isolated workspace then applied."""
         import tempfile
         from pathlib import Path
 
@@ -1597,10 +1608,14 @@ class TestSwarmOrchestrator(unittest.TestCase):
             # Isolated verification adapter using real pytest
             iso_verifier = create_isolated_verification_adapter(
                 isolated_workspace=str(iso_ws),
-                test_command=[sys.executable, "-m", "pytest", str(test_file)],
+                test_command=[
+                    sys.executable, "-m", "pytest", str(test_file)
+                ],
             )
 
-            real_policy = ResponseApplicationPolicy(workspace_root=str(real_ws))
+            real_policy = ResponseApplicationPolicy(
+                workspace_root=str(real_ws)
+            )
 
             def real_app_adapter(req: ResponseApplicationRequest):
                 self.assertIs(req.policy, real_policy)
@@ -1628,7 +1643,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
     def test_no_executable_checks_detected_cannot_authorize_application(
         self,
     ):
-        """No checks detected -> canonical verifier returns passed=False -> REJECT."""
+        """No checks detected -> canonical verifier returns passed=False."""
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp_iso:
@@ -1656,7 +1671,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
     def test_reviewer_consumes_canonical_verification_result_directly(
         self,
     ):
-        """SwarmReviewer handles VerificationResult directly for PASS and REJECT."""
+        """SwarmReviewer handles VerificationResult directly."""
         reviewer = SwarmReviewer(ollama_client=self.mock_client)
 
         # Passing verification result
@@ -1697,7 +1712,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
         self.assertIn("Fix failing tests.", rev_fail["feedback"])
 
     def test_dual_verification_authorities_raises_value_error(self):
-        """Supplying both verifier_func and verification_adapter raises ValueError."""
+        """Supplying both verifiers raises ValueError."""
         canonical_calls = []
         legacy_calls = []
         adapter_calls = []
@@ -1708,7 +1723,11 @@ class TestSwarmOrchestrator(unittest.TestCase):
 
         def leg_verifier(task_data, coder_result):
             legacy_calls.append(coder_result)
-            return {"status": "success", "scope": "PASS", "adherence": "PASS"}
+            return {
+                "status": "success",
+                "scope": "PASS",
+                "adherence": "PASS",
+            }
 
         orchestrator = SwarmOrchestrator(
             concurrency=1,
@@ -1723,7 +1742,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
             )
 
         self.assertIn(
-            "Cannot supply both legacy verifier_func and canonical verification_adapter",
+            "Cannot supply both legacy verifier_func and canonical",
             str(ctx.exception),
         )
         self.assertEqual(len(canonical_calls), 0)
@@ -1733,7 +1752,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
     def test_application_enabled_with_only_legacy_verifier_fails_closed(
         self,
     ):
-        """Legacy verifier_func cannot authorize real application (fails closed)."""
+        """Legacy verifier cannot authorize application (fails closed)."""
         adapter_calls = []
 
         def passing_legacy_verifier(task_data, coder_result):
@@ -1752,7 +1771,9 @@ class TestSwarmOrchestrator(unittest.TestCase):
             self.task_data,
             verifier_func=passing_legacy_verifier,
             verification_adapter=None,
-            application_adapter=lambda r: adapter_calls.append(r) or ["visitor.py"],
+            application_adapter=lambda r: (
+                adapter_calls.append(r) or ["visitor.py"]
+            ),
         )
 
         # Legacy verifier cannot authorize application; fails closed

@@ -178,6 +178,7 @@ jobs:
                           "verify_and_record",
                           "run",
                           "agent_execute",
+                          "swarm_execute",
                           "policy_status",
                           "policy_preview",
                           "policy_pin",
@@ -187,7 +188,7 @@ jobs:
                           "compute_scaling_pin",
                       }
                       assert names == expected, sorted(expected ^ names)
-                      assert len(names) == 14
+                      assert len(names) == 15
 
           asyncio.run(main())
           PY

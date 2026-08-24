@@ -19,6 +19,14 @@ try:
         SwarmCoder,
         SwarmReviewer,
         SwarmOrchestrator,
+        SwarmVerificationRequest,
+        SwarmVerificationAdapter,
+        create_isolated_verification_adapter,
+    )
+    from mighty_mouse.verifier import (
+        CheckResult,
+        VerificationResult,
+        verify,
     )
 except ImportError:
     from response_application import (  # noqa: F401
@@ -31,6 +39,14 @@ except ImportError:
         SwarmCoder,
         SwarmReviewer,
         SwarmOrchestrator,
+        SwarmVerificationRequest,
+        SwarmVerificationAdapter,
+        create_isolated_verification_adapter,
+    )
+    from verifier import (  # noqa: F401
+        CheckResult,
+        VerificationResult,
+        verify,
     )
 
 
@@ -98,6 +114,24 @@ class TestSwarmOrchestrator(unittest.TestCase):
             return [output_path]
 
         return adapter
+
+    @staticmethod
+    def _pass_verification_adapter(
+        request: SwarmVerificationRequest,
+    ) -> VerificationResult:
+        """Return a canonical passing VerificationResult."""
+        return VerificationResult(
+            passed=True,
+            checks=[
+                CheckResult(
+                    name="tests",
+                    passed=True,
+                    output="All 1 tests passed.",
+                    duration_sec=0.01,
+                )
+            ],
+            summary="Passed 1/1 verification checks.",
+        )
 
     def test_swarm_planner(self):
         planner = SwarmPlanner(ollama_client=self.mock_client)
@@ -506,6 +540,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 verifier_func=None,
                 application_adapter=fake_adapter,
                 application_policy=policy,
+                verification_adapter=self._pass_verification_adapter,
             )
 
         self.assertEqual(res["review"]["verdict"], "PASS")
@@ -573,6 +608,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 verifier_func=None,
                 application_adapter=fake_adapter,
                 application_policy=policy,
+                verification_adapter=self._pass_verification_adapter,
             )
 
         self.assertEqual(res["review"]["verdict"], "PASS")
@@ -754,6 +790,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 verifier_func=None,
                 application_adapter=writing_adapter,
                 application_policy=policy,
+                verification_adapter=self._pass_verification_adapter,
             )
 
         self.assertEqual(res["review"]["verdict"], "PASS")
@@ -810,6 +847,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 verifier_func=None,
                 application_adapter=delete_adapter,
                 application_policy=policy,
+                verification_adapter=self._pass_verification_adapter,
             )
 
             self.assertEqual(res["review"]["verdict"], "PASS")
@@ -858,6 +896,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 verifier_func=None,
                 application_adapter=adapter_b,
                 application_policy=policy_b,
+                verification_adapter=self._pass_verification_adapter,
             )
 
             self.assertEqual(res["review"]["verdict"], "PASS")
@@ -905,6 +944,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 verifier_func=None,
                 application_adapter=adapter,
                 application_policy=policy,
+                verification_adapter=self._pass_verification_adapter,
             )
 
             # Oversized candidate yields planning warning; adapter not called
@@ -950,6 +990,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 verifier_func=None,
                 application_adapter=lambda r: adapter_calls.append(r) or [],
                 application_policy=policy,
+                verification_adapter=self._pass_verification_adapter,
             )
 
             self.assertTrue(
@@ -998,6 +1039,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 verifier_func=None,
                 application_adapter=adapter,
                 application_policy=policy,
+                verification_adapter=self._pass_verification_adapter,
             )
 
             self.assertEqual(res["review"]["verdict"], "PASS")
@@ -1050,6 +1092,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 verifier_func=None,
                 application_adapter=adapter,
                 application_policy=policy,
+                verification_adapter=self._pass_verification_adapter,
             )
 
             self.assertEqual(res["review"]["verdict"], "PASS")
@@ -1119,6 +1162,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
             application_adapter=lambda r: (
                 adapter_calls.append(r) or ["slot0.py"]
             ),
+            verification_adapter=self._pass_verification_adapter,
         )
 
         # Slot 0 selected deterministically
@@ -1154,6 +1198,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
             self.task_data,
             verifier_func=None,
             application_adapter=lambda r: adapter_calls.append(r) or [],
+            verification_adapter=self._pass_verification_adapter,
         )
 
         # Adapter not called because no validated operations exist
@@ -1176,6 +1221,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 self.task_data,
                 verifier_func=None,
                 application_adapter=exploding_adapter,
+                verification_adapter=self._pass_verification_adapter,
             )
         self.assertIn("Storage backend unavailable", str(ctx.exception))
 
@@ -1193,6 +1239,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
             self.task_data,
             verifier_func=None,
             application_adapter=noop_adapter,
+            verification_adapter=self._pass_verification_adapter,
         )
 
         serialized = json.dumps(res, indent=2)
@@ -1231,6 +1278,704 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 call,
                 "CLI swarm caller must not pass application_adapter",
             )
+
+    # ------------------------------------------------------------------
+    # Ticket 3: canonical verification -> reviewer gate tests
+    # ------------------------------------------------------------------
+
+    def test_application_enabled_missing_canonical_verifier_fails_closed(
+        self,
+    ):
+        """application_adapter without verifier fails closed."""
+        adapter_calls = []
+
+        orchestrator = SwarmOrchestrator(
+            concurrency=1,
+            ollama_client=self.mock_client,
+        )
+        res = orchestrator.execute_swarm_pipeline(
+            self.task_data,
+            verifier_func=None,
+            verification_adapter=None,
+            application_adapter=lambda r: adapter_calls.append(r) or [],
+        )
+
+        self.assertEqual(res["review"]["verdict"], "REJECT")
+        self.assertFalse(res["application"]["occurred"])
+        self.assertEqual(len(adapter_calls), 0)
+        self.assertFalse(res["verification"]["available"])
+        self.assertFalse(res["verification"]["occurred"])
+        self.assertFalse(res["verification"]["passed"])
+        self.assertIsInstance(json.dumps(res), str)
+
+    def test_canonical_verifier_pass_authorizes_single_real_application(
+        self,
+    ):
+        """Canonical verifier PASS -> Reviewer PASS -> applied once."""
+        adapter_calls = []
+        verifier_calls = []
+
+        def custom_verifier(req: SwarmVerificationRequest):
+            verifier_calls.append(req)
+            return VerificationResult(
+                passed=True,
+                checks=[
+                    CheckResult(
+                        name="tests",
+                        passed=True,
+                        output="1 test passed",
+                        duration_sec=0.05,
+                    )
+                ],
+                summary="Passed 1/1 verification checks.",
+            )
+
+        orchestrator = SwarmOrchestrator(
+            concurrency=1,
+            ollama_client=self.mock_client,
+        )
+        res = orchestrator.execute_swarm_pipeline(
+            self.task_data,
+            verification_adapter=custom_verifier,
+            application_adapter=lambda r: (
+                adapter_calls.append(r) or ["visitor.py"]
+            ),
+        )
+
+        self.assertEqual(res["review"]["verdict"], "PASS")
+        self.assertEqual(len(verifier_calls), 1)
+        self.assertEqual(len(adapter_calls), 1)
+        self.assertTrue(res["verification"]["available"])
+        self.assertTrue(res["verification"]["occurred"])
+        self.assertTrue(res["verification"]["passed"])
+        self.assertEqual(
+            res["verification"]["result"]["summary"],
+            "Passed 1/1 verification checks.",
+        )
+        self.assertTrue(res["application"]["occurred"])
+
+    def test_canonical_verifier_fail_rejects_and_prevents_application(
+        self,
+    ):
+        """Canonical verifier FAIL -> Reviewer REJECT -> 0 applications."""
+        adapter_calls = []
+        verifier_calls = []
+
+        def failing_verifier(req: SwarmVerificationRequest):
+            verifier_calls.append(req)
+            return VerificationResult(
+                passed=False,
+                checks=[
+                    CheckResult(
+                        name="tests",
+                        passed=False,
+                        output="AssertionError: expected Visitor",
+                        duration_sec=0.05,
+                    )
+                ],
+                summary="Failed 1/1 verification checks: tests.",
+            )
+
+        orchestrator = SwarmOrchestrator(
+            concurrency=1,
+            ollama_client=self.mock_client,
+        )
+        res = orchestrator.execute_swarm_pipeline(
+            self.task_data,
+            verification_adapter=failing_verifier,
+            application_adapter=lambda r: (
+                adapter_calls.append(r) or ["visitor.py"]
+            ),
+        )
+
+        self.assertEqual(res["review"]["verdict"], "REJECT")
+        self.assertIn("AssertionError", res["review"]["feedback"])
+        self.assertEqual(len(adapter_calls), 0)
+        self.assertFalse(res["application"]["occurred"])
+        self.assertTrue(res["verification"]["occurred"])
+        self.assertFalse(res["verification"]["passed"])
+
+    def test_verification_retry_loop_fail_turn1_pass_turn2(self):
+        """Turn 1 fails verification -> Turn 2 passes -> applied once."""
+        adapter_calls = []
+        turn_counter = [0]
+
+        def retry_verifier(req: SwarmVerificationRequest):
+            turn_counter[0] += 1
+            if turn_counter[0] == 1:
+                return VerificationResult(
+                    passed=False,
+                    checks=[
+                        CheckResult(
+                            name="tests",
+                            passed=False,
+                            output="SyntaxError on turn 1",
+                            duration_sec=0.02,
+                        )
+                    ],
+                    summary="Failed 1/1 verification checks: tests.",
+                )
+            return VerificationResult(
+                passed=True,
+                checks=[
+                    CheckResult(
+                        name="tests",
+                        passed=True,
+                        output="Tests pass on turn 2",
+                        duration_sec=0.02,
+                    )
+                ],
+                summary="Passed 1/1 verification checks.",
+            )
+
+        orchestrator = SwarmOrchestrator(
+            concurrency=1,
+            ollama_client=self.mock_client,
+        )
+        res = orchestrator.execute_swarm_pipeline(
+            self.task_data,
+            max_retries=3,
+            verification_adapter=retry_verifier,
+            application_adapter=lambda r: (
+                adapter_calls.append(r) or ["visitor.py"]
+            ),
+        )
+
+        self.assertEqual(res["turn"], 2)
+        self.assertEqual(res["review"]["verdict"], "PASS")
+        self.assertEqual(len(adapter_calls), 1)
+        self.assertTrue(res["application"]["occurred"])
+
+    def test_all_verification_retries_fail_zero_applications(self):
+        """All turns fail verification -> zero real applications."""
+        adapter_calls = []
+
+        def always_fail_verifier(req: SwarmVerificationRequest):
+            return VerificationResult(
+                passed=False,
+                checks=[
+                    CheckResult(
+                        name="lint",
+                        passed=False,
+                        output="Flake8 errors",
+                        duration_sec=0.01,
+                    )
+                ],
+                summary="Failed 1/1 verification checks: lint.",
+            )
+
+        orchestrator = SwarmOrchestrator(
+            concurrency=1,
+            ollama_client=self.mock_client,
+        )
+        res = orchestrator.execute_swarm_pipeline(
+            self.task_data,
+            max_retries=3,
+            verification_adapter=always_fail_verifier,
+            application_adapter=lambda r: (
+                adapter_calls.append(r) or ["visitor.py"]
+            ),
+        )
+
+        self.assertEqual(res["review"]["verdict"], "REJECT")
+        self.assertEqual(len(adapter_calls), 0)
+        self.assertFalse(res["application"]["occurred"])
+
+    def test_verification_exception_fails_closed_without_retry(self):
+        """Verification adapter exception propagates immediately."""
+        adapter_calls = []
+
+        def crashing_verifier(req: SwarmVerificationRequest):
+            raise RuntimeError("Verification environment broken")
+
+        orchestrator = SwarmOrchestrator(
+            concurrency=1,
+            ollama_client=self.mock_client,
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            orchestrator.execute_swarm_pipeline(
+                self.task_data,
+                verification_adapter=crashing_verifier,
+                application_adapter=lambda r: adapter_calls.append(r) or [],
+            )
+
+        self.assertIn("Verification environment broken", str(ctx.exception))
+        self.assertEqual(len(adapter_calls), 0)
+
+    def test_verifier_runs_only_for_selected_winner_never_loser(self):
+        """Two-slot concurrency: verification runs only for winner."""
+        verifier_requests = []
+
+        class SlotClient:
+            def generate(self, prompt, system_prompt="", temperature=0.0):
+                if "SWARM PLANNER ROLE" in system_prompt:
+                    return "<swarm_plan>Plan</swarm_plan>"
+                if "SWARM CODER ROLE" in system_prompt:
+                    if temperature == 0.0:
+                        return "```python:slot0.py\nSLOT = 0\n```"
+                    return "```python:slot1.py\nSLOT = 1\n```"
+                if "SWARM REVIEWER ROLE" in system_prompt:
+                    return "<swarm_review>\nVERDICT: PASS\n</swarm_review>"
+                return ""
+
+        def tracking_verifier(req: SwarmVerificationRequest):
+            verifier_requests.append(req)
+            return VerificationResult(
+                passed=True,
+                checks=[],
+                summary="Passed.",
+            )
+
+        orchestrator = SwarmOrchestrator(
+            concurrency=2,
+            ollama_client=SlotClient(),
+        )
+        orchestrator.execute_swarm_pipeline(
+            self.task_data,
+            verification_adapter=tracking_verifier,
+        )
+
+        # Only one verification request for the selected winner (slot 0)
+        self.assertEqual(len(verifier_requests), 1)
+        raw_resp = (
+            verifier_requests[0].application_request.raw_response
+        )
+        self.assertIn("slot0.py", raw_resp)
+
+    def test_verification_and_application_share_request_policy_identity(
+        self,
+    ):
+        """Verification request and application request share policy."""
+        v_reqs = []
+        app_reqs = []
+
+        policy = ResponseApplicationPolicy(
+            workspace_root="/custom/ws",
+            allowed_delete_paths=("del.py",),
+            max_file_bytes=1000,
+        )
+
+        def rec_verifier(req: SwarmVerificationRequest):
+            v_reqs.append(req)
+            return VerificationResult(passed=True, checks=[], summary="OK")
+
+        def rec_app(req: ResponseApplicationRequest):
+            app_reqs.append(req)
+            return ["visitor.py"]
+
+        orchestrator = SwarmOrchestrator(
+            concurrency=1,
+            ollama_client=self.mock_client,
+        )
+        orchestrator.execute_swarm_pipeline(
+            self.task_data,
+            application_policy=policy,
+            verification_adapter=rec_verifier,
+            application_adapter=rec_app,
+        )
+
+        self.assertEqual(len(v_reqs), 1)
+        self.assertEqual(len(app_reqs), 1)
+        self.assertIs(v_reqs[0].application_request.policy, policy)
+        self.assertIs(app_reqs[0].policy, policy)
+        self.assertEqual(
+            v_reqs[0].application_request.raw_response,
+            app_reqs[0].raw_response,
+        )
+
+    def test_isolated_verification_adapter_end_to_end_with_real_verify(
+        self,
+    ):
+        """Candidate verified in isolated workspace then applied."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp_real, (
+            tempfile.TemporaryDirectory()
+        ) as tmp_iso:
+            real_ws = Path(tmp_real)
+            iso_ws = Path(tmp_iso)
+
+            # Create test in isolated workspace
+            test_file = iso_ws / "test_visitor.py"
+            test_file.write_text(
+                "import visitor\n"
+                "def test_visitor():\n"
+                "    assert hasattr(visitor, 'Visitor')\n",
+                encoding="utf-8",
+            )
+
+            # Isolated verification adapter using real pytest
+            iso_verifier = create_isolated_verification_adapter(
+                isolated_workspace=str(iso_ws),
+                test_command=[
+                    sys.executable, "-m", "pytest", str(test_file)
+                ],
+            )
+
+            real_policy = ResponseApplicationPolicy(
+                workspace_root=str(real_ws)
+            )
+
+            def real_app_adapter(req: ResponseApplicationRequest):
+                self.assertIs(req.policy, real_policy)
+                return apply_response(req)
+
+            orchestrator = SwarmOrchestrator(
+                concurrency=1,
+                ollama_client=self.mock_client,
+            )
+            res = orchestrator.execute_swarm_pipeline(
+                self.task_data,
+                application_policy=real_policy,
+                verification_adapter=iso_verifier,
+                application_adapter=real_app_adapter,
+            )
+
+            self.assertEqual(res["review"]["verdict"], "PASS")
+            self.assertTrue(res["verification"]["passed"])
+            self.assertTrue(res["application"]["occurred"])
+            # File exists in real workspace
+            self.assertTrue((real_ws / "visitor.py").exists())
+            # Baseline template workspace was NOT mutated
+            self.assertFalse((iso_ws / "visitor.py").exists())
+
+    def test_no_executable_checks_detected_cannot_authorize_application(
+        self,
+    ):
+        """No checks detected -> canonical verifier returns passed=False."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_iso:
+            # Empty isolated workspace has no tests, linters, or build scripts
+            iso_verifier = create_isolated_verification_adapter(
+                isolated_workspace=tmp_iso,
+            )
+
+            adapter_calls = []
+            orchestrator = SwarmOrchestrator(
+                concurrency=1,
+                ollama_client=self.mock_client,
+            )
+            res = orchestrator.execute_swarm_pipeline(
+                self.task_data,
+                verification_adapter=iso_verifier,
+                application_adapter=lambda r: adapter_calls.append(r) or [],
+            )
+
+            self.assertEqual(res["review"]["verdict"], "REJECT")
+            self.assertFalse(res["verification"]["passed"])
+            self.assertEqual(len(adapter_calls), 0)
+            self.assertFalse(res["application"]["occurred"])
+
+    def test_reviewer_consumes_canonical_verification_result_directly(
+        self,
+    ):
+        """SwarmReviewer handles VerificationResult directly."""
+        reviewer = SwarmReviewer(ollama_client=self.mock_client)
+
+        # Passing verification result
+        pass_res = VerificationResult(
+            passed=True,
+            checks=[
+                CheckResult(
+                    name="pytest",
+                    passed=True,
+                    output="OK",
+                    duration_sec=0.01,
+                )
+            ],
+            summary="All tests passed.",
+        )
+        rev_pass = reviewer.review(pass_res)
+        self.assertEqual(rev_pass["verdict"], "PASS")
+        self.assertEqual(rev_pass["reason"], "All tests passed.")
+        self.assertEqual(rev_pass["feedback"], "")
+
+        # Failing verification result with bounded feedback
+        fail_res = VerificationResult(
+            passed=False,
+            checks=[
+                CheckResult(
+                    name="pytest",
+                    passed=False,
+                    output="FAILED test_a.py::test_func",
+                    duration_sec=0.01,
+                )
+            ],
+            summary="Failed 1 check: pytest.",
+            suggestions=["Fix failing tests."],
+        )
+        rev_fail = reviewer.review(fail_res)
+        self.assertEqual(rev_fail["verdict"], "REJECT")
+        self.assertIn("FAILED test_a.py::test_func", rev_fail["feedback"])
+        self.assertIn("Fix failing tests.", rev_fail["feedback"])
+
+    def test_dual_verification_authorities_raises_value_error(self):
+        """Supplying both verifiers raises ValueError."""
+        canonical_calls = []
+        legacy_calls = []
+        adapter_calls = []
+
+        def can_verifier(req: SwarmVerificationRequest):
+            canonical_calls.append(req)
+            return VerificationResult(passed=True, checks=[], summary="OK")
+
+        def leg_verifier(task_data, coder_result):
+            legacy_calls.append(coder_result)
+            return {
+                "status": "success",
+                "scope": "PASS",
+                "adherence": "PASS",
+            }
+
+        orchestrator = SwarmOrchestrator(
+            concurrency=1,
+            ollama_client=self.mock_client,
+        )
+        with self.assertRaises(ValueError) as ctx:
+            orchestrator.execute_swarm_pipeline(
+                self.task_data,
+                verifier_func=leg_verifier,
+                verification_adapter=can_verifier,
+                application_adapter=lambda r: adapter_calls.append(r) or [],
+            )
+
+        self.assertIn(
+            "Cannot supply both legacy verifier_func and canonical",
+            str(ctx.exception),
+        )
+        self.assertEqual(len(canonical_calls), 0)
+        self.assertEqual(len(legacy_calls), 0)
+        self.assertEqual(len(adapter_calls), 0)
+
+    def test_application_enabled_with_only_legacy_verifier_fails_closed(
+        self,
+    ):
+        """Legacy verifier cannot authorize application (fails closed)."""
+        adapter_calls = []
+
+        def passing_legacy_verifier(task_data, coder_result):
+            return {
+                "status": "success",
+                "scope": "PASS",
+                "adherence": "PASS",
+                "test_logs": "All tests passed",
+            }
+
+        orchestrator = SwarmOrchestrator(
+            concurrency=1,
+            ollama_client=self.mock_client,
+        )
+        res = orchestrator.execute_swarm_pipeline(
+            self.task_data,
+            verifier_func=passing_legacy_verifier,
+            verification_adapter=None,
+            application_adapter=lambda r: (
+                adapter_calls.append(r) or ["visitor.py"]
+            ),
+        )
+
+        # Legacy verifier cannot authorize application; fails closed
+        self.assertEqual(res["review"]["verdict"], "REJECT")
+        self.assertFalse(res["application"]["occurred"])
+        self.assertEqual(len(adapter_calls), 0)
+        self.assertFalse(res["verification"]["passed"])
+
+    def test_overlap_rejection_exact_same_path_raises_value_error(self):
+        """Isolated workspace == real workspace raises ValueError."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_ws:
+            adapter = create_isolated_verification_adapter(
+                isolated_workspace=tmp_ws,
+            )
+            policy = ResponseApplicationPolicy(workspace_root=tmp_ws)
+            req = SwarmVerificationRequest(
+                task_data=self.task_data,
+                coder_result={"raw_response": "```python:a.py\n# code\n```"},
+                application_request=ResponseApplicationRequest(
+                    raw_response="```python:a.py\n# code\n```",
+                    policy=policy,
+                ),
+            )
+            with self.assertRaises(ValueError) as ctx:
+                adapter(req)
+
+            self.assertIn("overlaps with real workspace", str(ctx.exception))
+            self.assertFalse(os.path.exists(os.path.join(tmp_ws, "a.py")))
+
+    def test_overlap_rejection_symlink_alias_raises_value_error(self):
+        """Symlink to real workspace raises ValueError."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_parent:
+            real_ws = os.path.join(tmp_parent, "real")
+            os.makedirs(real_ws)
+            symlink_ws = os.path.join(tmp_parent, "symlink_iso")
+            os.symlink(real_ws, symlink_ws)
+
+            adapter = create_isolated_verification_adapter(
+                isolated_workspace=symlink_ws,
+            )
+            policy = ResponseApplicationPolicy(workspace_root=real_ws)
+            req = SwarmVerificationRequest(
+                task_data=self.task_data,
+                coder_result={"raw_response": "```python:b.py\n# code\n```"},
+                application_request=ResponseApplicationRequest(
+                    raw_response="```python:b.py\n# code\n```",
+                    policy=policy,
+                ),
+            )
+            with self.assertRaises(ValueError) as ctx:
+                adapter(req)
+
+            self.assertIn("overlaps with real workspace", str(ctx.exception))
+            self.assertFalse(os.path.exists(os.path.join(real_ws, "b.py")))
+
+    def test_overlap_rejection_nested_workspaces_raise_value_error(self):
+        """Nested verification or real workspace raises ValueError."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp_parent:
+            real_ws = os.path.join(tmp_parent, "real")
+            iso_nested = os.path.join(real_ws, "nested_iso")
+            os.makedirs(iso_nested)
+
+            # Isolated inside real
+            adapter1 = create_isolated_verification_adapter(
+                isolated_workspace=iso_nested,
+            )
+            policy1 = ResponseApplicationPolicy(workspace_root=real_ws)
+            req1 = SwarmVerificationRequest(
+                task_data=self.task_data,
+                coder_result={"raw_response": "```python:c.py\n# code\n```"},
+                application_request=ResponseApplicationRequest(
+                    raw_response="```python:c.py\n# code\n```",
+                    policy=policy1,
+                ),
+            )
+            with self.assertRaises(ValueError) as ctx:
+                adapter1(req1)
+            self.assertIn("overlaps with real workspace", str(ctx.exception))
+
+            # Real inside isolated
+            adapter2 = create_isolated_verification_adapter(
+                isolated_workspace=real_ws,
+            )
+            policy2 = ResponseApplicationPolicy(workspace_root=iso_nested)
+            req2 = SwarmVerificationRequest(
+                task_data=self.task_data,
+                coder_result={"raw_response": "```python:d.py\n# code\n```"},
+                application_request=ResponseApplicationRequest(
+                    raw_response="```python:d.py\n# code\n```",
+                    policy=policy2,
+                ),
+            )
+            with self.assertRaises(ValueError) as ctx:
+                adapter2(req2)
+            self.assertIn("overlaps with real workspace", str(ctx.exception))
+
+    def test_retry_isolation_rejected_turn1_leaves_no_stale_files_for_turn2(
+        self,
+    ):
+        """Turn 1 created file does not pollute Turn 2."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp_real, (
+            tempfile.TemporaryDirectory()
+        ) as tmp_iso:
+            real_ws = Path(tmp_real)
+            iso_ws = Path(tmp_iso)
+
+            # Pristine baseline: main.py exists, helper.py absent
+            (iso_ws / "main.py").write_text("# main\n", encoding="utf-8")
+            (iso_ws / "test_check.py").write_text(
+                "import os\n"
+                "def test_check():\n"
+                "    # Test passes ONLY if helper.py is ABSENT\n"
+                "    assert not os.path.exists('helper.py'), 'Stale!'\n",
+                encoding="utf-8",
+            )
+
+            iso_verifier = create_isolated_verification_adapter(
+                isolated_workspace=str(iso_ws),
+                test_command=[
+                    sys.executable, "-m", "pytest", "test_check.py"
+                ],
+            )
+
+            # Turn 1 emits helper.py (fails: test expects no helper)
+            # Turn 2 emits main.py only (passes: helper is absent)
+            turn_responses = [
+                "```python:helper.py\n# helper\n```",
+                "```python:main.py\n# updated main\n```",
+            ]
+            current_turn = [0]
+
+            class MultiTurnCoder:
+                def code(self, *args, **kwargs):
+                    idx = current_turn[0]
+                    current_turn[0] += 1
+                    resp = turn_responses[idx]
+                    return {
+                        "canonical_response": resp,
+                        "raw_response": resp,
+                        "response_plan": {
+                            "operations": [
+                                {"target_path": "helper.py"}
+                                if idx == 0
+                                else {"target_path": "main.py"}
+                            ]
+                        },
+                        "warnings": [],
+                    }
+
+            class MultiTurnClient:
+                def generate(self, prompt, system_prompt="", temperature=0.0):
+                    if "SWARM PLANNER ROLE" in system_prompt:
+                        return "<swarm_plan>Plan</swarm_plan>"
+                    if "SWARM REVIEWER ROLE" in system_prompt:
+                        return "<swarm_review>\nVERDICT: PASS\n</swarm_review>"
+                    return ""
+
+            orchestrator = SwarmOrchestrator(
+                concurrency=1,
+                ollama_client=MultiTurnClient(),
+            )
+            orchestrator.coder = MultiTurnCoder()
+
+            real_policy = ResponseApplicationPolicy(
+                workspace_root=str(real_ws)
+            )
+            real_adapter_calls = []
+
+            res = orchestrator.execute_swarm_pipeline(
+                self.task_data,
+                max_retries=2,
+                application_policy=real_policy,
+                verification_adapter=iso_verifier,
+                application_adapter=lambda r: (
+                    real_adapter_calls.append(r) or apply_response(r)
+                ),
+            )
+
+            # Turn 1 failed verification (helper.py present in temp dir)
+            # Turn 2 passed verification (helper.py absent in temp dir)
+            self.assertEqual(res["turn"], 2)
+            self.assertEqual(res["review"]["verdict"], "PASS")
+            self.assertTrue(res["verification"]["passed"])
+            self.assertTrue(res["application"]["occurred"])
+            self.assertEqual(len(real_adapter_calls), 1)
+
+            # Baseline template itself was never mutated
+            self.assertFalse((iso_ws / "helper.py").exists())
+            self.assertTrue((iso_ws / "main.py").exists())
+
+            # Real workspace received Turn 2 response only
+            self.assertTrue((real_ws / "main.py").exists())
+            self.assertFalse((real_ws / "helper.py").exists())
 
 
 if __name__ == "__main__":

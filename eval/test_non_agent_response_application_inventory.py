@@ -22,6 +22,7 @@ SUPPORTED_NON_AGENT_CALLERS = {
 }
 AGENT_CALLERS = {
     "src/mighty_mouse/orchestrator/mighty_mouse_agent.py": ("apply_response",),
+    "src/mighty_mouse/orchestrator/swarm.py": ("apply_response",),
 }
 
 

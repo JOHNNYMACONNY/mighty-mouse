@@ -1653,3 +1653,322 @@ def test_run_swarm_execute_no_side_effect_signals_or_policy_mutations(
     # Verify no v2-signal-receipts or policy stores were created
     assert not (workspace / ".mighty-mouse" / "v2-signal-receipts").exists()
     assert not (workspace / ".mighty-mouse" / "v2-state").exists()
+
+
+def test_swarm_execute_tool_forwards_task_config_to_host_adapter(
+    tmp_path, monkeypatch
+):
+    import mighty_mouse_mcp.server as server
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    iso_ws = tmp_path / "iso_workspace"
+    iso_ws.mkdir()
+
+    forwarded_task_config = None
+
+    def mock_solve_swarm(self, **kwargs):
+        nonlocal forwarded_task_config
+        forwarded_task_config = kwargs.get("task_config")
+        return {
+            "host_provenance": {
+                "repository": "JOHNNYMACONNY/mighty-mouse",
+                "model_class": "local-small",
+                "model_digest": "sha256:abcd",
+                "execution_profile_id": "profile_123",
+                "model_source": "ollama",
+                "ollama_model": "qwen2.5-coder:7b",
+                "contract_version": 6,
+            },
+            "pipeline_result": {
+                "turn": 1,
+                "review": {"verdict": "PASS", "reason": "ok"},
+                "verification": {
+                    "available": True,
+                    "occurred": True,
+                    "passed": True,
+                    "result": {"summary": "ok"},
+                },
+                "application": {
+                    "available": True,
+                    "occurred": True,
+                    "applied_output_paths": ["out.py"],
+                },
+                "elapsed_sec": 0.1,
+            },
+        }
+
+    monkeypatch.setattr(server.HostAdapter, "solve_swarm", mock_solve_swarm)
+
+    custom_config = {
+        "expected_files": ["required_module.py"],
+        "test_script": "pytest test_module.py",
+        "adherence_rules": ["no_todo"],
+    }
+
+    result = server.swarm_execute_tool(
+        workspace=str(workspace),
+        verification_workspace=str(iso_ws),
+        task={"id": "swarm_task_cfg", "task": "custom task"},
+        task_config=custom_config,
+    )
+
+    assert forwarded_task_config == custom_config
+    assert result["review"]["verdict"] == "PASS"
+
+
+def test_mcp_swarm_execute_honors_task_config_verification_reject(
+    tmp_path, monkeypatch
+):
+    """Prove task_config expected_files failure rejects candidate and prevents mutation."""
+    import mighty_mouse_mcp.server as server
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    model_name = "qwen2.5-coder:7b"
+    model_digest = "sha256:" + "c" * 64
+
+    # Setup manifest
+    manifest_file = (
+        tmp_path
+        / "home"
+        / ".ollama"
+        / "models"
+        / "manifests"
+        / "registry.ollama.ai"
+        / "library"
+        / "qwen2.5-coder"
+        / "7b"
+    )
+    manifest_file.parent.mkdir(parents=True, exist_ok=True)
+    manifest_file.write_text(
+        json.dumps(
+            {
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": model_digest,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    real_ws = tmp_path / "real_ws"
+    real_ws.mkdir()
+    iso_ws = tmp_path / "iso_ws"
+    iso_ws.mkdir()
+
+    # Onboard workspace via MCP setup_workspace
+    server.run_setup_workspace(
+        workspace=str(real_ws),
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_class="local-small",
+        ollama_model=model_name,
+        runtime_kind="cline",
+        runtime_version="3.32.2",
+    )
+
+    # Candidate generates 'other.py' but task_config expects 'required.py'
+    def mock_generate_content(*args, **kwargs):
+        return (
+            "<swarm_plan>1. build other</swarm_plan>\n"
+            "```python:other.py\n"
+            "def other():\n"
+            "    return 42\n"
+            "```"
+        )
+
+    monkeypatch.setattr(
+        "mighty_mouse.orchestrator.ollama_client.OllamaClient.generate_content",
+        mock_generate_content,
+    )
+
+    result = server.swarm_execute_tool(
+        workspace=str(real_ws),
+        verification_workspace=str(iso_ws),
+        task={"id": "task_reject", "task": "implement feature"},
+        task_config={"expected_files": ["required.py"]},
+    )
+
+    assert result["review"]["verdict"] == "REJECT"
+    assert result["verification"]["occurred"] is True
+    assert result["verification"]["passed"] is False
+    assert result["application"]["occurred"] is False
+    assert result["application"]["applied_output_paths"] == []
+    assert result["output_files"] == []
+    # Real workspace has zero mutations
+    assert not (real_ws / "other.py").exists()
+    assert not (real_ws / "required.py").exists()
+
+
+def test_mcp_swarm_execute_honors_task_config_verification_pass(
+    tmp_path, monkeypatch
+):
+    """Prove task_config expected_files success passes and performs single winner application."""
+    import mighty_mouse_mcp.server as server
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    model_name = "qwen2.5-coder:7b"
+    model_digest = "sha256:" + "d" * 64
+
+    # Setup manifest
+    manifest_file = (
+        tmp_path
+        / "home"
+        / ".ollama"
+        / "models"
+        / "manifests"
+        / "registry.ollama.ai"
+        / "library"
+        / "qwen2.5-coder"
+        / "7b"
+    )
+    manifest_file.parent.mkdir(parents=True, exist_ok=True)
+    manifest_file.write_text(
+        json.dumps(
+            {
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": model_digest,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    real_ws = tmp_path / "real_ws"
+    real_ws.mkdir()
+    iso_ws = tmp_path / "iso_ws"
+    iso_ws.mkdir()
+
+    server.run_setup_workspace(
+        workspace=str(real_ws),
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_class="local-small",
+        ollama_model=model_name,
+        runtime_kind="cline",
+        runtime_version="3.32.2",
+    )
+
+    def mock_generate_content(*args, **kwargs):
+        return (
+            "<swarm_plan>\n"
+            "- required.py (NEW)\n"
+            "1. build required\n"
+            "</swarm_plan>\n"
+            "```python:required.py\n"
+            "def required_func():\n"
+            "    return 100\n"
+            "```"
+        )
+
+    monkeypatch.setattr(
+        "mighty_mouse.orchestrator.ollama_client.OllamaClient.generate_content",
+        mock_generate_content,
+    )
+
+    result = server.swarm_execute_tool(
+        workspace=str(real_ws),
+        verification_workspace=str(iso_ws),
+        task={"id": "task_pass", "task": "implement feature"},
+        task_config={"expected_files": ["required.py"]},
+    )
+
+    assert result["review"]["verdict"] == "PASS"
+    assert result["verification"]["occurred"] is True
+    assert result["verification"]["passed"] is True
+    assert result["application"]["occurred"] is True
+    assert result["application"]["applied_output_paths"] == ["required.py"]
+    assert result["output_files"] == ["required.py"]
+    # Real workspace has the applied winner file
+    assert (real_ws / "required.py").exists()
+    assert "required_func" in (real_ws / "required.py").read_text()
+
+
+def test_mcp_swarm_execute_omitted_task_config_backwards_compatible(
+    tmp_path, monkeypatch
+):
+    """Prove omitting task_config executes generic verification without error."""
+    import mighty_mouse_mcp.server as server
+
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    model_name = "qwen2.5-coder:7b"
+    model_digest = "sha256:" + "e" * 64
+
+    # Setup manifest
+    manifest_file = (
+        tmp_path
+        / "home"
+        / ".ollama"
+        / "models"
+        / "manifests"
+        / "registry.ollama.ai"
+        / "library"
+        / "qwen2.5-coder"
+        / "7b"
+    )
+    manifest_file.parent.mkdir(parents=True, exist_ok=True)
+    manifest_file.write_text(
+        json.dumps(
+            {
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": model_digest,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    real_ws = tmp_path / "real_ws"
+    real_ws.mkdir()
+    iso_ws = tmp_path / "iso_ws"
+    iso_ws.mkdir()
+
+    server.run_setup_workspace(
+        workspace=str(real_ws),
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_class="local-small",
+        ollama_model=model_name,
+        runtime_kind="cline",
+        runtime_version="3.32.2",
+    )
+
+    def mock_generate_content(*args, **kwargs):
+        return (
+            "<swarm_plan>\n"
+            "- generic.py (NEW)\n"
+            "1. build generic\n"
+            "</swarm_plan>\n"
+            "```python:generic.py\n"
+            "def generic_func():\n"
+            "    return 1\n"
+            "```"
+        )
+
+    monkeypatch.setattr(
+        "mighty_mouse.orchestrator.ollama_client.OllamaClient.generate_content",
+        mock_generate_content,
+    )
+
+    result = server.swarm_execute_tool(
+        workspace=str(real_ws),
+        verification_workspace=str(iso_ws),
+        task={
+            "id": "task_generic",
+            "task": "generic task",
+        },
+        test_command="python3 -c 'exit(0)'",
+        task_config=None,
+    )
+
+    assert result["review"]["verdict"] == "PASS"
+    assert result["verification"]["occurred"] is True
+    assert result["verification"]["passed"] is True
+    assert result["application"]["occurred"] is True
+    assert (real_ws / "generic.py").exists()

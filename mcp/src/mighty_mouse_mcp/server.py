@@ -540,6 +540,7 @@ def swarm_execute_tool(
     lint_command: str | None = None,
     build_command: str | None = None,
     allowed_paths: list[str] | None = None,
+    task_config: dict[str, Any] | None = None,
     timeout_sec: int = 120,
 ) -> dict[str, Any]:
     """Execute swarm with canonical provenance and isolated verification."""
@@ -553,6 +554,7 @@ def swarm_execute_tool(
         lint_command=lint_command,
         build_command=build_command,
         allowed_paths=allowed_paths,
+        task_config=task_config,
         timeout_sec=timeout_sec,
     )
 

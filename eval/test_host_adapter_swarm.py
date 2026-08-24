@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -718,14 +719,29 @@ keep_me_updated
     assert result["pipeline_result"]["application"]["occurred"] is True
 
 
+@pytest.mark.parametrize(
+    "overlap_case",
+    ["same", "child", "parent", "symlink"],
+)
 def test_solve_swarm_rejects_overlapping_workspaces_before_generation(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, overlap_case
 ):
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     setup_test_manifest(tmp_path / "home")
     real_ws = tmp_path / "real_ws"
     real_ws.mkdir()
     (real_ws / "keep.py").write_text("keep_me\n")
+
+    if overlap_case == "same":
+        iso_ws = real_ws
+    elif overlap_case == "child":
+        iso_ws = real_ws / "nested_iso"
+        iso_ws.mkdir()
+    elif overlap_case == "parent":
+        iso_ws = tmp_path
+    elif overlap_case == "symlink":
+        iso_ws = tmp_path / "sym_iso"
+        iso_ws.symlink_to(real_ws, target_is_directory=True)
 
     configure_adapter(real_ws)
     adapter = HostAdapter()
@@ -740,10 +756,21 @@ def test_solve_swarm_rejects_overlapping_workspaces_before_generation(
             adapter.solve_swarm(
                 workspace=str(real_ws),
                 task_input=task_input,
-                verification_workspace=str(real_ws),
+                verification_workspace=str(iso_ws),
                 tool_signatures=TOOL_SIGNATURES,
             )
 
     # Prove zero generation calls, zero real application, workspace untouched
     assert mock_generate.call_count == 0
     assert (real_ws / "keep.py").read_text() == "keep_me\n"
+
+
+def test_solve_swarm_root_commonpath_overlap_semantics():
+    """Verify commonpath correctly identifies root and child as overlapping."""
+    ws_real = "/"
+    iso_real = "/tmp/verify"
+    try:
+        common = os.path.commonpath([ws_real, iso_real])
+    except ValueError:
+        common = None
+    assert common in (ws_real, iso_real)

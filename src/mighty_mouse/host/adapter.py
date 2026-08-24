@@ -158,11 +158,12 @@ class HostAdapter:
             )
         ws_real = os.path.realpath(os.path.abspath(workspace))
         iso_real = os.path.realpath(os.path.abspath(verification_workspace))
-        if (
-            ws_real == iso_real
-            or iso_real.startswith(ws_real + os.sep)
-            or ws_real.startswith(iso_real + os.sep)
-        ):
+        try:
+            common = os.path.commonpath([ws_real, iso_real])
+        except ValueError:
+            common = None
+
+        if common in (ws_real, iso_real):
             raise ValueError(
                 "Verification workspace cannot overlap with application "
                 "workspace"

@@ -272,6 +272,80 @@ def test_closed_vocabularies() -> None:
             )
 
 
+def test_verification_summary_consistency() -> None:
+    """VerificationSummary enforces consistency between occurred and passed."""
+    # Valid occurred=False cases
+    s1 = HookVerificationSummary(
+        occurred=False, passed=None, summary="skipped"
+    )
+    assert not s1.occurred and s1.passed is None
+
+    # Invalid occurred=False cases (passed must be None)
+    with pytest.raises(
+        ValueError, match="passed must be None when occurred is False"
+    ):
+        HookVerificationSummary(occurred=False, passed=True, summary="invalid")
+
+    with pytest.raises(
+        ValueError, match="passed must be None when occurred is False"
+    ):
+        HookVerificationSummary(
+            occurred=False, passed=False, summary="invalid"
+        )
+
+    # Valid occurred=True cases
+    assert HookVerificationSummary(
+        occurred=True, passed=True, summary="pass"
+    ).passed is True
+    assert HookVerificationSummary(
+        occurred=True, passed=False, summary="fail"
+    ).passed is False
+    assert HookVerificationSummary(
+        occurred=True, passed=None, summary="indeterminate"
+    ).passed is None
+
+
+def test_recovery_summary_consistency() -> None:
+    """RecoverySummary enforces consistency when attempted is False."""
+    # Valid attempted=False
+    r1 = HookRecoverySummary(
+        attempted=False, succeeded=None, attempts=0, execution_mode=None
+    )
+    assert not r1.attempted and r1.succeeded is None and r1.attempts == 0
+
+    # Invalid attempted=False combinations
+    with pytest.raises(
+        ValueError, match="succeeded must be None when attempted is False"
+    ):
+        HookRecoverySummary(
+            attempted=False, succeeded=True, attempts=0, execution_mode=None
+        )
+
+    with pytest.raises(
+        ValueError, match="succeeded must be None when attempted is False"
+    ):
+        HookRecoverySummary(
+            attempted=False, succeeded=False, attempts=0, execution_mode=None
+        )
+
+    with pytest.raises(
+        ValueError, match="attempts must be 0 when attempted is False"
+    ):
+        HookRecoverySummary(
+            attempted=False, succeeded=None, attempts=1, execution_mode=None
+        )
+
+    with pytest.raises(
+        ValueError, match="execution_mode must be None when attempted is False"
+    ):
+        HookRecoverySummary(
+            attempted=False,
+            succeeded=None,
+            attempts=0,
+            execution_mode="agent",
+        )
+
+
 def test_path_normalization_and_rejection() -> None:
     """Relative paths normalized; invalid rejected across OS formats."""
     # Valid relative paths
@@ -286,6 +360,11 @@ def test_path_normalization_and_rejection() -> None:
         [r"src\pkg\a.py", "src/pkg/a.py", r"src\b.py"]
     )
     assert norm_dup == ("src/pkg/a.py", "src/b.py")
+
+    # NUL bytes in paths
+    for nul_path in ("src/file.py\x00suffix", "\x00", "src/\x00/file.py"):
+        with pytest.raises(ValueError, match="NUL bytes"):
+            normalize_target_paths([nul_path])
 
     # POSIX absolute paths
     with pytest.raises(ValueError, match="cannot be absolute"):

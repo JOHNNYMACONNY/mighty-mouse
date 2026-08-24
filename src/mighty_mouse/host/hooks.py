@@ -104,6 +104,10 @@ def normalize_target_paths(paths: Any) -> tuple[str, ...]:
     for raw in paths:
         if not isinstance(raw, str):
             raise ValueError("target_paths entries must be strings")
+        if "\x00" in raw:
+            raise ValueError(
+                f"target_paths entry cannot contain NUL bytes: {raw!r}"
+            )
         trimmed = raw.strip()
         if not trimmed:
             raise ValueError("target_paths entry cannot be empty")
@@ -217,6 +221,8 @@ class HookVerificationSummary:
     def __post_init__(self) -> None:
         if not isinstance(self.occurred, bool):
             raise ValueError("occurred must be a boolean")
+        if not self.occurred and self.passed is not None:
+            raise ValueError("passed must be None when occurred is False")
         if self.passed is not None and not isinstance(self.passed, bool):
             raise ValueError("passed must be a boolean or None")
         if not isinstance(self.summary, str):
@@ -235,6 +241,17 @@ class HookRecoverySummary:
     def __post_init__(self) -> None:
         if not isinstance(self.attempted, bool):
             raise ValueError("attempted must be a boolean")
+        if not self.attempted:
+            if self.succeeded is not None:
+                raise ValueError(
+                    "succeeded must be None when attempted is False"
+                )
+            if self.attempts != 0:
+                raise ValueError("attempts must be 0 when attempted is False")
+            if self.execution_mode is not None:
+                raise ValueError(
+                    "execution_mode must be None when attempted is False"
+                )
         if self.succeeded is not None and not isinstance(self.succeeded, bool):
             raise ValueError("succeeded must be a boolean or None")
         if (

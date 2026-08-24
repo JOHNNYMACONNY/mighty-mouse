@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 import inspect
 import json
+import os
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -154,6 +155,17 @@ class HostAdapter:
             raise ValueError(
                 "Verification workspace must be an existing directory: "
                 f"{verification_workspace}"
+            )
+        ws_real = os.path.realpath(os.path.abspath(workspace))
+        iso_real = os.path.realpath(os.path.abspath(verification_workspace))
+        if (
+            ws_real == iso_real
+            or iso_real.startswith(ws_real + os.sep)
+            or ws_real.startswith(iso_real + os.sep)
+        ):
+            raise ValueError(
+                "Verification workspace cannot overlap with application "
+                "workspace"
             )
         if concurrency not in (1, 2):
             raise ValueError(

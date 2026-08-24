@@ -716,3 +716,34 @@ keep_me_updated
     assert (iso_ws / "obsolete.py").exists()
     assert (iso_ws / "keep.py").read_text() == "keep_me\n"
     assert result["pipeline_result"]["application"]["occurred"] is True
+
+
+def test_solve_swarm_rejects_overlapping_workspaces_before_generation(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    setup_test_manifest(tmp_path / "home")
+    real_ws = tmp_path / "real_ws"
+    real_ws.mkdir()
+    (real_ws / "keep.py").write_text("keep_me\n")
+
+    configure_adapter(real_ws)
+    adapter = HostAdapter()
+
+    task_input = json.dumps({"id": "T1", "instruction": "Do work"})
+    mock_generate = MagicMock()
+
+    with patch(CLIENT_CLS, mock_generate):
+        with pytest.raises(
+            ValueError, match="cannot overlap with application workspace"
+        ):
+            adapter.solve_swarm(
+                workspace=str(real_ws),
+                task_input=task_input,
+                verification_workspace=str(real_ws),
+                tool_signatures=TOOL_SIGNATURES,
+            )
+
+    # Prove zero generation calls, zero real application, workspace untouched
+    assert mock_generate.call_count == 0
+    assert (real_ws / "keep.py").read_text() == "keep_me\n"

@@ -126,6 +126,7 @@ class SwarmCoder:
         temperature: float = 0.0,
         workspace_root: Optional[str] = None,
         allowed_delete_paths: tuple = (),
+        application_policy: Optional[ResponseApplicationPolicy] = None,
     ) -> Dict[str, Any]:
         task_id = task_data.get("id", "unknown_task")
         instruction = task_data.get("instruction", "")
@@ -167,16 +168,16 @@ class SwarmCoder:
         file_updates: Dict[str, str] = {}
         warnings: List[str] = []
 
+        effective_policy = application_policy or ResponseApplicationPolicy(
+            workspace_root=workspace_root or ".",
+            allowed_delete_paths=tuple(allowed_delete_paths),
+        )
+
         try:
             plan = plan_response(
                 ResponseApplicationRequest(
                     raw_response=canonical_response,
-                    policy=ResponseApplicationPolicy(
-                        workspace_root=workspace_root or ".",
-                        allowed_delete_paths=tuple(
-                            allowed_delete_paths
-                        ),
-                    ),
+                    policy=effective_policy,
                 )
             )
             response_plan = {
@@ -265,6 +266,7 @@ class SwarmOrchestrator:
         verifier_func=None,
         application_adapter: Optional[ResponseApplicationAdapter] = None,
         allowed_delete_paths: tuple = (),
+        application_policy: Optional[ResponseApplicationPolicy] = None,
     ) -> Dict[str, Any]:
         """Execute the Planner -> Coder -> Reviewer swarm pipeline.
 
@@ -276,9 +278,14 @@ class SwarmOrchestrator:
         returns the applied output paths.  When omitted, the pipeline
         remains strictly non-mutating (Ticket 1 invariant).
 
-        ``allowed_delete_paths`` is forwarded to SwarmCoder's planning
-        policy so that authorized delete operations can be planned at
-        the coder stage.  Defaults to empty (no deletes authorized).
+        ``application_policy`` binds the authoritative
+        ResponseApplicationPolicy (workspace_root, allowed_delete_paths,
+        max_file_bytes, system_mode, strict_code_hygiene) used
+        symmetrically for both candidate planning and winner
+        application.
+
+        ``allowed_delete_paths`` provides backwards-compatible delete
+        authorization if no explicit application_policy is passed.
 
         Application is triggered exactly once, only after the reviewer
         returns PASS, and only for the single selected winner candidate.
@@ -288,6 +295,11 @@ class SwarmOrchestrator:
         """
         start_time = time.time()
         temperatures = [0.0, 0.35, 0.70]
+
+        effective_policy = application_policy or ResponseApplicationPolicy(
+            workspace_root=".",
+            allowed_delete_paths=tuple(allowed_delete_paths),
+        )
 
         # Stage 1: Architectural Planning
         print(
@@ -328,7 +340,7 @@ class SwarmOrchestrator:
                     plan_result,
                     reviewer_feedback=reviewer_feedback,
                     temperature=slot_temp,
-                    allowed_delete_paths=allowed_delete_paths,
+                    application_policy=effective_policy,
                 )
                 candidates.append(coder_res)
 

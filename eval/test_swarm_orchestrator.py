@@ -4,9 +4,16 @@ import sys
 import unittest
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator"))
+sys.path.insert(
+    0, os.path.join(_REPO_ROOT, "src", "mighty_mouse", "orchestrator")
+)
 
 try:
+    from mighty_mouse.orchestrator.response_application import (
+        ResponseApplicationPolicy,
+        ResponseApplicationRequest,
+        apply_response,
+    )
     from mighty_mouse.orchestrator.swarm import (
         SwarmPlanner,
         SwarmCoder,
@@ -14,6 +21,11 @@ try:
         SwarmOrchestrator,
     )
 except ImportError:
+    from response_application import (  # noqa: F401
+        ResponseApplicationPolicy,
+        ResponseApplicationRequest,
+        apply_response,
+    )
     from swarm import (  # noqa: F401
         SwarmPlanner,
         SwarmCoder,
@@ -803,11 +815,15 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 concurrency=1,
                 ollama_client=DeleteResponseClient(),
             )
+            policy = ResponseApplicationPolicy(
+                workspace_root=str(ws),
+                allowed_delete_paths=("old.py",),
+            )
             res = orchestrator.execute_swarm_pipeline(
                 self.task_data,
                 verifier_func=None,
                 application_adapter=delete_adapter,
-                allowed_delete_paths=("old.py",),
+                application_policy=policy,
             )
 
             self.assertEqual(res["review"]["verdict"], "PASS")
@@ -820,6 +836,200 @@ class TestSwarmOrchestrator(unittest.TestCase):
             self.assertFalse(to_delete.exists())
 
         self.assertIsInstance(json.dumps(res), str)
+
+    def test_policy_symmetry_workspace_boundary_isolation_a_and_b(self):
+        """Planning and application strictly bound to workspace B, not A."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp_a, (
+            tempfile.TemporaryDirectory()
+        ) as tmp_b:
+            ws_a = Path(tmp_a)
+            ws_b = Path(tmp_b)
+
+            sentinel_a = ws_a / "sentinel_a.py"
+            sentinel_a.write_text("A_STATE = 1\n", encoding="utf-8")
+            snap_a_before = {
+                p.relative_to(ws_a): p.read_bytes()
+                for p in ws_a.rglob("*") if p.is_file()
+            }
+
+            policy_b = ResponseApplicationPolicy(
+                workspace_root=str(ws_b),
+            )
+
+            def adapter_b(canonical_response: str):
+                req = ResponseApplicationRequest(
+                    raw_response=canonical_response,
+                    policy=policy_b,
+                )
+                return apply_response(req)
+
+            orchestrator = SwarmOrchestrator(
+                concurrency=1,
+                ollama_client=self.mock_client,
+            )
+            res = orchestrator.execute_swarm_pipeline(
+                self.task_data,
+                verifier_func=None,
+                application_adapter=adapter_b,
+                application_policy=policy_b,
+            )
+
+            self.assertEqual(res["review"]["verdict"], "PASS")
+            self.assertTrue(res["application"]["occurred"])
+            self.assertIn(
+                "visitor.py",
+                res["application"]["applied_output_paths"],
+            )
+            self.assertTrue((ws_b / "visitor.py").exists())
+
+            # Workspace A must remain completely untouched
+            snap_a_after = {
+                p.relative_to(ws_a): p.read_bytes()
+                for p in ws_a.rglob("*") if p.is_file()
+            }
+            self.assertEqual(snap_a_before, snap_a_after)
+
+    def test_policy_symmetry_max_file_bytes_governs_planning_and_application(
+        self,
+    ):
+        """max_file_bytes in policy blocks planning and skips application."""
+        import tempfile
+        from pathlib import Path
+
+        adapter_calls = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = Path(tmpdir)
+            policy = ResponseApplicationPolicy(
+                workspace_root=str(ws),
+                max_file_bytes=5,  # strictly limit to 5 bytes
+            )
+
+            def adapter(canonical_response: str):
+                adapter_calls.append(canonical_response)
+                req = ResponseApplicationRequest(
+                    raw_response=canonical_response,
+                    policy=policy,
+                )
+                return apply_response(req)
+
+            orchestrator = SwarmOrchestrator(
+                concurrency=1,
+                ollama_client=self.mock_client,
+            )
+            res = orchestrator.execute_swarm_pipeline(
+                self.task_data,
+                verifier_func=None,
+                application_adapter=adapter,
+                application_policy=policy,
+            )
+
+            # Oversized candidate yields planning warning; adapter not called
+            self.assertTrue(
+                any(
+                    "Refusing oversized" in w
+                    for w in res["coder"].get("warnings", [])
+                )
+            )
+            self.assertEqual(len(adapter_calls), 0)
+            self.assertFalse(res["application"]["occurred"])
+
+    def test_policy_symmetry_strict_code_hygiene_governs_planning(self):
+        """strict_code_hygiene in policy rejects XML leakage in planning."""
+        import tempfile
+        from pathlib import Path
+
+        adapter_calls = []
+
+        class LeakyCoderClient:
+            def generate(self, prompt, system_prompt="", temperature=0.0):
+                if "SWARM PLANNER ROLE" in system_prompt:
+                    return "<swarm_plan>Plan</swarm_plan>"
+                if "SWARM CODER ROLE" in system_prompt:
+                    return "```python:leak.py\nx = 1\n</act>\n```"
+                if "SWARM REVIEWER ROLE" in system_prompt:
+                    return "<swarm_review>\nVERDICT: PASS\n</swarm_review>"
+                return ""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = Path(tmpdir)
+            policy = ResponseApplicationPolicy(
+                workspace_root=str(ws),
+                strict_code_hygiene=True,
+            )
+
+            orchestrator = SwarmOrchestrator(
+                concurrency=1,
+                ollama_client=LeakyCoderClient(),
+            )
+            res = orchestrator.execute_swarm_pipeline(
+                self.task_data,
+                verifier_func=None,
+                application_adapter=lambda r: adapter_calls.append(r) or [],
+                application_policy=policy,
+            )
+
+            self.assertTrue(
+                any(
+                    "XML leakage detected" in w
+                    for w in res["coder"].get("warnings", [])
+                )
+            )
+            self.assertEqual(len(adapter_calls), 0)
+            self.assertFalse(res["application"]["occurred"])
+
+    def test_policy_symmetry_system_mode_governs_planning_and_application(
+        self,
+    ):
+        """system_mode=True allows .mighty in planning and application."""
+        import tempfile
+        from pathlib import Path
+
+        class SystemPathClient:
+            def generate(self, prompt, system_prompt="", temperature=0.0):
+                if "SWARM PLANNER ROLE" in system_prompt:
+                    return "<swarm_plan>Plan</swarm_plan>"
+                if "SWARM CODER ROLE" in system_prompt:
+                    return "```json:.mighty/config.json\n{\"ok\": true}\n```"
+                if "SWARM REVIEWER ROLE" in system_prompt:
+                    return "<swarm_review>\nVERDICT: PASS\n</swarm_review>"
+                return ""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = Path(tmpdir)
+            policy = ResponseApplicationPolicy(
+                workspace_root=str(ws),
+                system_mode=True,
+            )
+
+            def adapter(canonical_response: str):
+                req = ResponseApplicationRequest(
+                    raw_response=canonical_response,
+                    policy=policy,
+                )
+                return apply_response(req)
+
+            orchestrator = SwarmOrchestrator(
+                concurrency=1,
+                ollama_client=SystemPathClient(),
+            )
+            res = orchestrator.execute_swarm_pipeline(
+                self.task_data,
+                verifier_func=None,
+                application_adapter=adapter,
+                application_policy=policy,
+            )
+
+            self.assertEqual(res["review"]["verdict"], "PASS")
+            self.assertTrue(res["application"]["occurred"])
+            self.assertIn(
+                ".mighty/config.json",
+                res["application"]["applied_output_paths"],
+            )
+            self.assertTrue((ws / ".mighty" / "config.json").exists())
 
     def test_invalid_candidate_with_no_ops_never_reaches_adapter(self):
         """Candidate with no validated operations never reaches adapter."""

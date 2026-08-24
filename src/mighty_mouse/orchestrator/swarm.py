@@ -11,7 +11,7 @@ import os
 import re
 import sys
 import time
-from typing import Callable, Dict, List, Optional, Sequence, Any
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Any
 
 try:
     from mighty_mouse.orchestrator.ollama_client import OllamaClient
@@ -35,10 +35,12 @@ except ImportError:
         plan_response,
     )
 
-# Narrow typed application adapter: receives the selected candidate's
-# canonicalized response and returns applied output paths.
-# Must already be bound to the intended ResponseApplicationPolicy.
-ResponseApplicationAdapter = Callable[[str], Sequence[str]]
+# Narrow typed application adapter: receives the authoritative
+# ResponseApplicationRequest (with canonical raw response and
+# effective policy) and returns applied output paths.
+ResponseApplicationAdapter = Callable[
+    [ResponseApplicationRequest], Sequence[str]
+]
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 PROMPT_SEGMENTS_DIR = os.path.join(_REPO_ROOT, "configs", "prompt_segments")
@@ -344,10 +346,24 @@ class SwarmOrchestrator:
                 )
                 candidates.append(coder_res)
 
-            # Select winner by fewest planning/validation warnings
+            # Deterministic candidate ranking:
+            # 1. Candidates with validated operations first
+            # 2. Fewer planning/validation warnings
+            # 3. Slot index ascending (stable tie-break)
+            def _rank_key(item: Tuple[int, Dict[str, Any]]) -> tuple:
+                slot_idx, cand = item
+                rplan = cand.get("response_plan")
+                has_ops = bool(rplan and rplan.get("operations"))
+                return (
+                    0 if has_ops else 1,
+                    len(cand.get("warnings", [])),
+                    slot_idx,
+                )
+
             coder_result = min(
-                candidates, key=lambda c: len(c.get("warnings", []))
-            )
+                enumerate(candidates),
+                key=_rank_key,
+            )[1]
 
             # Verifier runs before reviewer (separate seam from application)
             verification_result = {
@@ -404,8 +420,12 @@ class SwarmOrchestrator:
                             "canonical_response",
                             coder_result.get("raw_response", ""),
                         )
+                        app_request = ResponseApplicationRequest(
+                            raw_response=canonical,
+                            policy=effective_policy,
+                        )
                         # Fail-closed: application errors propagate
-                        applied_paths = application_adapter(canonical)
+                        applied_paths = application_adapter(app_request)
                         application["occurred"] = True
                         application["applied_output_paths"] = list(
                             applied_paths

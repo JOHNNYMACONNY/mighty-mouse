@@ -11,7 +11,17 @@ import os
 import re
 import sys
 import time
-from typing import Callable, Dict, List, Optional, Sequence, Tuple, Any
+from dataclasses import dataclass
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 try:
     from mighty_mouse.orchestrator.ollama_client import OllamaClient
@@ -24,6 +34,7 @@ try:
         ResponseApplicationPolicy,
         ResponseApplicationRequest,
         ResponsePlan,
+        apply_response,
         plan_response,
     )
 except ImportError:
@@ -32,7 +43,21 @@ except ImportError:
         ResponseApplicationPolicy,
         ResponseApplicationRequest,
         ResponsePlan,
+        apply_response,
         plan_response,
+    )
+
+try:
+    from mighty_mouse.verifier import (
+        CheckResult,
+        VerificationResult,
+        verify,
+    )
+except ImportError:
+    from verifier import (  # noqa: F401
+        CheckResult,
+        VerificationResult,
+        verify,
     )
 
 # Narrow typed application adapter: receives the authoritative
@@ -41,6 +66,61 @@ except ImportError:
 ResponseApplicationAdapter = Callable[
     [ResponseApplicationRequest], Sequence[str]
 ]
+
+
+@dataclass(frozen=True)
+class SwarmVerificationRequest:
+    """Authoritative context supplied to a verification adapter."""
+
+    task_data: Dict[str, Any]
+    coder_result: Dict[str, Any]
+    application_request: ResponseApplicationRequest
+
+
+SwarmVerificationAdapter = Callable[
+    [SwarmVerificationRequest],
+    VerificationResult,
+]
+
+
+def create_isolated_verification_adapter(
+    isolated_workspace: str,
+    test_command: Optional[Union[str, Sequence[str]]] = None,
+    lint_command: Optional[Union[str, Sequence[str]]] = None,
+    build_command: Optional[Union[str, Sequence[str]]] = None,
+    allowed_paths: Optional[List[str]] = None,
+    task_config: Optional[Dict[str, Any]] = None,
+    timeout_sec: int = 120,
+) -> SwarmVerificationAdapter:
+    """Create verification adapter executing against an isolated workspace."""
+    def _adapter(request: SwarmVerificationRequest) -> VerificationResult:
+        real_policy = request.application_request.policy
+        # Rebind workspace_root to isolated workspace while preserving
+        # allowed_delete_paths, max_file_bytes, system_mode,
+        # strict_code_hygiene
+        isolated_policy = ResponseApplicationPolicy(
+            workspace_root=isolated_workspace,
+            allowed_delete_paths=real_policy.allowed_delete_paths,
+            max_file_bytes=real_policy.max_file_bytes,
+            system_mode=real_policy.system_mode,
+            strict_code_hygiene=real_policy.strict_code_hygiene,
+        )
+        isolated_req = ResponseApplicationRequest(
+            raw_response=request.application_request.raw_response,
+            policy=isolated_policy,
+        )
+        apply_response(isolated_req)
+        return verify(
+            workspace=isolated_workspace,
+            test_command=test_command,
+            lint_command=lint_command,
+            build_command=build_command,
+            allowed_paths=allowed_paths,
+            task_config=task_config,
+            timeout_sec=timeout_sec,
+        )
+
+    return _adapter
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 PROMPT_SEGMENTS_DIR = os.path.join(_REPO_ROOT, "configs", "prompt_segments")
@@ -217,19 +297,62 @@ class SwarmReviewer:
         self.ollama_client = ollama_client or OllamaClient()
         self.prompt_segment = _read_prompt_segment("reviewer")
 
-    def review(self, verification_result: Dict[str, Any], diff_summary: str = "") -> Dict[str, Any]:
+    def review(
+        self,
+        verification_result: Union[VerificationResult, Dict[str, Any]],
+        diff_summary: str = "",
+    ) -> Dict[str, Any]:
+        """Review verification evidence and return PASS/REJECT verdict."""
+        if isinstance(verification_result, VerificationResult):
+            if verification_result.passed:
+                return {
+                    "verdict": "PASS",
+                    "reason": verification_result.summary,
+                    "feedback": "",
+                }
+
+            feedback_parts = [
+                f"VERIFICATION FAILED: {verification_result.summary}"
+            ]
+            failed_checks = [
+                c for c in verification_result.checks if not c.passed
+            ]
+            for check in failed_checks:
+                out = check.output.strip()
+                if len(out) > 500:
+                    out = out[-500:]
+                feedback_parts.append(
+                    f"CHECK '{check.name}' FAILED:\n{out}"
+                )
+            if verification_result.suggestions:
+                feedback_parts.append(
+                    "SUGGESTIONS:\n"
+                    + "\n".join(
+                        f"- {s}"
+                        for s in verification_result.suggestions[:5]
+                    )
+                )
+            return {
+                "verdict": "REJECT",
+                "reason": verification_result.summary,
+                "feedback": "\n\n".join(feedback_parts),
+            }
+
+        # Legacy dict fallback for existing callers / tests
         status = verification_result.get("status", "failed")
         scope = verification_result.get("scope", "FAIL")
         adherence = verification_result.get("adherence", "FAIL")
         test_logs = verification_result.get("test_logs", "")
         reason = verification_result.get("reason", "")
 
-        # Automated deterministic review first
         if status == "success" and scope == "PASS" and adherence == "PASS":
             return {
                 "verdict": "PASS",
-                "reason": "All tests passed cleanly and zero scope violations detected.",
-                "feedback": ""
+                "reason": (
+                    "All tests passed cleanly and zero scope violations "
+                    "detected."
+                ),
+                "feedback": "",
             }
 
         feedback_parts = []
@@ -238,25 +361,42 @@ class SwarmReviewer:
         if adherence != "PASS":
             adh_logs = verification_result.get("adherence_logs", "")
             if adh_logs:
-                feedback_parts.append(f"ADHERENCE VIOLATION:\n{adh_logs[:300]}")
+                feedback_parts.append(
+                    f"ADHERENCE VIOLATION:\n{adh_logs[:300]}"
+                )
         if test_logs and status != "success":
             lines = test_logs.strip().split("\n")
-            feedback_parts.append(f"TEST FAILURE:\n" + "\n".join(lines[-20:])[:800])
+            feedback_parts.append(
+                f"TEST FAILURE:\n" + "\n".join(lines[-20:])[:800]
+            )
 
-        feedback_str = "\n".join(feedback_parts) if feedback_parts else reason or "Verification failed."
+        feedback_str = (
+            "\n".join(feedback_parts)
+            if feedback_parts
+            else reason or "Verification failed."
+        )
 
         return {
             "verdict": "REJECT",
-            "reason": f"Verification failed (scope={scope}, status={status}).",
-            "feedback": feedback_str
+            "reason": (
+                f"Verification failed (scope={scope}, status={status})."
+            ),
+            "feedback": feedback_str,
         }
 
 
 class SwarmOrchestrator:
-    def __init__(self, model_name: str = "gemma4:e4b", concurrency: int = 1, ollama_client: Optional[Any] = None):
+    def __init__(
+        self,
+        model_name: str = "gemma4:e4b",
+        concurrency: int = 1,
+        ollama_client: Optional[Any] = None,
+    ):
         self.model_name = model_name
         self.concurrency = concurrency
-        self.ollama_client = ollama_client or OllamaClient(config={"model": model_name})
+        self.ollama_client = ollama_client or OllamaClient(
+            config={"model": model_name}
+        )
         self.planner = SwarmPlanner(self.ollama_client)
         self.coder = SwarmCoder(self.ollama_client)
         self.reviewer = SwarmReviewer(self.ollama_client)
@@ -269,32 +409,30 @@ class SwarmOrchestrator:
         application_adapter: Optional[ResponseApplicationAdapter] = None,
         allowed_delete_paths: tuple = (),
         application_policy: Optional[ResponseApplicationPolicy] = None,
+        verification_adapter: Optional[SwarmVerificationAdapter] = None,
     ) -> Dict[str, Any]:
         """Execute the Planner -> Coder -> Reviewer swarm pipeline.
 
         Supports temperature annealing across retries and optional
         dual-slot (concurrency=2) candidate generation.
 
+        ``verification_adapter`` is an opt-in, typed callable that
+        receives a SwarmVerificationRequest and returns a canonical
+        VerificationResult.
+
         ``application_adapter`` is an opt-in, bound callable that
-        accepts the selected winner's canonicalized response text and
-        returns the applied output paths.  When omitted, the pipeline
-        remains strictly non-mutating (Ticket 1 invariant).
+        accepts the selected winner's ResponseApplicationRequest and
+        returns the applied output paths.
 
-        ``application_policy`` binds the authoritative
-        ResponseApplicationPolicy (workspace_root, allowed_delete_paths,
-        max_file_bytes, system_mode, strict_code_hygiene) used
-        symmetrically for both candidate planning and winner
-        application.
-
-        ``allowed_delete_paths`` provides backwards-compatible delete
-        authorization if no explicit application_policy is passed.
-
-        Application is triggered exactly once, only after the reviewer
-        returns PASS, and only for the single selected winner candidate.
-        Losing candidates and reviewer-rejected candidates are never
-        applied.  Application errors fail visibly; no silent swallow
-        and no automatic retry.
+        When application_adapter is provided without a verification
+        adapter, the pipeline fails closed without applying changes.
         """
+        if verification_adapter is not None and verifier_func is not None:
+            raise ValueError(
+                "Cannot supply both legacy verifier_func and canonical "
+                "verification_adapter."
+            )
+
         start_time = time.time()
         temperatures = [0.0, 0.35, 0.70]
 
@@ -365,18 +503,104 @@ class SwarmOrchestrator:
                 key=_rank_key,
             )[1]
 
-            # Verifier runs before reviewer (separate seam from application)
-            verification_result = {
-                "status": "success",
-                "scope": "PASS",
-                "adherence": "PASS",
-                "test_logs": "",
-            }
-            if verifier_func:
-                verification_result = verifier_func(task_data, coder_result)
+            # Canonical verification for selected winner candidate
+            canonical = coder_result.get(
+                "canonical_response",
+                coder_result.get("raw_response", ""),
+            )
+            app_request = ResponseApplicationRequest(
+                raw_response=canonical,
+                policy=effective_policy,
+            )
+
+            verification_payload: Union[VerificationResult, Dict[str, Any]]
+            verification_metadata: Dict[str, Any]
+
+            if verification_adapter is not None:
+                v_req = SwarmVerificationRequest(
+                    task_data=task_data,
+                    coder_result=coder_result,
+                    application_request=app_request,
+                )
+                v_res = verification_adapter(v_req)
+                if not isinstance(v_res, VerificationResult):
+                    raise TypeError(
+                        "verification_adapter must return "
+                        f"VerificationResult, got {type(v_res).__name__}"
+                    )
+                verification_payload = v_res
+                verification_metadata = {
+                    "available": True,
+                    "occurred": True,
+                    "passed": v_res.passed,
+                    "result": v_res.to_dict(),
+                }
+            elif application_adapter is not None:
+                # Fail-closed: real application requires canonical
+                # verification_adapter. Legacy verifier_func cannot
+                # authorize mutation.
+                v_res = VerificationResult(
+                    passed=False,
+                    checks=[],
+                    summary=(
+                        "No canonical verification adapter supplied for "
+                        "application-enabled pipeline."
+                    ),
+                    warnings=["Missing canonical verification adapter."],
+                )
+                verification_payload = v_res
+                verification_metadata = {
+                    "available": False,
+                    "occurred": False,
+                    "passed": False,
+                    "result": v_res.to_dict(),
+                }
+            elif verifier_func is not None:
+                # Legacy verifier_func supported only when application is disabled
+                v_res = verifier_func(task_data, coder_result)
+                if isinstance(v_res, VerificationResult):
+                    verification_payload = v_res
+                    verification_metadata = {
+                        "available": True,
+                        "occurred": True,
+                        "passed": v_res.passed,
+                        "result": v_res.to_dict(),
+                    }
+                elif isinstance(v_res, dict):
+                    verification_payload = v_res
+                    is_pass = (
+                        v_res.get("status") == "success"
+                        and v_res.get("scope") == "PASS"
+                        and v_res.get("adherence") == "PASS"
+                    )
+                    verification_metadata = {
+                        "available": True,
+                        "occurred": True,
+                        "passed": is_pass,
+                        "result": v_res,
+                    }
+                else:
+                    raise TypeError(
+                        "verifier_func must return dict or "
+                        f"VerificationResult, got {type(v_res).__name__}"
+                    )
+            else:
+                # Non-mutating CLI mode with no adapter
+                verification_payload = {
+                    "status": "success",
+                    "scope": "PASS",
+                    "adherence": "PASS",
+                    "test_logs": "",
+                }
+                verification_metadata = {
+                    "available": False,
+                    "occurred": False,
+                    "passed": True,
+                    "result": None,
+                }
 
             # Stage 3: Independent Review
-            review_result = self.reviewer.review(verification_result)
+            review_result = self.reviewer.review(verification_payload)
             print(
                 f"[SwarmOrchestrator] Step 3: SwarmReviewer Verdict: "
                 f"{review_result['verdict']}",
@@ -388,7 +612,7 @@ class SwarmOrchestrator:
                 "plan": plan_result,
                 "coder": coder_result,
                 "review": review_result,
-                "verification": verification_result,
+                "verification": verification_metadata,
                 "elapsed_sec": round(time.time() - start_time, 2),
             }
 
@@ -455,7 +679,12 @@ class SwarmOrchestrator:
                     "verdict": "REJECT",
                     "reason": "Max retries reached",
                 },
-                "verification": {"status": "failed"},
+                "verification": {
+                    "available": False,
+                    "occurred": False,
+                    "passed": False,
+                    "result": None,
+                },
                 "elapsed_sec": round(time.time() - start_time, 2),
             }
 

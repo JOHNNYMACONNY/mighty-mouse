@@ -1502,7 +1502,10 @@ def test_run_swarm_execute_reject_suppresses_failure_feedback_leakage(
     assert "feedback" not in result["review"]
     assert result["verification"]["occurred"] is True
     assert result["verification"]["passed"] is False
-    assert result["verification"]["summary"] == "Tests failed on assertion error"
+    assert (
+        result["verification"]["summary"]
+        == "Tests failed on assertion error"
+    )
     assert "checks" not in result["verification"]
     assert result["application"]["occurred"] is False
     assert result["application"]["applied_output_paths"] == []
@@ -1538,8 +1541,17 @@ def test_run_swarm_execute_whitelists_host_provenance_fields(
             "pipeline_result": {
                 "turn": 1,
                 "review": {"verdict": "PASS", "reason": "ok"},
-                "verification": {"available": True, "occurred": True, "passed": True, "result": {"summary": "ok"}},
-                "application": {"available": True, "occurred": True, "applied_output_paths": ["out.py"]},
+                "verification": {
+                    "available": True,
+                    "occurred": True,
+                    "passed": True,
+                    "result": {"summary": "ok"},
+                },
+                "application": {
+                    "available": True,
+                    "occurred": True,
+                    "applied_output_paths": ["out.py"],
+                },
                 "elapsed_sec": 0.1,
             },
         }

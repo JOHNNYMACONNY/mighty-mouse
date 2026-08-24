@@ -83,12 +83,12 @@ def test_smokes_run_outside_checkout_and_cover_release_interfaces():
         "--test-command",
         "d['passed'] is True",
         "assert names == expected",
-        "assert len(names) == 14",
+        "assert len(names) == 15",
     ):
         assert required in smoke
 
 
-def test_ci_and_publish_workflows_enforce_exact_14_mcp_tools():
+def test_ci_and_publish_workflows_enforce_exact_15_mcp_tools():
     publish_workflow = ROOT / ".github" / "workflows" / "publish-pypi.yml"
     ci_text = WORKFLOW.read_text()
     publish_text = publish_workflow.read_text()
@@ -101,6 +101,7 @@ def test_ci_and_publish_workflows_enforce_exact_14_mcp_tools():
         "verify_and_record",
         "run",
         "agent_execute",
+        "swarm_execute",
         "policy_status",
         "policy_preview",
         "policy_pin",
@@ -109,13 +110,13 @@ def test_ci_and_publish_workflows_enforce_exact_14_mcp_tools():
         "compute_scaling_preview",
         "compute_scaling_pin",
     }
-    assert len(expected_tools) == 14
+    assert len(expected_tools) == 15
 
     workflows = [("ci.yml", ci_text), ("publish-pypi.yml", publish_text)]
     for wf_name, text in workflows:
         msg = f"{wf_name} must assert exact tool set equality"
         assert "assert names == expected" in text, msg
-        assert "assert len(names) == 14" in text, f"{wf_name} len != 14"
+        assert "assert len(names) == 15" in text, f"{wf_name} len != 15"
         subset_msg = f"{wf_name} must not use subset-only checking"
         assert "assert expected.issubset(names)" not in text, subset_msg
         for tool in expected_tools:

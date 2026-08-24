@@ -9,6 +9,7 @@ The MCP server exposes tools through the `mighty-mouse` server namespace:
 - `recording_audit`: check that one exact host task receipt was recorded after it began.
 - `run`: adaptive routing and policy selection for a workspace task.
 - `agent_execute`: canonical coding execution with compute scaling support via `HostAdapter.solve`.
+- `swarm_execute`: execute Multi-Agent Swarm with canonical host provenance and isolated verification via `HostAdapter.solve_swarm`.
 - `policy_status`: inspect the active Champion policy and promotion status.
 - `policy_preview`: preview candidate policy selection without mutation.
 - `policy_pin`: pin an explicit policy for the workspace.
@@ -80,6 +81,19 @@ It does not give Cline permission to edit autonomously or promote a policy;
 those continue to require the separate, machine-gated research and evaluation
 workflow.
 
+## Multi-Agent Swarm execution (`swarm_execute`)
+
+`swarm_execute` provides canonical Multi-Agent Swarm execution through MCP:
+
+- Requires an existing Ollama-backed workspace identity (`setup_workspace` with `ollama_model`). Non-Ollama host models fail closed.
+- Requires a separate, pristine `verification_workspace` directory that does not overlap with the target `workspace`. The verification workspace serves as a template; verification commands run in temporary isolation.
+- Only the verified winner candidate is applied to the target `workspace`, exactly once, upon reviewer `PASS`. Failed verification or rejected candidates produce zero workspace mutations.
+- The returned result is a minimized projection containing execution status, review verdict, verification summary, and applied output paths. It strictly excludes generated file contents and raw model responses.
+
+## Tool contract v6 and re-onboarding
+
+Adding `swarm_execute` advances the MCP tool contract version from `v5` to `v6` (15 total tools). Existing workspaces onboarded under `v5` must be re-onboarded explicitly using `setup_workspace(..., replace=True)` to derive a new execution profile. Existing profile-bound policy or compute-scaling pins do not automatically migrate and must be explicitly re-pinned under the `v6` profile if desired.
+
 ## Optional host hook
 
 MCP is the primary task-completion path. A host that supports completion hooks
@@ -97,4 +111,4 @@ appropriate as a post-task check, not a replacement for `verify_and_record`.
 
 ## Trust boundary
 
-`verify` runs local commands with the permissions of the MCP server process. Only enable this local server for trusted workspaces and review tool-call approvals. Commands are executed as argument vectors without a shell, but an explicitly selected executable can still modify files.
+`verify` and execution tools run local commands with the permissions of the MCP server process. Only enable this local server for trusted workspaces and review tool-call approvals. Commands are executed as argument vectors without a shell, but an explicitly selected executable can still modify files.

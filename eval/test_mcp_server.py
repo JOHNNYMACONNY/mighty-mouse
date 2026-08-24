@@ -228,6 +228,7 @@ def test_setup_partitions_profiles_by_exact_host_facts_and_full_tool_contract(tm
         "recording_audit",
         "run",
         "agent_execute",
+        "swarm_execute",
         "policy_status",
         "policy_preview",
         "policy_pin",
@@ -243,7 +244,7 @@ def test_recording_requires_reonboarding_after_a_tool_contract_change(tmp_path, 
     import mighty_mouse_mcp.server as server
 
     configure_cline_adapter(tmp_path, model_digest="sha256:" + "7" * 64)
-    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 6)
+    monkeypatch.setattr(server, "MCP_TOOL_CONTRACT_VERSION", 7)
     with pytest.raises(ValueError, match="stale"):
         server.run_verify_and_record(str(tmp_path))
 
@@ -803,6 +804,7 @@ def test_stdio_server_lists_and_calls_tools():
                         "recording_audit",
                         "run",
                         "agent_execute",
+                        "swarm_execute",
                         "policy_status",
                         "policy_preview",
                         "policy_pin",
@@ -1112,3 +1114,381 @@ def test_run_agent_execute_unpinned_single_response(tmp_path, monkeypatch):
     )
     assert result["compute_scaling"]["pin_id"] is None
     assert result["compute_scaling"]["policy"] is None
+
+
+def test_mcp_v5_workspace_requires_reonboarding_for_v6_contract(tmp_path):
+    import mighty_mouse_mcp.server as server
+
+    state_dir = tmp_path / ".mighty-mouse"
+    state_dir.mkdir()
+    # Build v5 config with contract_version=5
+    sigs = {
+        k: v for k, v in server._get_mcp_tool_signatures().items()
+        if k != "swarm_execute"
+    }
+    profile, tool_contract_digest, prompt_template_digest = (
+        server.HostAdapter.build_execution_profile(
+            runtime_kind="cline",
+            runtime_version="3.54.0",
+            effective_context_limit=8192,
+            tool_signatures=sigs,
+            contract_version=5,
+        )
+    )
+    v5_config = {
+        "schema_version": 2,
+        "repository": "JOHNNYMACONNY/mighty-mouse",
+        "model_digest": "sha256:" + "b" * 64,
+        "model_class": "local-large",
+        "model_source": "host",
+        "ollama_model": None,
+        "execution_profile_id": profile.profile_id,
+        "runtime_kind": "cline",
+        "runtime_version": "3.54.0",
+        "effective_context_limit": 8192,
+        "tool_contract_digest": tool_contract_digest,
+        "prompt_template_digest": prompt_template_digest,
+    }
+    (state_dir / "mcp-adapter.json").write_text(
+        json.dumps(v5_config), encoding="utf-8"
+    )
+
+    # With v6 server running, v5 adapter config must fail as stale
+    with pytest.raises(ValueError, match="stale"):
+        server.run_policy_status(str(tmp_path))
+    with pytest.raises(ValueError, match="stale"):
+        server.run_run(str(tmp_path))
+
+    # Reonboard with replace=True to v6
+    setup_res = server.run_setup_workspace(
+        str(tmp_path),
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "b" * 64,
+        model_class="local-large",
+        runtime_kind="cline",
+        runtime_version="3.54.0",
+        replace=True,
+    )
+    assert setup_res["configured"] is True
+
+    # Now operations succeed under v6
+    assert server.run_policy_status(str(tmp_path))["scope"]["mode"] == "coding"
+    assert server.run_run(str(tmp_path))["mode"] == "coding"
+
+
+def test_mcp_v6_tool_contract_version_and_tool_count():
+    import mighty_mouse_mcp.server as server
+
+    assert server.MCP_TOOL_CONTRACT_VERSION == 6
+    sigs = server._get_mcp_tool_signatures()
+    assert len(sigs) == 15
+    assert set(sigs.keys()) == {
+        "protocol",
+        "verify",
+        "setup_workspace",
+        "verify_and_record",
+        "recording_audit",
+        "run",
+        "agent_execute",
+        "swarm_execute",
+        "policy_status",
+        "policy_preview",
+        "policy_pin",
+        "policy_rollback",
+        "compute_scaling_status",
+        "compute_scaling_preview",
+        "compute_scaling_pin",
+    }
+
+
+def test_run_swarm_execute_validates_inputs(tmp_path):
+    import mighty_mouse_mcp.server as server
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    iso_ws = tmp_path / "iso_workspace"
+    iso_ws.mkdir()
+
+    # task must be a dictionary
+    with pytest.raises(ValueError, match="task must be a JSON object"):
+        server.run_swarm_execute(
+            workspace=str(workspace),
+            verification_workspace=str(iso_ws),
+            task="not a dict",  # type: ignore[arg-type]
+        )
+
+
+def test_run_swarm_execute_delegates_to_host_adapter_and_projects_clean_result(
+    tmp_path, monkeypatch
+):
+    import mighty_mouse_mcp.server as server
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    iso_ws = tmp_path / "iso_workspace"
+    iso_ws.mkdir()
+
+    delegation_kwargs = {}
+
+    def mock_solve_swarm(
+        self,
+        *,
+        workspace,
+        task_input,
+        verification_workspace,
+        state_dir=None,
+        tool_signatures=None,
+        contract_version=None,
+        concurrency=1,
+        test_command=None,
+        lint_command=None,
+        build_command=None,
+        allowed_paths=None,
+        task_config=None,
+        timeout_sec=120,
+    ):
+        nonlocal delegation_kwargs
+        delegation_kwargs = {
+            "workspace": workspace,
+            "task_input": task_input,
+            "verification_workspace": verification_workspace,
+            "state_dir": state_dir,
+            "contract_version": contract_version,
+            "concurrency": concurrency,
+            "test_command": test_command,
+            "lint_command": lint_command,
+            "build_command": build_command,
+            "allowed_paths": allowed_paths,
+            "timeout_sec": timeout_sec,
+        }
+        return {
+            "host_provenance": {
+                "repository": "JOHNNYMACONNY/mighty-mouse",
+                "model_class": "local-small",
+                "model_digest": "sha256:abcd",
+                "execution_profile_id": "profile_123",
+                "model_source": "ollama",
+                "ollama_model": "qwen2.5-coder:7b",
+                "contract_version": 6,
+            },
+            "pipeline_result": {
+                "turn": 1,
+                "review": {
+                    "verdict": "PASS",
+                    "feedback": "Code is solid",
+                },
+                "verification": {
+                    "available": True,
+                    "occurred": True,
+                    "passed": True,
+                    "summary": "All tests passed",
+                    "command_output": "STDOUT: 5 passed\nSTDERR: ",
+                },
+                "application": {
+                    "available": True,
+                    "occurred": True,
+                    "applied_output_paths": ["app.py", "utils.py"],
+                },
+                "elapsed_sec": 1.25,
+                "raw_response": "```python:app.py\nprint('hello')\n```",
+                "canonical_response": "```python:app.py\nprint('hello')\n```",
+                "plan": "Step 1: implement app.py",
+                "file_updates": {"app.py": "print('hello')"},
+            },
+        }
+
+    monkeypatch.setattr(server.HostAdapter, "solve_swarm", mock_solve_swarm)
+
+    task_obj = {
+        "id": "swarm_t1",
+        "task": "build feature",
+        "expected_files": ["app.py"],
+    }
+
+    result = server.run_swarm_execute(
+        workspace=str(workspace),
+        verification_workspace=str(iso_ws),
+        task=task_obj,
+        concurrency=2,
+        test_command="pytest",
+        lint_command="flake8",
+        build_command="make",
+        allowed_paths=["app.py", "utils.py"],
+        timeout_sec=60,
+    )
+
+    # Check delegation parameters
+    assert delegation_kwargs["workspace"] == str(workspace)
+    assert delegation_kwargs["verification_workspace"] == str(iso_ws)
+    assert json.loads(delegation_kwargs["task_input"]) == task_obj
+    assert delegation_kwargs["contract_version"] == 6
+    assert delegation_kwargs["concurrency"] == 2
+    assert delegation_kwargs["test_command"] == "pytest"
+    assert delegation_kwargs["lint_command"] == "flake8"
+    assert delegation_kwargs["build_command"] == "make"
+    assert delegation_kwargs["allowed_paths"] == ["app.py", "utils.py"]
+    assert delegation_kwargs["timeout_sec"] == 60
+
+    # Check projected bounded result
+    assert result["schema_version"] == 1
+    assert result["interface"] == "swarm_execute"
+    assert result["host_provenance"]["model_source"] == "ollama"
+    assert result["host_provenance"]["contract_version"] == 6
+    assert result["turn"] == 1
+    assert result["review"] == {"verdict": "PASS", "reason": "Code is solid"}
+    assert result["verification"] == {
+        "available": True,
+        "occurred": True,
+        "passed": True,
+        "summary": "All tests passed",
+    }
+    assert result["application"] == {
+        "available": True,
+        "occurred": True,
+        "applied_output_paths": ["app.py", "utils.py"],
+    }
+    assert result["output_files"] == ["app.py", "utils.py"]
+    assert result["elapsed_sec"] == 1.25
+
+    # Check strictly excluded fields (0 source leakage)
+    assert "raw_response" not in result
+    assert "canonical_response" not in result
+    assert "plan" not in result
+    assert "file_updates" not in result
+    assert "command_output" not in result["verification"]
+
+    # Check JSON serializability
+    assert json.loads(json.dumps(result)) == result
+
+
+def test_run_swarm_execute_reject_projects_zero_application(
+    tmp_path, monkeypatch
+):
+    import mighty_mouse_mcp.server as server
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    iso_ws = tmp_path / "iso_workspace"
+    iso_ws.mkdir()
+
+    def mock_solve_swarm(self, **kwargs):
+        return {
+            "host_provenance": {
+                "repository": "JOHNNYMACONNY/mighty-mouse",
+                "model_class": "local-small",
+                "model_digest": "sha256:abcd",
+                "execution_profile_id": "profile_123",
+                "model_source": "ollama",
+                "ollama_model": "qwen2.5-coder:7b",
+                "contract_version": 6,
+            },
+            "pipeline_result": {
+                "turn": 1,
+                "review": {
+                    "verdict": "REJECT",
+                    "feedback": "Syntax error in candidate",
+                },
+                "verification": {
+                    "available": True,
+                    "occurred": False,
+                    "passed": False,
+                    "summary": "",
+                },
+                "application": {
+                    "available": True,
+                    "occurred": False,
+                    "applied_output_paths": [],
+                },
+                "elapsed_sec": 0.5,
+            },
+        }
+
+    monkeypatch.setattr(server.HostAdapter, "solve_swarm", mock_solve_swarm)
+
+    result = server.run_swarm_execute(
+        workspace=str(workspace),
+        verification_workspace=str(iso_ws),
+        task={"id": "swarm_t2", "task": "broken"},
+    )
+
+    assert result["review"]["verdict"] == "REJECT"
+    assert result["verification"]["occurred"] is False
+    assert result["verification"]["passed"] is False
+    assert result["application"]["occurred"] is False
+    assert result["application"]["applied_output_paths"] == []
+    assert result["output_files"] == []
+
+
+def test_run_swarm_execute_propagates_host_adapter_exceptions(
+    tmp_path, monkeypatch
+):
+    import mighty_mouse_mcp.server as server
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    iso_ws = tmp_path / "iso_workspace"
+    iso_ws.mkdir()
+
+    def mock_solve_swarm(self, **kwargs):
+        raise ValueError("Adapter identity is stale under v6 contract")
+
+    monkeypatch.setattr(server.HostAdapter, "solve_swarm", mock_solve_swarm)
+
+    with pytest.raises(ValueError, match="stale under v6"):
+        server.run_swarm_execute(
+            workspace=str(workspace),
+            verification_workspace=str(iso_ws),
+            task={"id": "swarm_t3", "task": "foo"},
+        )
+
+
+def test_run_swarm_execute_no_side_effect_signals_or_policy_mutations(
+    tmp_path, monkeypatch
+):
+    import mighty_mouse_mcp.server as server
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    iso_ws = tmp_path / "iso_workspace"
+    iso_ws.mkdir()
+
+    def mock_solve_swarm(self, **kwargs):
+        return {
+            "host_provenance": {
+                "repository": "JOHNNYMACONNY/mighty-mouse",
+                "model_class": "local-small",
+                "model_digest": "sha256:abcd",
+                "execution_profile_id": "profile_123",
+                "model_source": "ollama",
+                "ollama_model": "qwen2.5-coder:7b",
+                "contract_version": 6,
+            },
+            "pipeline_result": {
+                "turn": 1,
+                "review": {"verdict": "PASS", "feedback": "ok"},
+                "verification": {
+                    "available": True,
+                    "occurred": True,
+                    "passed": True,
+                    "summary": "ok",
+                },
+                "application": {
+                    "available": True,
+                    "occurred": True,
+                    "applied_output_paths": ["out.py"],
+                },
+                "elapsed_sec": 0.1,
+            },
+        }
+
+    monkeypatch.setattr(server.HostAdapter, "solve_swarm", mock_solve_swarm)
+
+    server.run_swarm_execute(
+        workspace=str(workspace),
+        verification_workspace=str(iso_ws),
+        task={"id": "swarm_t4", "task": "foo"},
+    )
+
+    # Verify no v2-signal-receipts or policy stores were created
+    assert not (workspace / ".mighty-mouse" / "v2-signal-receipts").exists()
+    assert not (workspace / ".mighty-mouse" / "v2-state").exists()

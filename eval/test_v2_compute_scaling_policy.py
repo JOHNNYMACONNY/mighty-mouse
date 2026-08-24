@@ -209,7 +209,7 @@ def test_mcp_tool_signatures_includes_scaling_tools():
     assert "compute_scaling_status" in sigs
     assert "compute_scaling_preview" in sigs
     assert "compute_scaling_pin" in sigs
-    assert len(sigs) == 14
+    assert len(sigs) == 15
 
 
 def test_compute_scaling_policy_variations_bounds_and_types():

@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 import secrets
-from typing import Any
+from typing import Any, Sequence
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -101,6 +101,7 @@ def _get_mcp_tool_signatures() -> dict:
         "recording_audit": run_recording_audit,
         "run": run_run,
         "agent_execute": run_agent_execute,
+        "swarm_execute": run_swarm_execute,
         "policy_status": run_policy_status,
         "policy_preview": run_policy_preview,
         "policy_pin": run_policy_pin,
@@ -436,6 +437,97 @@ def agent_execute_tool(
         temperature=temperature,
         stage=stage,
         plan_file=plan_file,
+    )
+
+
+def run_swarm_execute(
+    workspace: str,
+    verification_workspace: str,
+    task: dict[str, Any],
+    *,
+    state_dir: str | None = None,
+    concurrency: int = 1,
+    test_command: str | Sequence[str] | None = None,
+    lint_command: str | Sequence[str] | None = None,
+    build_command: str | Sequence[str] | None = None,
+    allowed_paths: list[str] | None = None,
+    task_config: dict[str, Any] | None = None,
+    timeout_sec: int = 120,
+) -> dict[str, Any]:
+    """Execute task using Multi-Agent Swarm with canonical host provenance."""
+    if not isinstance(task, dict):
+        raise ValueError("task must be a JSON object / dictionary")
+    task_input = json.dumps(task, sort_keys=True)
+    solve_result = HostAdapter().solve_swarm(
+        workspace=workspace,
+        task_input=task_input,
+        verification_workspace=verification_workspace,
+        state_dir=state_dir,
+        tool_signatures=_get_mcp_tool_signatures(),
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
+        concurrency=concurrency,
+        test_command=test_command,
+        lint_command=lint_command,
+        build_command=build_command,
+        allowed_paths=allowed_paths,
+        task_config=task_config,
+        timeout_sec=timeout_sec,
+    )
+    pipeline_result = solve_result.get("pipeline_result", {})
+    review = pipeline_result.get("review", {})
+    verification = pipeline_result.get("verification", {})
+    application = pipeline_result.get("application", {})
+    applied_paths = list(application.get("applied_output_paths", []))
+    return {
+        "schema_version": 1,
+        "interface": "swarm_execute",
+        "host_provenance": solve_result.get("host_provenance", {}),
+        "turn": pipeline_result.get("turn", 1),
+        "review": {
+            "verdict": review.get("verdict", "UNKNOWN"),
+            "reason": review.get("feedback", ""),
+        },
+        "verification": {
+            "available": verification.get("available", False),
+            "occurred": verification.get("occurred", False),
+            "passed": verification.get("passed", False),
+            "summary": verification.get("summary", ""),
+        },
+        "application": {
+            "available": application.get("available", False),
+            "occurred": application.get("occurred", False),
+            "applied_output_paths": applied_paths,
+        },
+        "output_files": applied_paths,
+        "elapsed_sec": pipeline_result.get("elapsed_sec", 0.0),
+    }
+
+
+@mcp.tool(name="swarm_execute")
+def swarm_execute_tool(
+    workspace: str,
+    verification_workspace: str,
+    task: dict[str, Any],
+    state_dir: str | None = None,
+    concurrency: int = 1,
+    test_command: str | None = None,
+    lint_command: str | None = None,
+    build_command: str | None = None,
+    allowed_paths: list[str] | None = None,
+    timeout_sec: int = 120,
+) -> dict[str, Any]:
+    """Execute swarm with canonical provenance and isolated verification."""
+    return run_swarm_execute(
+        workspace=workspace,
+        verification_workspace=verification_workspace,
+        task=task,
+        state_dir=state_dir,
+        concurrency=concurrency,
+        test_command=test_command,
+        lint_command=lint_command,
+        build_command=build_command,
+        allowed_paths=allowed_paths,
+        timeout_sec=timeout_sec,
     )
 
 

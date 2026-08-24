@@ -198,7 +198,10 @@ initial = 2
         result["host_provenance"]["repository"]
         == "JOHNNYMACONNY/mighty-mouse"
     )
-    assert result["host_provenance"]["contract_version"] == 5
+    assert (
+        result["host_provenance"]["contract_version"]
+        == MCP_TOOL_CONTRACT_VERSION
+    )
 
     # Prove real application occurred exactly once on verification PASS
     assert (real_ws / "code.py").read_text() == "initial = 2"
@@ -527,16 +530,17 @@ Fix out.
 
 
 def test_solve_swarm_mcp_surface_untouched():
-    """Verify MCP tools and contracts remain unchanged by solve_swarm."""
+    """Verify MCP tools and contracts reflect exact 15 tools under v6."""
     try:
         from mighty_mouse_mcp.server import _get_mcp_tool_signatures
     except ImportError:
         pytest.skip("mighty_mouse_mcp not available in this test env")
 
     sigs = _get_mcp_tool_signatures()
-    assert len(sigs) == 14
+    assert len(sigs) == 15
     assert "solve_swarm" not in sigs
     assert "agent_execute" in sigs
+    assert "swarm_execute" in sigs
 
 
 def test_solve_swarm_changed_digest_fails_authoritatively(

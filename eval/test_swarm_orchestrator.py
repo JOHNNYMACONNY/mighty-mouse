@@ -1879,7 +1879,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
     def test_retry_isolation_rejected_turn1_leaves_no_stale_files_for_turn2(
         self,
     ):
-        """Turn 1 created file does not pollute Turn 2 verification attempt."""
+        """Turn 1 created file does not pollute Turn 2."""
         import tempfile
         from pathlib import Path
 
@@ -1895,7 +1895,7 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 "import os\n"
                 "def test_check():\n"
                 "    # Test passes ONLY if helper.py is ABSENT\n"
-                "    assert not os.path.exists('helper.py'), 'Stale helper!'\n",
+                "    assert not os.path.exists('helper.py'), 'Stale!'\n",
                 encoding="utf-8",
             )
 
@@ -1906,8 +1906,8 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 ],
             )
 
-            # Turn 1 emits helper.py (should fail because test expects no helper)
-            # Turn 2 emits main.py only (should pass because helper.py is absent)
+            # Turn 1 emits helper.py (fails: test expects no helper)
+            # Turn 2 emits main.py only (passes: helper is absent)
             turn_responses = [
                 "```python:helper.py\n# helper\n```",
                 "```python:main.py\n# updated main\n```",
@@ -1961,8 +1961,8 @@ class TestSwarmOrchestrator(unittest.TestCase):
                 ),
             )
 
-            # Turn 1 failed verification (helper.py present in disposable dir)
-            # Turn 2 passed verification (helper.py absent in fresh disposable dir)
+            # Turn 1 failed verification (helper.py present in temp dir)
+            # Turn 2 passed verification (helper.py absent in temp dir)
             self.assertEqual(res["turn"], 2)
             self.assertEqual(res["review"]["verdict"], "PASS")
             self.assertTrue(res["verification"]["passed"])

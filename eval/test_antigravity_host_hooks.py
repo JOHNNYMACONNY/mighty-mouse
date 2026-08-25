@@ -1,11 +1,16 @@
-"""Tests for Antigravity PreToolUse host hook leaf adapter v1."""
+"""Tests for Antigravity PreToolUse/PostToolUse host hook leaf adapter v1."""
 
 from __future__ import annotations
+
+import os
+import tempfile
 
 import pytest
 
 from mighty_mouse.host.antigravity import (
+    adapt_antigravity_post_tool_use,
     adapt_antigravity_pre_tool_use,
+    render_antigravity_post_tool_use_result,
     render_antigravity_pre_tool_use_result,
 )
 from mighty_mouse.host.hooks import HostHookEvent, HostHookResult
@@ -150,8 +155,8 @@ def test_target_file_aliases_and_contradiction() -> None:
 
 def test_alias_resolution_and_conflict_handling() -> None:
     """Aliases resolve properly; conflicting/malformed aliases fail closed."""
-    # Tool aliases
-    for key in ("tool_name", "tool", "name", "tool_call"):
+    # Tool aliases (flat only, no nested toolCall)
+    for key in ("tool_name", "tool", "name"):
         res = adapt_antigravity_pre_tool_use(
             {key: "run_command", "workspace": "/ws"},
             event_id="evt-alias",
@@ -167,8 +172,8 @@ def test_alias_resolution_and_conflict_handling() -> None:
         assert isinstance(res, HostHookEvent)
         assert res.workspace == "/my/ws"
 
-    # Session ID aliases
-    for key in ("conversation_id", "conversationId", "session_id"):
+    # Session ID aliases including camelCase conversationId
+    for key in ("conversationId", "conversation_id", "session_id"):
         res = adapt_antigravity_pre_tool_use(
             {"tool": "run_command", "cwd": "/my/ws", key: "sess-99"},
             event_id="evt-sess",
@@ -241,7 +246,7 @@ def test_alias_resolution_and_conflict_handling() -> None:
         {
             "tool_name": "run_command",
             "workspace": "/ws",
-            "conversation_id": "c1",
+            "conversationId": "c1",
             "session_id": "c2",
         },
         event_id="evt-conflict-sess",
@@ -465,3 +470,464 @@ def test_renderer_privacy_leakage_resistance() -> None:
     assert "/sensitive/allow/path" not in str(rendered_allow)
     assert "pass detail" not in str(rendered_allow)
     assert rendered_allow["reason"] == "Verification passed"
+
+
+# --- Production nested PreToolUse tests ---
+
+
+def test_nested_tool_call_valid_pre_tool_use() -> None:
+    """Production nested toolCall:{name,args} maps to correct event."""
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {
+                "TargetFile": "src/module.py",
+                "CodeContent": "pass",
+            },
+        },
+        "workspacePaths": ["/path/to/ws"],
+        "conversationId": "conv-production-1",
+        "stepIdx": 3,
+    }
+    evt = adapt_antigravity_pre_tool_use(payload, event_id="evt-nested-1")
+    assert isinstance(evt, HostHookEvent)
+    assert evt.phase == "pre_action"
+    assert evt.source == "antigravity"
+    assert evt.workspace == "/path/to/ws"
+    assert evt.session_id == "conv-production-1"
+    assert evt.action.kind == "file_write"
+    assert evt.action.mutation_class == "workspace_mutation"
+    assert evt.action.target_paths == ("src/module.py",)
+
+
+def test_nested_tool_call_run_command() -> None:
+    """Nested toolCall for run_command: command text never in event."""
+    payload = {
+        "toolCall": {
+            "name": "run_command",
+            "args": {
+                "CommandLine": "SECRET_CMD_nested",
+                "Cwd": "/path/to/ws",
+            },
+        },
+        "workspacePaths": ["/path/to/ws"],
+        "conversationId": "conv-2",
+        "stepIdx": 7,
+    }
+    evt = adapt_antigravity_pre_tool_use(payload, event_id="evt-nested-rc")
+    assert isinstance(evt, HostHookEvent)
+    assert evt.action.kind == "shell_command"
+    assert evt.action.mutation_class == "unknown"
+    assert evt.action.target_paths == ()
+    assert "SECRET_CMD_nested" not in str(evt)
+
+
+def test_nested_tool_call_contradicts_flat_tool_name() -> None:
+    """Nested toolCall.name vs flat alias contradiction -> deny."""
+    payload = {
+        "toolCall": {"name": "write_to_file", "args": {}},
+        "tool_name": "run_command",
+        "workspace": "/ws",
+    }
+    r = adapt_antigravity_pre_tool_use(payload, event_id="evt-tc-conflict")
+    assert isinstance(r, HostHookResult)
+    assert r.disposition == "deny"
+    assert r.reason_code == "malformed_event"
+
+
+def test_nested_tool_call_malformed() -> None:
+    """Malformed toolCall (not a dict, missing name, bad args) -> deny."""
+    # toolCall is not a mapping
+    r1 = adapt_antigravity_pre_tool_use(
+        {"toolCall": "write_to_file", "workspace": "/ws"},
+        event_id="e1",
+    )
+    assert isinstance(r1, HostHookResult)
+    assert r1.disposition == "deny"
+
+    # toolCall.name missing
+    r2 = adapt_antigravity_pre_tool_use(
+        {"toolCall": {"args": {}}, "workspace": "/ws"},
+        event_id="e2",
+    )
+    assert isinstance(r2, HostHookResult)
+    assert r2.disposition == "deny"
+
+    # toolCall.name is empty string
+    r3 = adapt_antigravity_pre_tool_use(
+        {"toolCall": {"name": "  ", "args": {}}, "workspace": "/ws"},
+        event_id="e3",
+    )
+    assert isinstance(r3, HostHookResult)
+    assert r3.disposition == "deny"
+
+    # toolCall.args is not a mapping
+    r4 = adapt_antigravity_pre_tool_use(
+        {
+            "toolCall": {"name": "write_to_file", "args": ["bad"]},
+            "workspace": "/ws",
+        },
+        event_id="e4",
+    )
+    assert isinstance(r4, HostHookResult)
+    assert r4.disposition == "deny"
+
+
+def test_workspace_paths_list_valid() -> None:
+    """workspacePaths list accepted; first entry is canonical workspace."""
+    payload = {
+        "tool": "run_command",
+        "workspacePaths": ["/ws/main", "/ws/secondary"],
+        "stepIdx": 0,
+    }
+    evt = adapt_antigravity_pre_tool_use(payload, event_id="evt-wpl")
+    assert isinstance(evt, HostHookEvent)
+    assert evt.workspace == "/ws/main"
+
+
+def test_workspace_paths_list_invalid() -> None:
+    """Invalid workspacePaths entries -> deny."""
+    # Empty list
+    r1 = adapt_antigravity_pre_tool_use(
+        {"tool": "run_command", "workspacePaths": []},
+        event_id="e1",
+    )
+    assert isinstance(r1, HostHookResult)
+    assert r1.disposition == "deny"
+    assert r1.reason_code == "invalid_workspace"
+
+    # Non-list
+    r2 = adapt_antigravity_pre_tool_use(
+        {"tool": "run_command", "workspacePaths": "/single/string"},
+        event_id="e2",
+    )
+    assert isinstance(r2, HostHookResult)
+    assert r2.disposition == "deny"
+    assert r2.reason_code == "invalid_workspace"
+
+    # Entry with empty string
+    r3 = adapt_antigravity_pre_tool_use(
+        {"tool": "run_command", "workspacePaths": [""]},
+        event_id="e3",
+    )
+    assert isinstance(r3, HostHookResult)
+    assert r3.disposition == "deny"
+    assert r3.reason_code == "invalid_workspace"
+
+    # Entry that is not a string
+    r4 = adapt_antigravity_pre_tool_use(
+        {"tool": "run_command", "workspacePaths": [None]},
+        event_id="e4",
+    )
+    assert isinstance(r4, HostHookResult)
+    assert r4.disposition == "deny"
+    assert r4.reason_code == "invalid_workspace"
+
+
+def test_absolute_target_relativization_single_workspace() -> None:
+    """Absolute TargetFile in one workspace -> relativized canonical path."""
+    with tempfile.TemporaryDirectory() as ws:
+        target = os.path.join(ws, "src", "module.py")
+        payload = {
+            "toolCall": {
+                "name": "write_to_file",
+                "args": {"TargetFile": target, "CodeContent": "pass"},
+            },
+            "workspacePaths": [ws],
+            "conversationId": "conv-abs-1",
+        }
+        evt = adapt_antigravity_pre_tool_use(payload, event_id="evt-abs")
+        assert isinstance(evt, HostHookEvent)
+        assert evt.action.kind == "file_write"
+        # Must be workspace-relative, no absolute path
+        assert not os.path.isabs(evt.action.target_paths[0])
+        assert evt.action.target_paths[0] == "src/module.py"
+        # Absolute path not exposed
+        assert ws not in evt.action.target_paths[0]
+
+
+def test_absolute_target_outside_all_workspaces() -> None:
+    """Absolute TargetFile outside all workspaces -> deny."""
+    with tempfile.TemporaryDirectory() as ws:
+        outside = "/tmp/outside_target_file.py"
+        payload = {
+            "toolCall": {
+                "name": "write_to_file",
+                "args": {"TargetFile": outside},
+            },
+            "workspacePaths": [ws],
+        }
+        r = adapt_antigravity_pre_tool_use(payload, event_id="evt-outside")
+        assert isinstance(r, HostHookResult)
+        assert r.disposition == "deny"
+        assert r.reason_code == "malformed_event"
+        assert outside not in r.summary
+
+
+def test_absolute_target_multiple_workspace_ambiguity() -> None:
+    """Absolute TargetFile inside multiple workspaces -> deny (ambiguous)."""
+    with tempfile.TemporaryDirectory() as parent:
+        child = os.path.join(parent, "nested")
+        os.makedirs(child, exist_ok=True)
+        target = os.path.join(child, "file.py")
+        payload = {
+            "tool": "write_to_file",
+            "workspacePaths": [parent, child],
+            "tool_input": {"TargetFile": target},
+        }
+        r = adapt_antigravity_pre_tool_use(payload, event_id="evt-ambig")
+        assert isinstance(r, HostHookResult)
+        assert r.disposition == "deny"
+        assert r.reason_code == "malformed_event"
+
+
+def test_symlink_absolute_target_containment() -> None:
+    """Symlink to workspace member -> contained via realpath resolution."""
+    with tempfile.TemporaryDirectory() as ws:
+        real_file = os.path.join(ws, "real_file.py")
+        open(real_file, "w").close()  # create file
+        link_path = os.path.join(ws, "link_file.py")
+        try:
+            os.symlink(real_file, link_path)
+        except OSError:
+            pytest.skip("symlink creation not supported")
+        payload = {
+            "tool": "write_to_file",
+            "workspacePaths": [ws],
+            "tool_input": {"TargetFile": link_path},
+        }
+        evt = adapt_antigravity_pre_tool_use(payload, event_id="evt-symlink")
+        assert isinstance(evt, HostHookEvent)
+        assert not os.path.isabs(evt.action.target_paths[0])
+
+
+def test_symlink_workspace_escape_denied() -> None:
+    """Symlink pointing outside workspace -> containment check fails."""
+    with tempfile.TemporaryDirectory() as ws:
+        with tempfile.TemporaryDirectory() as outside:
+            outside_file = os.path.join(outside, "secret.py")
+            open(outside_file, "w").close()
+            link_path = os.path.join(ws, "escape_link.py")
+            try:
+                os.symlink(outside_file, link_path)
+            except OSError:
+                pytest.skip("symlink creation not supported")
+            payload = {
+                "tool": "write_to_file",
+                "workspacePaths": [ws],
+                "tool_input": {"TargetFile": link_path},
+            }
+            r = adapt_antigravity_pre_tool_use(
+                payload, event_id="evt-escape"
+            )
+            assert isinstance(r, HostHookResult)
+            assert r.disposition == "deny"
+
+
+def test_step_idx_valid_and_invalid() -> None:
+    """stepIdx must be non-negative int or absent; bool/negative fails."""
+    # Valid stepIdx
+    p_valid = {
+        "tool": "run_command",
+        "workspace": "/ws",
+        "stepIdx": 0,
+    }
+    evt = adapt_antigravity_pre_tool_use(p_valid, event_id="evt-sidx-ok")
+    assert isinstance(evt, HostHookEvent)
+
+    # stepIdx absent -> OK
+    p_absent = {"tool": "run_command", "workspace": "/ws"}
+    evt2 = adapt_antigravity_pre_tool_use(p_absent, event_id="evt-sidx-abs")
+    assert isinstance(evt2, HostHookEvent)
+
+
+def test_backward_compatible_flat_payloads() -> None:
+    """Legacy flat payloads remain fully supported."""
+    # Old-style flat payload with tool_name / workspace_path / tool_input
+    legacy = {
+        "tool_name": "replace_file_content",
+        "workspace_path": "/legacy/ws",
+        "tool_input": {"TargetFile": "src/old.py"},
+        "conversation_id": "legacy-conv",
+    }
+    evt = adapt_antigravity_pre_tool_use(legacy, event_id="evt-legacy")
+    assert isinstance(evt, HostHookEvent)
+    assert evt.workspace == "/legacy/ws"
+    assert evt.session_id == "legacy-conv"
+    assert evt.action.kind == "file_write"
+    assert evt.action.target_paths == ("src/old.py",)
+
+
+def test_conversationId_camelcase() -> None:
+    """camelCase conversationId recognized as session_id."""
+    payload = {
+        "tool": "run_command",
+        "workspace": "/ws",
+        "conversationId": "camel-conv-123",
+    }
+    evt = adapt_antigravity_pre_tool_use(payload, event_id="evt-camel")
+    assert isinstance(evt, HostHookEvent)
+    assert evt.session_id == "camel-conv-123"
+
+
+def test_conversationId_and_session_id_conflict() -> None:
+    """conversationId and session_id with different values -> deny."""
+    payload = {
+        "tool": "run_command",
+        "workspace": "/ws",
+        "conversationId": "id-A",
+        "session_id": "id-B",
+    }
+    r = adapt_antigravity_pre_tool_use(payload, event_id="evt-sid-conflict")
+    assert isinstance(r, HostHookResult)
+    assert r.disposition == "deny"
+    assert r.reason_code == "malformed_event"
+
+
+# --- PostToolUse tests ---
+
+
+def test_post_tool_use_valid_write_tool() -> None:
+    """Valid PostToolUse write tool -> phase=post_action observation."""
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/x.py"},
+        },
+        "workspacePaths": ["/ws"],
+        "conversationId": "conv-post-1",
+        "stepIdx": 5,
+    }
+    evt = adapt_antigravity_post_tool_use(payload, event_id="evt-post-1")
+    assert isinstance(evt, HostHookEvent)
+    assert evt.phase == "post_action"
+    assert evt.source == "antigravity"
+    assert evt.workspace == "/ws"
+    assert evt.action.kind == "file_write"
+    assert evt.action.target_paths == ()
+
+
+def test_post_tool_use_valid_run_command() -> None:
+    """Valid PostToolUse run_command -> post_action observation."""
+    payload = {
+        "toolCall": {"name": "run_command", "args": {}},
+        "workspacePaths": ["/ws"],
+        "stepIdx": 2,
+    }
+    evt = adapt_antigravity_post_tool_use(payload, event_id="evt-post-rc")
+    assert isinstance(evt, HostHookEvent)
+    assert evt.phase == "post_action"
+    assert evt.action.kind == "shell_command"
+
+
+def test_post_tool_use_with_error_field() -> None:
+    """PostToolUse with error field -> post_action; error not echoed."""
+    payload = {
+        "tool": "run_command",
+        "workspace": "/ws",
+        "error": "SECRET_ERROR_CONTENT /path/secret 500",
+        "stepIdx": 1,
+    }
+    evt = adapt_antigravity_post_tool_use(payload, event_id="evt-post-err")
+    assert isinstance(evt, HostHookEvent)
+    assert evt.phase == "post_action"
+    # Error content must not appear in canonical event string
+    assert "SECRET_ERROR_CONTENT" not in str(evt)
+
+
+def test_post_tool_use_without_error_field() -> None:
+    """PostToolUse without error field -> valid post_action observation."""
+    payload = {
+        "tool": "run_command",
+        "workspace": "/ws",
+        "stepIdx": 0,
+    }
+    evt = adapt_antigravity_post_tool_use(payload, event_id="evt-post-noerr")
+    assert isinstance(evt, HostHookEvent)
+    assert evt.phase == "post_action"
+
+
+def test_post_tool_use_malformed_step_idx() -> None:
+    """Malformed stepIdx in PostToolUse -> deny."""
+    for bad_idx in (True, -1, "5", 1.5, None):
+        if bad_idx is None:
+            continue  # None means absent, not malformed
+        r = adapt_antigravity_post_tool_use(
+            {
+                "tool": "run_command",
+                "workspace": "/ws",
+                "stepIdx": bad_idx,
+            },
+            event_id="evt-post-bad-idx",
+        )
+        assert isinstance(r, HostHookResult), f"expected deny for {bad_idx!r}"
+        assert r.disposition == "deny"
+        assert r.reason_code == "malformed_event"
+
+
+def test_post_tool_use_malformed_inputs() -> None:
+    """Non-mapping and missing required fields -> deny in PostToolUse."""
+    r1 = adapt_antigravity_post_tool_use("not a dict", event_id="e1")
+    assert isinstance(r1, HostHookResult)
+    assert r1.disposition == "deny"
+
+    r2 = adapt_antigravity_post_tool_use({}, event_id="e2")
+    assert isinstance(r2, HostHookResult)
+    assert r2.disposition == "deny"
+    assert r2.reason_code == "malformed_event"
+
+    r3 = adapt_antigravity_post_tool_use(
+        {"tool": "run_command"}, event_id="e3"
+    )
+    assert isinstance(r3, HostHookResult)
+    assert r3.disposition == "deny"
+    assert r3.reason_code == "invalid_workspace"
+
+
+def test_post_tool_use_renderer_returns_empty_dict() -> None:
+    """PostToolUse render output is strictly {}."""
+    payload = {
+        "toolCall": {"name": "run_command", "args": {}},
+        "workspacePaths": ["/ws"],
+    }
+    evt = adapt_antigravity_post_tool_use(payload, event_id="evt-render")
+    assert isinstance(evt, HostHookEvent)
+    out = render_antigravity_post_tool_use_result(evt)
+    assert out == {}
+
+    # Also works on HostHookResult (deny path)
+    deny_result = HostHookResult(
+        schema_version=1,
+        event_id="e-deny",
+        disposition="deny",
+        reason_code="malformed_event",
+        summary="test",
+    )
+    out2 = render_antigravity_post_tool_use_result(deny_result)
+    assert out2 == {}
+
+
+def test_post_tool_use_renderer_rejects_invalid_input() -> None:
+    """PostToolUse renderer rejects non-event/result input."""
+    with pytest.raises(ValueError, match="HostHookEvent or HostHookResult"):
+        render_antigravity_post_tool_use_result(  # type: ignore
+            {"not": "valid"}
+        )
+
+
+def test_post_tool_use_privacy_no_payload_echo() -> None:
+    """PostToolUse canonical event never echoes payload/error content."""
+    payload = {
+        "tool": "run_command",
+        "workspace": "/ws",
+        "error": "PRIVATE_ERROR_TEXT",
+        "tool_input": {"CommandLine": "SECRET_NESTED_CMD"},
+        "stepIdx": 0,
+    }
+    result = adapt_antigravity_post_tool_use(payload, event_id="evt-priv")
+    result_str = str(result)
+    assert "PRIVATE_ERROR_TEXT" not in result_str
+    assert "SECRET_NESTED_CMD" not in result_str
+    out = render_antigravity_post_tool_use_result(result)
+    assert out == {}
+    assert "PRIVATE_ERROR_TEXT" not in str(out)

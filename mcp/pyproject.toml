@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 mighty-mouse-mcp = "mighty_mouse_mcp.server:main"
 mighty-mouse-signal-audit = "mighty_mouse_mcp.hooks:main"
+mighty-mouse-antigravity-pretooluse = "mighty_mouse_mcp.antigravity_hooks:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

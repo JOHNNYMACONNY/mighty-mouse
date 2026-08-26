@@ -1,9 +1,17 @@
-"""Antigravity PreToolUse host hook executable runner v1.
+"""Antigravity PreToolUse and PostToolUse host hook executable runners v1.
 
+PreToolUse:
 Accepts Antigravity PreToolUse payload on stdin, adapts it to canonical
 HostHookEvent, resolves authoritative AdapterRuntimeContext using the
 MCP v6 tool signatures, constructs ResolvedHostHookEvent, and outputs
 exactly one JSON object to stdout.
+
+PostToolUse:
+Accepts Antigravity PostToolUse payload on stdin, adapts it to canonical
+HostHookEvent (post_action), resolves authoritative AdapterRuntimeContext,
+checks process-level opt-in (MIGHTY_MOUSE_POST_ACTION_VERIFY=1), executes
+canonical run_verify for file_write actions, converts results to bounded
+HookVerificationSummary, and outputs strictly {} as single JSON object.
 
 Enforces the core architectural invariant: host payload != authority.
 """
@@ -11,6 +19,7 @@ Enforces the core architectural invariant: host payload != authority.
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import sys
 from typing import Any
@@ -20,21 +29,26 @@ from mighty_mouse.host.adapter import (
     HostAdapter,
 )
 from mighty_mouse.host.antigravity import (
+    adapt_antigravity_post_tool_use,
     adapt_antigravity_pre_tool_use,
+    render_antigravity_post_tool_use_result,
     render_antigravity_pre_tool_use_result,
 )
 from mighty_mouse.host.hooks import (
     HOST_HOOK_SCHEMA_VERSION,
+    HookVerificationSummary,
     HostHookEvent,
     HostHookResult,
     ResolvedHostHookEvent,
 )
-from mighty_mouse_mcp.server import _get_mcp_tool_signatures
+from mighty_mouse_mcp.server import _get_mcp_tool_signatures, run_verify
+
+POST_ACTION_VERIFY_ENV = "MIGHTY_MOUSE_POST_ACTION_VERIFY"
 
 
-def _generate_event_id() -> str:
+def _generate_event_id(prefix: str = "pre") -> str:
     """Generate a privacy-safe unique event ID for internal correlation."""
-    return f"ag-pre-{secrets.randbelow(10**30):030d}"
+    return f"ag-{prefix}-{secrets.randbelow(10**30):030d}"
 
 
 def _make_denial(
@@ -64,7 +78,7 @@ def run_antigravity_pre_tool_use(
     Never raises exceptions: catches any failure and projects a bounded
     canonical HostHookResult denial into Antigravity decision JSON.
     """
-    eid = event_id or _generate_event_id()
+    eid = event_id or _generate_event_id("pre")
 
     # 1. Parse JSON input strictly expecting a JSON object (mapping)
     try:
@@ -150,14 +164,186 @@ def run_antigravity_pre_tool_use(
     return render_antigravity_pre_tool_use_result(success_result)
 
 
+def evaluate_antigravity_post_tool_use(
+    raw_input: str,
+    *,
+    event_id: str | None = None,
+    tool_signatures: dict[str, Any] | None = None,
+    contract_version: int = MCP_TOOL_CONTRACT_VERSION,
+) -> HostHookResult:
+    """Evaluate Antigravity PostToolUse returning canonical HostHookResult.
+
+    Resolves authoritative runtime context and executes canonical run_verify
+    only when MIGHTY_MOUSE_POST_ACTION_VERIFY is exactly '1' and action is
+    an eligible file_write.
+    """
+    eid = event_id or _generate_event_id("post")
+
+    # 1. Parse JSON input strictly expecting a JSON object
+    try:
+        payload = json.loads(raw_input)
+    except Exception:
+        return _make_denial(eid, "malformed_event", "Malformed JSON input")
+
+    if not isinstance(payload, dict):
+        return _make_denial(
+            eid, "malformed_event", "JSON root must be an object"
+        )
+
+    # 2. Normalize payload through core PostToolUse adapter
+    try:
+        adapted = adapt_antigravity_post_tool_use(payload, event_id=eid)
+    except Exception:
+        return _make_denial(eid, "internal_error", "Adapter failure")
+
+    if isinstance(adapted, HostHookResult):
+        return adapted
+
+    if not isinstance(adapted, HostHookEvent):
+        return _make_denial(
+            eid, "internal_error", "Unexpected adapter return type"
+        )
+
+    # 3. Authoritative runtime context resolution
+    signatures = (
+        tool_signatures
+        if tool_signatures is not None
+        else _get_mcp_tool_signatures()
+    )
+
+    try:
+        ctx = HostAdapter.resolve_adapter_context(
+            workspace=adapted.workspace,
+            tool_signatures=signatures,
+            contract_version=contract_version,
+        )
+    except (ValueError, FileNotFoundError, OSError):
+        return _make_denial(
+            eid,
+            "runtime_context_unavailable",
+            "Runtime context unavailable",
+        )
+    except Exception:
+        return _make_denial(
+            eid,
+            "runtime_context_unavailable",
+            "Runtime context resolution failure",
+        )
+
+    # 4. Construct ResolvedHostHookEvent
+    try:
+        resolved = ResolvedHostHookEvent(
+            event=adapted,
+            runtime_context=ctx,
+        )
+        _ = resolved
+    except Exception:
+        return _make_denial(
+            eid,
+            "runtime_context_unavailable",
+            "Resolved event construction failed",
+        )
+
+    # 5. Check process-level opt-in for verification
+    opt_in = os.environ.get(POST_ACTION_VERIFY_ENV) == "1"
+    is_eligible_action = adapted.action.kind == "file_write"
+
+    if not opt_in or not is_eligible_action:
+        return HostHookResult(
+            schema_version=HOST_HOOK_SCHEMA_VERSION,
+            event_id=eid,
+            disposition="continue",
+            reason_code="not_applicable",
+            summary="Post-action observation recorded without verification",
+            verification=HookVerificationSummary(
+                occurred=False,
+                passed=None,
+                summary="Verification not enabled or not applicable",
+            ),
+        )
+
+    # 6. Execute canonical run_verify with no host overrides
+    try:
+        verif_dict = run_verify(adapted.workspace)
+    except Exception:
+        return HostHookResult(
+            schema_version=HOST_HOOK_SCHEMA_VERSION,
+            event_id=eid,
+            disposition="continue",
+            reason_code="internal_error",
+            summary="Internal verification execution error",
+            verification=HookVerificationSummary(
+                occurred=True,
+                passed=False,
+                summary="Verification execution error",
+            ),
+        )
+
+    checks = verif_dict.get("checks", [])
+    raw_passed = bool(verif_dict.get("passed", False))
+
+    if not checks:
+        passed = False
+        summary_text = "No executable checks detected"
+    else:
+        passed = raw_passed
+        summary_text = (
+            "Verification passed" if passed else "Verification failed"
+        )
+
+    reason_code = "verification_passed" if passed else "verification_failed"
+
+    return HostHookResult(
+        schema_version=HOST_HOOK_SCHEMA_VERSION,
+        event_id=eid,
+        disposition="continue",
+        reason_code=reason_code,
+        summary=summary_text,
+        verification=HookVerificationSummary(
+            occurred=True,
+            passed=passed,
+            summary=summary_text,
+        ),
+    )
+
+
+def run_antigravity_post_tool_use(
+    raw_input: str,
+    *,
+    event_id: str | None = None,
+    tool_signatures: dict[str, Any] | None = None,
+    contract_version: int = MCP_TOOL_CONTRACT_VERSION,
+) -> dict[str, Any]:
+    """Execute Antigravity PostToolUse returning strictly {} output."""
+    res = evaluate_antigravity_post_tool_use(
+        raw_input,
+        event_id=event_id,
+        tool_signatures=tool_signatures,
+        contract_version=contract_version,
+    )
+    return render_antigravity_post_tool_use_result(res)
+
+
 def main() -> None:
-    """CLI entrypoint reading stdin and printing exactly one JSON object."""
+    """PreToolUse CLI entrypoint reading stdin and printing decision JSON."""
     try:
         raw_input = sys.stdin.read()
     except Exception:
         raw_input = ""
 
     result = run_antigravity_pre_tool_use(raw_input)
+    sys.stdout.write(json.dumps(result, sort_keys=True) + "\n")
+    sys.stdout.flush()
+
+
+def post_tool_use_main() -> None:
+    """PostToolUse CLI entrypoint reading stdin and printing exactly {}."""
+    try:
+        raw_input = sys.stdin.read()
+    except Exception:
+        raw_input = ""
+
+    result = run_antigravity_post_tool_use(raw_input)
     sys.stdout.write(json.dumps(result, sort_keys=True) + "\n")
     sys.stdout.flush()
 

@@ -96,6 +96,7 @@ jobs:
           CLI=/tmp/mighty-mouse-wheel-venv/bin/mighty-mouse
           AUDIT=/tmp/mighty-mouse-wheel-venv/bin/mighty-mouse-signal-audit
           AG_RUNNER=/tmp/mighty-mouse-wheel-venv/bin/mighty-mouse-antigravity-pretooluse
+          AG_POST_RUNNER=/tmp/mighty-mouse-wheel-venv/bin/mighty-mouse-antigravity-posttooluse
           "$PY" -c "from importlib.metadata import version; import mighty_mouse; assert mighty_mouse.__version__ == version('mighty-mouse')"
           "$PY" -c "import mighty_mouse_mcp.server, mighty_mouse_mcp.hooks, mighty_mouse_mcp.antigravity_hooks"
           "$CLI" --help
@@ -104,6 +105,7 @@ jobs:
           "$CLI" verify /tmp/mighty-mouse-verify-smoke --test-command "$PY -c 'print(\"wheel smoke passed\")'" --json | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d['interface']=='verify' and d['passed'] is True"
           "$AUDIT" /tmp/mighty-mouse-verify-smoke --receipt-hash deadbeef --after 2026-01-01T00:00:00+00:00 >/dev/null || test $? -eq 1
           echo '{"invalid": "json' | "$AG_RUNNER" | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d['decision']=='deny' and d['status']=='deny'"
+          echo '{"invalid": "json' | "$AG_POST_RUNNER" | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d == {}"
           "$PY" - <<'PY'
           import asyncio
           import os

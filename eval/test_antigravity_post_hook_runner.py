@@ -21,6 +21,7 @@ from mighty_mouse.host.hooks import (
     HostHookResult,
     ResolvedHostHookEvent,
 )
+from mighty_mouse.v2.signals import SignalLifecycle
 from mighty_mouse_mcp.antigravity_hooks import (
     POST_ACTION_VERIFY_ENV,
     evaluate_antigravity_post_tool_use,
@@ -70,7 +71,7 @@ def _setup_workspace_adapter_config(
 def test_post_tool_use_opt_in_write_success(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Valid write + opt-in -> verifier called once and passes."""
+    """Valid write + opt-in -> verifier called once, passes, records Signal."""
     monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
     _setup_workspace_adapter_config(tmp_path)
     payload = {
@@ -110,6 +111,22 @@ def test_post_tool_use_opt_in_write_success(
         assert eval_result.verification.passed is True
         assert eval_result.verification.summary == "Verification passed"
 
+        # Signal receipt must be recorded in state_dir
+        receipt_dir = tmp_path / ".mighty-mouse" / "v2-signal-receipts"
+        receipts = list(receipt_dir.glob("*.json"))
+        assert len(receipts) == 1
+        receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+        sig = receipt["signal"]
+        assert sig["outcome"] == "passed"
+        assert sig["verifier_category"] == "tests"
+        assert sig["verifier_result"] == "passed"
+        assert sig["duration_ms"] == 500
+        assert sig["retry_count"] == 0
+        assert sig["scope"]["repository"] == "JOHNNYMACONNY/mighty-mouse"
+        assert sig["scope"]["model_class"] == "local-small"
+        assert sig["scope"]["mode"] == "coding"
+        assert sig["scope"]["task_category"] == "unknown"
+
         # Public projection is strictly {}
         pub_result = run_antigravity_post_tool_use(json.dumps(payload))
         assert pub_result == {}
@@ -118,7 +135,7 @@ def test_post_tool_use_opt_in_write_success(
 def test_post_tool_use_opt_in_write_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Valid write + opt-in -> verifier fails -> verification_failed."""
+    """Valid write + opt-in -> verifier fails -> records failed Signal."""
     monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
     _setup_workspace_adapter_config(tmp_path)
     payload = {
@@ -154,6 +171,16 @@ def test_post_tool_use_opt_in_write_failure(
         assert eval_result.verification.passed is False
         assert eval_result.verification.summary == "Verification failed"
 
+        receipt_dir = tmp_path / ".mighty-mouse" / "v2-signal-receipts"
+        receipts = list(receipt_dir.glob("*.json"))
+        assert len(receipts) == 1
+        receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+        sig = receipt["signal"]
+        assert sig["outcome"] == "failed"
+        assert sig["verifier_category"] == "lint"
+        assert sig["verifier_result"] == "failed"
+        assert sig["duration_ms"] == 100
+
         pub_result = run_antigravity_post_tool_use(json.dumps(payload))
         assert pub_result == {}
 
@@ -161,7 +188,7 @@ def test_post_tool_use_opt_in_write_failure(
 def test_post_tool_use_no_executable_checks_detected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No executable checks detected is treated as verification failure."""
+    """No checks detected is treated as failed verification Signal."""
     monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
     _setup_workspace_adapter_config(tmp_path)
     payload = {
@@ -193,6 +220,15 @@ def test_post_tool_use_no_executable_checks_detected(
             == "No executable checks detected"
         )
 
+        receipt_dir = tmp_path / ".mighty-mouse" / "v2-signal-receipts"
+        receipts = list(receipt_dir.glob("*.json"))
+        assert len(receipts) == 1
+        receipt = json.loads(receipts[0].read_text(encoding="utf-8"))
+        sig = receipt["signal"]
+        assert sig["outcome"] == "failed"
+        assert sig["verifier_category"] == "none"
+        assert sig["verifier_result"] == "failed"
+
 
 @pytest.mark.parametrize(
     "env_val",
@@ -201,7 +237,7 @@ def test_post_tool_use_no_executable_checks_detected(
 def test_post_tool_use_disabled_env_never_calls_verifier(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env_val: str | None
 ) -> None:
-    """Non-'1' env values never invoke verifier; result is not_applicable."""
+    """Non-'1' env values never invoke verifier and record NO Signal."""
     if env_val is None:
         monkeypatch.delenv(POST_ACTION_VERIFY_ENV, raising=False)
     else:
@@ -227,13 +263,19 @@ def test_post_tool_use_disabled_env_never_calls_verifier(
         assert eval_result.verification.occurred is False
         assert eval_result.verification.passed is None
 
+        receipt_dir = tmp_path / ".mighty-mouse" / "v2-signal-receipts"
+        assert (
+            not receipt_dir.exists()
+            or len(list(receipt_dir.glob("*.json"))) == 0
+        )
+
         assert run_antigravity_post_tool_use(json.dumps(payload)) == {}
 
 
 def test_payload_cannot_enable_or_configure_verification(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Payload attempting to configure or force verification is ignored."""
+    """Payload attempting to configure verifier is ignored; no Signal."""
     monkeypatch.delenv(POST_ACTION_VERIFY_ENV, raising=False)
     _setup_workspace_adapter_config(tmp_path)
     payload = {
@@ -257,11 +299,17 @@ def test_payload_cannot_enable_or_configure_verification(
         assert eval_result.verification is not None
         assert eval_result.verification.occurred is False
 
+        receipt_dir = tmp_path / ".mighty-mouse" / "v2-signal-receipts"
+        assert (
+            not receipt_dir.exists()
+            or len(list(receipt_dir.glob("*.json"))) == 0
+        )
+
 
 def test_shell_command_post_tool_use_never_triggers_verification(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """run_command PostToolUse is not a write and never triggers verifier."""
+    """run_command PostToolUse never triggers verifier / no Signal."""
     monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
     _setup_workspace_adapter_config(tmp_path)
     payload = {
@@ -282,11 +330,17 @@ def test_shell_command_post_tool_use_never_triggers_verification(
         assert eval_result.verification is not None
         assert eval_result.verification.occurred is False
 
+        receipt_dir = tmp_path / ".mighty-mouse" / "v2-signal-receipts"
+        assert (
+            not receipt_dir.exists()
+            or len(list(receipt_dir.glob("*.json"))) == 0
+        )
+
 
 def test_other_tool_post_tool_use_never_triggers_verification(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Other non-write tool PostToolUse never triggers verifier."""
+    """Other non-write tool PostToolUse never triggers verifier / no Signal."""
     monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
     _setup_workspace_adapter_config(tmp_path)
     payload = {
@@ -304,11 +358,17 @@ def test_other_tool_post_tool_use_never_triggers_verification(
         mock_rv.assert_not_called()
         assert eval_result.reason_code == "not_applicable"
 
+        receipt_dir = tmp_path / ".mighty-mouse" / "v2-signal-receipts"
+        assert (
+            not receipt_dir.exists()
+            or len(list(receipt_dir.glob("*.json"))) == 0
+        )
+
 
 def test_malformed_json_returns_empty_dict_and_no_verifier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Malformed JSON input fails closed without calling verifier."""
+    """Malformed JSON input fails closed without calling verifier or Signal."""
     monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
     with patch(
         "mighty_mouse_mcp.antigravity_hooks.run_verify"
@@ -339,9 +399,8 @@ def test_non_object_json_returns_empty_dict(
 def test_missing_runtime_context_no_verifier(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Missing adapter config denies and never invokes verifier."""
+    """Missing adapter config denies, never invokes verifier or Signal."""
     monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
-    # tmp_path has no config
     payload = {
         "toolCall": {
             "name": "write_to_file",
@@ -432,7 +491,7 @@ def test_exact_mcp_v6_signatures_supplied(
 def test_privacy_no_verifier_output_or_secrets_leakage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Verifier command lines, secret paths, outputs, and errors never leak."""
+    """Verifier command lines and outputs never leak into Signal or result."""
     monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
     _setup_workspace_adapter_config(tmp_path)
     secret_path = str(tmp_path / "secret" / "token.txt")
@@ -466,17 +525,70 @@ def test_privacy_no_verifier_output_or_secrets_leakage(
         return_value=mock_verif,
     ):
         eval_result = evaluate_antigravity_post_tool_use(json.dumps(payload))
-        # Ensure summary on verification is strictly bounded
         assert eval_result.verification is not None
         assert eval_result.verification.summary == "Verification failed"
         assert secret_output not in str(eval_result)
         assert secret_cmd not in str(eval_result)
         assert "HOST_ERROR_SECRET_CONTENT" not in str(eval_result)
 
+        # Inspect persisted Signal file
+        receipt_dir = tmp_path / ".mighty-mouse" / "v2-signal-receipts"
+        receipts = list(receipt_dir.glob("*.json"))
+        assert len(receipts) == 1
+        raw_receipt = receipts[0].read_text(encoding="utf-8")
+        assert secret_output not in raw_receipt
+        assert secret_cmd not in raw_receipt
+        assert "HOST_ERROR_SECRET_CONTENT" not in raw_receipt
+        assert secret_path not in raw_receipt
+
         # Public output is strictly {}
         pub = run_antigravity_post_tool_use(json.dumps(payload))
         assert pub == {}
         assert json.dumps(pub) == "{}"
+
+
+def test_paused_signal_collection_is_non_fatal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When Signal collection is paused, verification completes normally."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    _setup_workspace_adapter_config(tmp_path)
+    lifecycle = SignalLifecycle(tmp_path / ".mighty-mouse")
+    lifecycle.pause()
+    assert lifecycle.collection_paused is True
+
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    mock_verif = {
+        "passed": True,
+        "checks": [{"name": "tests", "passed": True, "duration_sec": 0.2}],
+        "summary": "Passed 1/1 verification checks.",
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        return_value=mock_verif,
+    ):
+        eval_result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert eval_result.disposition == "continue"
+        assert eval_result.reason_code == "verification_passed"
+        assert eval_result.verification is not None
+        assert eval_result.verification.passed is True
+
+        # No receipt written because paused
+        receipt_dir = tmp_path / ".mighty-mouse" / "v2-signal-receipts"
+        assert (
+            not receipt_dir.exists()
+            or len(list(receipt_dir.glob("*.json"))) == 0
+        )
+
+        assert run_antigravity_post_tool_use(json.dumps(payload)) == {}
 
 
 def test_stdout_parses_as_exactly_empty_json_object(
@@ -504,7 +616,7 @@ def test_stdout_parses_as_exactly_empty_json_object(
 def test_no_mutating_or_solving_methods_invoked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Runner never calls solve, solve_swarm, record_signal, or policies."""
+    """Runner never calls solve, solve_swarm, or policy engine controls."""
     monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
     _setup_workspace_adapter_config(tmp_path)
     payload = {
@@ -521,10 +633,6 @@ def test_no_mutating_or_solving_methods_invoked(
         HostAdapter,
         "solve_swarm",
         side_effect=AssertionError("solve_swarm called"),
-    ), patch.object(
-        HostAdapter,
-        "record_signal",
-        side_effect=AssertionError("record_signal called"),
     ), patch(
         "mighty_mouse_mcp.antigravity_hooks.run_verify",
         return_value={

@@ -11,7 +11,8 @@ Accepts Antigravity PostToolUse payload on stdin, adapts it to canonical
 HostHookEvent (post_action), resolves authoritative AdapterRuntimeContext,
 checks process-level opt-in (MIGHTY_MOUSE_POST_ACTION_VERIFY=1), executes
 canonical run_verify for file_write actions, converts results to bounded
-HookVerificationSummary, and outputs strictly {} as single JSON object.
+HookVerificationSummary, records one canonical content-free v2 Signal,
+and outputs strictly {} as single JSON object.
 
 Enforces the core architectural invariant: host payload != authority.
 """
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import secrets
 import sys
 from typing import Any
@@ -41,7 +43,14 @@ from mighty_mouse.host.hooks import (
     HostHookResult,
     ResolvedHostHookEvent,
 )
-from mighty_mouse_mcp.server import _get_mcp_tool_signatures, run_verify
+from mighty_mouse.v2.foundation import Mode, Scope, TaskCategory
+from mighty_mouse.v2.signals import SignalLifecycle
+from mighty_mouse.v2.telemetry import SignalTelemetry
+from mighty_mouse_mcp.server import (
+    _get_mcp_tool_signatures,
+    _verifier_category,
+    run_verify,
+)
 
 POST_ACTION_VERIFY_ENV = "MIGHTY_MOUSE_POST_ACTION_VERIFY"
 
@@ -175,7 +184,8 @@ def evaluate_antigravity_post_tool_use(
 
     Resolves authoritative runtime context and executes canonical run_verify
     only when MIGHTY_MOUSE_POST_ACTION_VERIFY is exactly '1' and action is
-    an eligible file_write.
+    an eligible file_write. Persists one canonical content-free v2 Signal
+    whenever verification executes.
     """
     eid = event_id or _generate_event_id("post")
 
@@ -292,6 +302,35 @@ def evaluate_antigravity_post_tool_use(
         )
 
     reason_code = "verification_passed" if passed else "verification_failed"
+
+    # 7. Record canonical content-free v2 Signal using authoritative context
+    try:
+        category = _verifier_category(verif_dict)
+        scope = Scope(
+            mode=Mode.CODING,
+            repository=ctx.repository,
+            task_category=TaskCategory.UNKNOWN,
+            model_class=ctx.model_class,
+        )
+        lifecycle = SignalLifecycle(Path(ctx.state_dir))
+        telemetry = SignalTelemetry(lifecycle)
+        duration_ms = round(
+            sum(check.get("duration_sec", 0.0) for check in checks) * 1000
+        )
+        telemetry.record(
+            signal_id=f"signal-{secrets.randbelow(10**30):030d}",
+            scope=scope,
+            model_digest=str(ctx.model_identity.artifact_digest),
+            execution_profile_id=str(ctx.execution_profile.profile_id),
+            outcome="passed" if passed else "failed",
+            duration_ms=duration_ms,
+            retry_count=0,
+            verifier_category=category,
+            verifier_result="passed" if passed else "failed",
+        )
+    except Exception:
+        # Signal recording errors must not alter Host Hook result
+        pass
 
     return HostHookResult(
         schema_version=HOST_HOOK_SCHEMA_VERSION,

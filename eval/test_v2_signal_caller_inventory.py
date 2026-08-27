@@ -18,6 +18,7 @@ TELEMETRY_IMPLEMENTATION = REPO_ROOT / "src/mighty_mouse/v2/telemetry.py"
 
 CANONICAL_CALLERS = {
     "eval/perpetual_loop.py": ("SignalTelemetry",),
+    "mcp/src/mighty_mouse_mcp/antigravity_hooks.py": ("SignalTelemetry",),
     "mcp/src/mighty_mouse_mcp/server.py": ("SignalTelemetry",),
     "src/mighty_mouse/commands/signals_cmd.py": ("SignalTelemetry",),
     "src/mighty_mouse/v2/engine.py": ("SignalTelemetry",),

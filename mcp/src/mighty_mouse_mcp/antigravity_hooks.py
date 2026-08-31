@@ -43,6 +43,7 @@ from mighty_mouse.host.hooks import (
     HostHookResult,
     ResolvedHostHookEvent,
 )
+from mighty_mouse.host.recovery import evaluate_recovery_gate
 from mighty_mouse.v2.foundation import Mode, Scope, TaskCategory
 from mighty_mouse.v2.signals import SignalLifecycle
 from mighty_mouse.v2.telemetry import SignalTelemetry
@@ -53,6 +54,7 @@ from mighty_mouse_mcp.server import (
 )
 
 POST_ACTION_VERIFY_ENV = "MIGHTY_MOUSE_POST_ACTION_VERIFY"
+POST_ACTION_RECOVERY_ENV = "MIGHTY_MOUSE_POST_ACTION_RECOVERY"
 
 
 def _generate_event_id(prefix: str = "pre") -> str:
@@ -332,17 +334,33 @@ def evaluate_antigravity_post_tool_use(
         # Signal recording errors must not alter Host Hook result
         pass
 
+    verification_summary = HookVerificationSummary(
+        occurred=True,
+        passed=passed,
+        summary=summary_text,
+    )
+
+    # 8. Recovery gate shadow evaluation (v1: no execution, shadow only)
+    try:
+        recovery_enabled = os.environ.get(POST_ACTION_RECOVERY_ENV) == "1"
+        _ = evaluate_recovery_gate(
+            resolved,
+            verification_summary,
+            enabled=recovery_enabled,
+            attempts_used=0,
+            recovery_in_progress=False,
+        )
+    except Exception:
+        # Shadow gate errors must be non-fatal and not alter HostHookResult
+        pass
+
     return HostHookResult(
         schema_version=HOST_HOOK_SCHEMA_VERSION,
         event_id=eid,
         disposition="continue",
         reason_code=reason_code,
         summary=summary_text,
-        verification=HookVerificationSummary(
-            occurred=True,
-            passed=passed,
-            summary=summary_text,
-        ),
+        verification=verification_summary,
     )
 
 

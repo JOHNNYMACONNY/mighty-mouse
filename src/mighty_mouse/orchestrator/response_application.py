@@ -21,6 +21,7 @@ class ResponseApplicationPolicy:
 
     workspace_root: str
     allowed_delete_paths: tuple[str, ...] = ()
+    allowed_write_paths: tuple[str, ...] | None = None
     max_file_bytes: int = 100_000
     system_mode: bool = False
     strict_code_hygiene: bool = False
@@ -62,6 +63,28 @@ def _resolve_target_path(path: str, workspace_root: str) -> tuple[str, str]:
         raise ValueError(f"Resolved path escapes workspace: {path}")
 
     return path, target_path
+
+
+def _validate_write_path_allowlist(
+    path: str,
+    allowed_write_paths: set[str] | None,
+) -> None:
+    """Strictly validate path when an exact write allowlist is provided."""
+    if allowed_write_paths is None:
+        return
+
+    # In strict write allowlist mode, reject backslashes and
+    # non-canonical forms
+    if "\\" in path:
+        raise ValueError(
+            f"Write not permitted for non-allowlisted path: {path}"
+        )
+
+    norm_path = posixpath.normpath(path)
+    if norm_path not in allowed_write_paths:
+        raise ValueError(
+            f"Write not permitted for non-allowlisted path: {path}"
+        )
 
 
 @dataclass(frozen=True)
@@ -115,6 +138,15 @@ def plan_response(request: ResponseApplicationRequest) -> ResponsePlan:
         for path in (policy.allowed_delete_paths or [])
         if path and path.strip()
     }
+    allowed_write_paths = (
+        {
+            posixpath.normpath(path.strip().replace("\\", "/"))
+            for path in policy.allowed_write_paths
+            if path and path.strip()
+        }
+        if policy.allowed_write_paths is not None
+        else None
+    )
 
     operations: list[PlannedOperation] = []
 
@@ -124,19 +156,29 @@ def plan_response(request: ResponseApplicationRequest) -> ResponsePlan:
         re.DOTALL | re.IGNORECASE,
     )
     if checklist_match:
-        checklist_content = checklist_match.group(0).strip() + "\n"
-        path, checklist_path = _resolve_target_path(
-            "CHECKLIST.md",
-            workspace_root,
-        )
-        operations.append(
-            PlannedOperation(
-                kind="write",
-                path=path,
-                target_path=checklist_path,
-                content=checklist_content,
+        norm_checklist = posixpath.normpath("CHECKLIST.md")
+        if (
+            allowed_write_paths is None
+            or norm_checklist in allowed_write_paths
+            or "CHECKLIST.md" in allowed_write_paths
+        ):
+            checklist_content = checklist_match.group(0).strip() + "\n"
+            path, checklist_path = _resolve_target_path(
+                "CHECKLIST.md",
+                workspace_root,
             )
-        )
+            operations.append(
+                PlannedOperation(
+                    kind="write",
+                    path=path,
+                    target_path=checklist_path,
+                    content=checklist_content,
+                )
+            )
+        elif allowed_write_paths is not None:
+            raise ValueError(
+                "Write not permitted for non-allowlisted path: CHECKLIST.md"
+            )
 
     file_blocks = re.finditer(
         r"```(?P<lang>\w+)?"
@@ -240,6 +282,8 @@ def plan_response(request: ResponseApplicationRequest) -> ResponsePlan:
                         f"Found hallucinated tag {pattern}"
                     )
 
+        _validate_write_path_allowlist(path, allowed_write_paths)
+
         operations.append(
             PlannedOperation(
                 kind="write",
@@ -269,6 +313,15 @@ def _apply_response_text(
         for path in (policy.allowed_delete_paths or [])
         if path and path.strip()
     }
+    allowed_write_paths = (
+        {
+            posixpath.normpath(path.strip().replace("\\", "/"))
+            for path in policy.allowed_write_paths
+            if path and path.strip()
+        }
+        if policy.allowed_write_paths is not None
+        else None
+    )
 
     checklist_match = re.search(
         r"# Mighty Mouse Checklist.*?(?=```|$)",
@@ -276,15 +329,25 @@ def _apply_response_text(
         re.DOTALL | re.IGNORECASE,
     )
     if checklist_match:
-        checklist_content = checklist_match.group(0).strip()
-        _, checklist_path = _resolve_target_path(
-            "CHECKLIST.md",
-            workspace_root,
-        )
-        with open(checklist_path, "w") as checklist_file:
-            checklist_file.write(checklist_content)
-            checklist_file.write("\n")
-        print("[parser] Wrote CHECKLIST.md", file=sys.stderr)
+        norm_checklist = posixpath.normpath("CHECKLIST.md")
+        if (
+            allowed_write_paths is None
+            or norm_checklist in allowed_write_paths
+            or "CHECKLIST.md" in allowed_write_paths
+        ):
+            checklist_content = checklist_match.group(0).strip()
+            _, checklist_path = _resolve_target_path(
+                "CHECKLIST.md",
+                workspace_root,
+            )
+            with open(checklist_path, "w") as checklist_file:
+                checklist_file.write(checklist_content)
+                checklist_file.write("\n")
+            print("[parser] Wrote CHECKLIST.md", file=sys.stderr)
+        elif allowed_write_paths is not None:
+            raise ValueError(
+                "Write not permitted for non-allowlisted path: CHECKLIST.md"
+            )
 
     file_blocks = re.finditer(
         r"```(?P<lang>\w+)?"
@@ -385,6 +448,8 @@ def _apply_response_text(
                         f"XML leakage detected in {path}: "
                         f"Found hallucinated tag {pattern}"
                     )
+
+        _validate_write_path_allowlist(path, allowed_write_paths)
 
         print(
             f"[parser] Target: {path} (Resolved: {target_path})",

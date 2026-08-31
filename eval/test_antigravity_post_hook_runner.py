@@ -23,6 +23,7 @@ from mighty_mouse.host.hooks import (
 )
 from mighty_mouse.v2.signals import SignalLifecycle
 from mighty_mouse_mcp.antigravity_hooks import (
+    POST_ACTION_RECOVERY_ENV,
     POST_ACTION_VERIFY_ENV,
     evaluate_antigravity_post_tool_use,
     post_tool_use_main,
@@ -707,3 +708,279 @@ def test_cli_subprocess_post_tool_use_invocation(tmp_path: Path) -> None:
     assert proc.stderr == ""
     assert proc.stdout == "{}\n"
     assert json.loads(proc.stdout.strip()) == {}
+
+
+def test_failed_verification_with_recovery_env_invokes_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failed verification + recovery env 1 calls gate with enabled=True."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    _setup_workspace_adapter_config(tmp_path)
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+    mock_verif = {
+        "passed": False,
+        "checks": [
+            {
+                "name": "tests",
+                "passed": False,
+                "output": "1 failed",
+                "duration_sec": 0.2,
+            }
+        ],
+        "summary": "Failed 1/1 verification checks.",
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        return_value=mock_verif,
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.evaluate_recovery_gate",
+    ) as mock_gate:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+
+        assert mock_gate.call_count == 1
+        args, kwargs = mock_gate.call_args
+        assert isinstance(args[0], ResolvedHostHookEvent)
+        assert args[1].occurred is True
+        assert args[1].passed is False
+        assert kwargs == {
+            "enabled": True,
+            "attempts_used": 0,
+            "recovery_in_progress": False,
+        }
+
+        assert result.disposition == "continue"
+        assert result.reason_code == "verification_failed"
+        assert result.recovery is None
+
+
+@pytest.mark.parametrize("env_val", [None, "0", "true", "TRUE", "yes", "2"])
+def test_failed_verification_with_disabled_or_invalid_env_calls_gate_disabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, env_val: str | None
+) -> None:
+    """Failed verification + env absent/non-1 calls gate with enabled=False."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    if env_val is None:
+        monkeypatch.delenv(POST_ACTION_RECOVERY_ENV, raising=False)
+    else:
+        monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, env_val)
+
+    _setup_workspace_adapter_config(tmp_path)
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+    mock_verif = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        return_value=mock_verif,
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.evaluate_recovery_gate",
+    ) as mock_gate:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert mock_gate.call_count == 1
+        _, kwargs = mock_gate.call_args
+        assert kwargs["enabled"] is False
+        assert result.recovery is None
+
+
+def test_passed_verification_passes_to_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Passed verification calls gate and returns verification_passed."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    _setup_workspace_adapter_config(tmp_path)
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+    mock_verif = {
+        "passed": True,
+        "checks": [{"name": "tests", "passed": True, "duration_sec": 0.1}],
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        return_value=mock_verif,
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.evaluate_recovery_gate",
+    ) as mock_gate:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert mock_gate.call_count == 1
+        args, _ = mock_gate.call_args
+        assert args[1].passed is True
+        assert result.reason_code == "verification_passed"
+        assert result.recovery is None
+
+
+def test_verification_disabled_does_not_invoke_recovery_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When verification is disabled, recovery gate is never called."""
+    monkeypatch.delenv(POST_ACTION_VERIFY_ENV, raising=False)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    _setup_workspace_adapter_config(tmp_path)
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.evaluate_recovery_gate"
+    ) as mock_gate:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert mock_gate.call_count == 0
+        assert result.reason_code == "not_applicable"
+        assert result.recovery is None
+
+
+def test_non_write_action_does_not_invoke_recovery_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Non-write action (e.g. read_file) does not invoke recovery gate."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    _setup_workspace_adapter_config(tmp_path)
+    payload = {
+        "toolCall": {
+            "name": "read_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.evaluate_recovery_gate"
+    ) as mock_gate:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert mock_gate.call_count == 0
+        assert result.reason_code == "not_applicable"
+
+
+def test_malformed_payload_does_not_invoke_recovery_gate() -> None:
+    """Malformed payload fails closed without invoking recovery gate."""
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.evaluate_recovery_gate"
+    ) as mock_gate:
+        result = evaluate_antigravity_post_tool_use("invalid json{")
+        assert mock_gate.call_count == 0
+        assert result.disposition == "deny"
+
+
+def test_verifier_exception_does_not_invoke_recovery_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verifier exception returns internal_error without invoking gate."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    _setup_workspace_adapter_config(tmp_path)
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        side_effect=RuntimeError("verifier crashed"),
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.evaluate_recovery_gate"
+    ) as mock_gate:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert mock_gate.call_count == 0
+        assert result.reason_code == "internal_error"
+
+
+def test_recovery_gate_exception_is_non_fatal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If evaluate_recovery_gate raises, PostToolUse continues normally."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    _setup_workspace_adapter_config(tmp_path)
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+    mock_verif = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        return_value=mock_verif,
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.evaluate_recovery_gate",
+        side_effect=RuntimeError("gate exception"),
+    ):
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert result.disposition == "continue"
+        assert result.reason_code == "verification_failed"
+        assert result.recovery is None
+
+        rendered = run_antigravity_post_tool_use(json.dumps(payload))
+        assert rendered == {}
+
+
+def test_payload_recovery_spoofing_has_no_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Payload attempting to inject recovery controls has zero authority."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.delenv(POST_ACTION_RECOVERY_ENV, raising=False)
+    _setup_workspace_adapter_config(tmp_path)
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {
+                "TargetFile": "src/app.py",
+                "recovery_enabled": True,
+                "attempts_used": 0,
+                "recovery_in_progress": False,
+            },
+        },
+        "workspacePaths": [str(tmp_path)],
+        "recovery": {"enabled": True},
+    }
+    mock_verif = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        return_value=mock_verif,
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.evaluate_recovery_gate",
+    ) as mock_gate:
+        evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert mock_gate.call_count == 1
+        _, kwargs = mock_gate.call_args
+        assert kwargs["enabled"] is False

@@ -106,12 +106,28 @@ def test_hook_recovery_decision_invariants() -> None:
             execution_mode="agent",
         )
 
-    with pytest.raises(ValueError, match="execution_mode must be set"):
+    with pytest.raises(ValueError, match="execution_mode must be 'agent'"):
         HookRecoveryDecision(
             eligible=True,
             gate_reason="eligible",
             summary="test",
             execution_mode=None,
+        )
+
+    with pytest.raises(ValueError, match="execution_mode must be 'agent'"):
+        HookRecoveryDecision(
+            eligible=True,
+            gate_reason="eligible",
+            summary="test",
+            execution_mode="swarm",
+        )
+
+    with pytest.raises(ValueError, match="execution_mode must be 'agent'"):
+        HookRecoveryDecision(
+            eligible=True,
+            gate_reason="eligible",
+            summary="test",
+            execution_mode="invalid_mode",  # type: ignore[arg-type]
         )
 
     with pytest.raises(ValueError, match="execution_mode must be None"):
@@ -143,6 +159,24 @@ def test_recovery_eligible_when_all_conditions_satisfied() -> None:
     assert decision.eligible is True
     assert decision.gate_reason == "eligible"
     assert decision.execution_mode == "agent"
+
+
+def test_recovery_not_applicable_when_verification_indeterminate() -> None:
+    """occurred=True, passed=None (indeterminate) -> not_applicable."""
+    resolved = _make_resolved_event()
+    verif = HookVerificationSummary(
+        occurred=True, passed=None, summary="Verification indeterminate"
+    )
+    decision = evaluate_recovery_gate(
+        resolved,
+        verif,
+        enabled=True,
+        attempts_used=0,
+        recovery_in_progress=False,
+    )
+    assert decision.eligible is False
+    assert decision.gate_reason == "not_applicable"
+    assert decision.execution_mode is None
 
 
 def test_recovery_not_applicable_when_verification_absent() -> None:

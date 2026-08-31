@@ -33,6 +33,7 @@ class HookRecoveryDecision:
 
     Uses `gate_reason` to distinguish internal evaluation reasons from
     the canonical HostHookResult `reason_code` closed vocabulary.
+    Enforces that eligible v1 decisions are strictly agent execution mode.
     """
 
     eligible: bool
@@ -47,9 +48,9 @@ class HookRecoveryDecision:
             raise ValueError("gate_reason must be a non-empty string")
         if not isinstance(self.summary, str):
             raise ValueError("summary must be a string")
-        if self.eligible and self.execution_mode is None:
+        if self.eligible and self.execution_mode != "agent":
             raise ValueError(
-                "execution_mode must be set when eligible is True"
+                "execution_mode must be 'agent' when eligible is True"
             )
         if not self.eligible and self.execution_mode is not None:
             raise ValueError(
@@ -71,7 +72,9 @@ def evaluate_recovery_gate(
 
     Required semantics:
     1. Strict validation of control arguments (reject non-bools, negative).
-    2. Verification absent, not occurred, or passed -> not_applicable.
+    2. Verification absent, not occurred, passed is True, or indeterminate
+       (passed is None) -> not_applicable. Recovery requires explicit
+       verification.occurred is True and verification.passed is False.
     3. Action kind not file_write or mutation class not workspace_mutation
        -> not_applicable.
     4. Recovery disabled -> recovery_not_enabled.
@@ -110,11 +113,11 @@ def evaluate_recovery_gate(
     else:
         raise ValueError("recovery_in_progress must be a boolean")
 
-    # 2. Check verification condition: recovery requires a failed verification
+    # 2. Check verification condition: requires explicit failed verification
     if (
         verification is None
         or not verification.occurred
-        or verification.passed is True
+        or verification.passed is not False
     ):
         return HookRecoveryDecision(
             eligible=False,

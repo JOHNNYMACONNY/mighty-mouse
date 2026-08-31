@@ -313,6 +313,9 @@ def _solve_with_runtime_context(
     temperature=None,
     stage="unified",
     plan_file=None,
+    disable_hygiene: bool = False,
+    allowed_write_paths: tuple[str, ...] | None = None,
+    recovery_mode: bool = False,
 ):
     p_cfg_path = os.path.abspath(p_cfg_path)
     task_input = os.path.abspath(task_input)
@@ -335,6 +338,9 @@ def _solve_with_runtime_context(
             stage=stage,
             plan_file=plan_file,
             runtime_context=runtime_context,
+            disable_hygiene=disable_hygiene,
+            allowed_write_paths=allowed_write_paths,
+            recovery_mode=recovery_mode,
         )
     finally:
         os.chdir(original_cwd)
@@ -350,6 +356,9 @@ def _solve_inner(
     stage="unified",
     plan_file=None,
     runtime_context: AdapterRuntimeContext | None = None,
+    disable_hygiene: bool = False,
+    allowed_write_paths: tuple[str, ...] | None = None,
+    recovery_mode: bool = False,
 ):
     task_data = None
     raw_task_str = None
@@ -359,9 +368,15 @@ def _solve_inner(
                 raw_task_str = f.read()
             task_data = json.loads(raw_task_str)
         except (json.JSONDecodeError, OSError) as exc:
-            logger.debug(f"[agent] Could not parse task file as JSON ({task_input}): {exc}")
+            logger.debug(
+                f"[agent] Could not parse task file as JSON ({task_input}): "
+                f"{exc}"
+            )
 
-    stale_removed = _hygiene_audit(os.getcwd(), task_data=task_data)
+    if not disable_hygiene:
+        stale_removed = _hygiene_audit(os.getcwd(), task_data=task_data)
+    else:
+        stale_removed = 0
 
 
     with open(p_cfg_path, 'r') as f:
@@ -465,7 +480,7 @@ def _solve_inner(
 
     client = GeminiClient(config=p_cfg)
     allowed_delete_paths = []
-    if isinstance(task_data, dict):
+    if not recovery_mode and isinstance(task_data, dict):
         allowed_delete_paths = task_data.get("deletable_files", [])
 
     # Extract conflict and routing validation properties
@@ -499,6 +514,24 @@ def _solve_inner(
             "scope": None,
             "model_digest": None,
             "execution_profile_id": None,
+            "policy": None,
+        }
+    elif recovery_mode:
+        scaling_telemetry = {
+            "active": False,
+            "activation_reason": "recovery_mode",
+            "pin_id": None,
+            "scope": None,
+            "model_digest": (
+                runtime_context.model_identity.artifact_digest
+                if runtime_context and runtime_context.model_identity
+                else None
+            ),
+            "execution_profile_id": (
+                runtime_context.execution_profile.profile_id
+                if runtime_context and runtime_context.execution_profile
+                else None
+            ),
             "policy": None,
         }
     elif runtime_context is None:
@@ -641,20 +674,20 @@ def _solve_inner(
         user_prompt=user_prompt,
         task_id=task_id,
         attempt=1,
-        max_attempts=2,
+        max_attempts=1 if recovery_mode else 2,
         workspace_root=workspace_root,
         allowed_delete_paths=tuple(allowed_delete_paths),
     )
     execution_request = _AgentExecutionRequest(
         response_attempt_context=response_context,
-        expected_files=tuple(expected_files),
+        expected_files=() if recovery_mode else tuple(expected_files),
         conflict_detected=conflict_detected,
         injection_reason=injection_reason,
         is_conflict_routing_validation=is_conflict_routing_validation,
         deletable_expected_files=tuple(
             path for path in expected_files if path in allowed_delete_paths
         ),
-        scaling_policy=scaling_policy,
+        scaling_policy=None if recovery_mode else scaling_policy,
     )
 
     def provider_adapter(context, attempt_usage_history):
@@ -686,6 +719,7 @@ def _solve_inner(
         response_application_policy = ResponseApplicationPolicy(
             workspace_root=workspace_root,
             allowed_delete_paths=tuple(allowed_delete_paths),
+            allowed_write_paths=allowed_write_paths,
         )
 
         def response_application_adapter(response_text, _context):

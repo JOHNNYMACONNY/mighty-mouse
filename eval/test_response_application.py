@@ -8,6 +8,7 @@ from mighty_mouse.orchestrator.response_application import (
     ResponseApplicationPolicy,
     ResponseApplicationRequest,
     apply_response,
+    plan_response,
 )
 from mighty_mouse.orchestrator.response_parser import ResponseParser
 
@@ -263,11 +264,205 @@ def test_application_boundary_handles_empty_and_inline_delete_blocks(tmp_path):
 ```python:valid.py
 def ok(): pass
 ```"""
+
     res = apply_response(
         _request(raw, tmp_path, allowed_delete_paths=("obsolete_shim.py",))
     )
-    assert "obsolete_shim.py" in res
-    assert "valid.py" in res
     assert not target.exists()
-    assert not (tmp_path / "delete:obsolete_shim.py").exists()
     assert (tmp_path / "valid.py").exists()
+    assert res == ["obsolete_shim.py", "valid.py"]
+
+
+def test_write_allowlist_permits_exact_path_and_rejects_others(tmp_path):
+    """Only paths in allowed_write_paths are written; others raise error."""
+    raw = """```python:allowed.py
+allowed_code
+```
+```python:forbidden.py
+forbidden_code
+```"""
+    with pytest.raises(
+        ValueError, match="Write not permitted for non-allowlisted path"
+    ):
+        apply_response(
+            _request(raw, tmp_path, allowed_write_paths=("allowed.py",))
+        )
+    # The first allowed file was written before the error halted processing
+    assert (tmp_path / "allowed.py").exists()
+    assert not (tmp_path / "forbidden.py").exists()
+
+
+def test_write_allowlist_blocks_unauthorized_checklist(tmp_path):
+    """Implicit/explicit CHECKLIST.md rejected if not in write allowlist."""
+    raw = """# Mighty Mouse Checklist
+1. Step one
+```python:allowed.py
+code
+```"""
+    with pytest.raises(
+        ValueError, match="Write not permitted for non-allowlisted path"
+    ):
+        apply_response(
+            _request(raw, tmp_path, allowed_write_paths=("allowed.py",))
+        )
+    assert not (tmp_path / "CHECKLIST.md").exists()
+    assert not (tmp_path / "allowed.py").exists()
+
+
+def test_write_allowlist_permits_checklist_when_allowlisted(tmp_path):
+    """CHECKLIST.md succeeds when explicitly in allowed_write_paths."""
+    raw = """# Mighty Mouse Checklist
+1. Step one
+```python:allowed.py
+code
+```"""
+    res = apply_response(
+        _request(
+            raw,
+            tmp_path,
+            allowed_write_paths=("allowed.py", "CHECKLIST.md"),
+        )
+    )
+    assert "allowed.py" in res
+    assert (tmp_path / "CHECKLIST.md").exists()
+    assert (tmp_path / "allowed.py").exists()
+
+
+def test_write_allowlist_normalized_posix_paths(tmp_path):
+    """Allowed write paths match normalized relative paths."""
+    raw = """```python:src/nested/app.py
+app_code
+```"""
+    res = apply_response(
+        _request(
+            raw,
+            tmp_path,
+            allowed_write_paths=("./src/nested/app.py",),
+        )
+    )
+    assert "src/nested/app.py" in res
+    assert (tmp_path / "src/nested/app.py").read_text() == "app_code"
+
+
+def test_legacy_allowed_write_paths_none_preserves_baseline_behavior(
+    tmp_path,
+):
+    """When allowed_write_paths is None, baseline path resolution is kept."""
+    raw = r"""```python:src\legacy.py
+legacy_code
+```"""
+    res = apply_response(_request(raw, tmp_path))
+    assert res == [r"src\legacy.py"]
+    assert (tmp_path / "src\\legacy.py").exists()
+    assert (tmp_path / "src\\legacy.py").read_text() == "legacy_code"
+
+
+def test_legacy_deletion_behavior_remains_unchanged(tmp_path):
+    """When allowed_write_paths is None, deletion keeps baseline semantics."""
+    target = tmp_path / "src\\legacy.py"
+    target.write_text("old_code\n")
+    raw = r"""```delete:src\legacy.py
+```"""
+    res = apply_response(
+        _request(raw, tmp_path, allowed_delete_paths=(r"src\legacy.py",))
+    )
+    assert res == [r"src\legacy.py"]
+    assert not target.exists()
+
+
+def test_write_allowlist_rejects_backslash_candidate_paths_fail_closed(
+    tmp_path,
+):
+    """Strict write allowlist rejects backslash candidate path fail-closed."""
+    raw = r"""```python:src\main.py
+main_code
+```"""
+    with pytest.raises(
+        ValueError, match="Write not permitted for non-allowlisted path"
+    ):
+        apply_response(
+            _request(
+                raw,
+                tmp_path,
+                allowed_write_paths=("src/main.py",),
+            )
+        )
+    # Neither literal backslash nor posix directory file is created
+    assert not (tmp_path / "src\\main.py").exists()
+    assert not (tmp_path / "src" / "main.py").exists()
+
+
+def test_write_allowlist_permits_canonical_posix_path(tmp_path):
+    """Strict write allowlist permits canonical posix path."""
+    raw = """```python:src/main.py
+main_code
+```"""
+    res = apply_response(
+        _request(
+            raw,
+            tmp_path,
+            allowed_write_paths=("src/main.py",),
+        )
+    )
+    assert res == ["src/main.py"]
+    assert (tmp_path / "src" / "main.py").exists()
+    assert (tmp_path / "src" / "main.py").read_text() == "main_code"
+
+
+def test_write_allowlist_rejects_backslash_parent_traversal(tmp_path):
+    """Parent traversal via backslash is rejected fail-closed."""
+    raw = r"""```python:..\escape.py
+malicious
+```"""
+    with pytest.raises(
+        ValueError, match="Write not permitted for non-allowlisted path"
+    ):
+        apply_response(
+            _request(
+                raw,
+                tmp_path,
+                allowed_write_paths=("escape.py",),
+            )
+        )
+    assert not (tmp_path.parent / "escape.py").exists()
+    assert not (tmp_path / "escape.py").exists()
+
+
+def test_plan_response_and_apply_response_parity_on_strict_allowlist(
+    tmp_path,
+):
+    """plan_response and apply_response agree on rejecting backslashes."""
+    raw_bad = r"""```python:src\main.py
+main_code
+```"""
+    req_bad = _request(
+        raw_bad,
+        tmp_path,
+        allowed_write_paths=("src/main.py",),
+    )
+    with pytest.raises(
+        ValueError, match="Write not permitted for non-allowlisted path"
+    ):
+        plan_response(req_bad)
+
+    with pytest.raises(
+        ValueError, match="Write not permitted for non-allowlisted path"
+    ):
+        apply_response(req_bad)
+
+    raw_ok = """```python:src/main.py
+main_code
+```"""
+    req_ok = _request(
+        raw_ok,
+        tmp_path,
+        allowed_write_paths=("src/main.py",),
+    )
+    plan = plan_response(req_ok)
+    assert plan.output_paths == ("src/main.py",)
+    assert plan.operations[0].target_path == str(tmp_path / "src" / "main.py")
+
+    res = apply_response(req_ok)
+    assert res == ["src/main.py"]
+    assert (tmp_path / "src" / "main.py").exists()
+    assert (tmp_path / "src" / "main.py").read_text() == "main_code"

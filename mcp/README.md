@@ -113,10 +113,10 @@ appropriate as a post-task check, not a replacement for `verify_and_record`.
 
 ### Antigravity real-time lifecycle hooks
 
-For Antigravity workspaces (`.agents/hooks.json`), the package provides native PreToolUse and PostToolUse executable entrypoints:
+For Antigravity workspaces (`.agents/hooks.json`), real-time lifecycle integration is established via:
 
-- `mighty-mouse-antigravity-pretooluse`: Deterministic composite PreToolUse evaluator enforcing Delivery Guard first evaluation with immediate denial short-circuit. Tool execution is permitted only when all applicable guard gates pass.
-- `mighty-mouse-antigravity-posttooluse`: File-write-only PostToolUse runner (matching `write_to_file`, `replace_file_content`, `multi_replace_file_content`; excluding `run_command`).
+- **Composite PreToolUse wrapper**: Production registration invokes `.agents/scripts/composite_pretooluse.py`, which delegates composition to canonical `run_antigravity_composite_pre_tool_use`. It enforces Delivery Guard first evaluation with immediate denial short-circuit; canonical PreToolUse runs only after Delivery Guard explicitly allows.
+- **File-write-only PostToolUse (`mighty-mouse-antigravity-posttooluse`)**: Console executable invoked exclusively on file-write tools (`write_to_file`, `replace_file_content`, `multi_replace_file_content`; excluding `run_command`).
   - Opt-in verification via `MIGHTY_MOUSE_POST_ACTION_VERIFY=1`: runs canonical project verification on write completion and records content-free v2 Signal (`retry_count=0`).
   - Opt-in self-healing recovery via `MIGHTY_MOUSE_POST_ACTION_RECOVERY=1` and `MIGHTY_MOUSE_POST_ACTION_RECOVERY_CONFIG=<path>`: on verification failure, runs at most 1 bounded recovery attempt restricted strictly to canonical target paths with zero deletions and disabled hygiene cleanup. Re-verification determines final outcome and records retry Signal (`retry_count=1`).
   - Public projection returned to Antigravity host is strictly `{}`.

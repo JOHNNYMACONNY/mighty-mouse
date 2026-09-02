@@ -575,6 +575,98 @@ def run_antigravity_post_tool_use(
     return render_antigravity_post_tool_use_result(res)
 
 
+def run_antigravity_composite_pre_tool_use(
+    raw_input: str,
+    *,
+    guard_checker: Any = None,
+    event_id: str | None = None,
+    tool_signatures: dict[str, Any] | None = None,
+    contract_version: int = MCP_TOOL_CONTRACT_VERSION,
+) -> dict[str, str]:
+    """Execute composite PreToolUse enforcing Delivery Guard deny-dominance.
+
+    1. Parses JSON input strictly.
+    2. If guard_checker is None, immediately denies.
+    3. Executes guard_checker(payload) validating exact (bool, str) tuple.
+    4. If Delivery Guard denies or fails, immediately returns bounded denial.
+    5. Evaluates Mighty Mouse PreToolUse only if Guard explicitly allows.
+    6. Returns Mighty Mouse decision without weakening.
+    7. Returns allow only when all applicable gates allow.
+    """
+    eid = event_id or _generate_event_id("pre")
+
+    try:
+        payload = json.loads(raw_input)
+    except Exception:
+        denial = _make_denial(eid, "malformed_event", "Malformed JSON input")
+        return render_antigravity_pre_tool_use_result(denial)
+
+    if not isinstance(payload, dict):
+        denial = _make_denial(
+            eid, "malformed_event", "JSON root must be an object"
+        )
+        return render_antigravity_pre_tool_use_result(denial)
+
+    # Gate 1: Mandatory Delivery Guard check
+    if guard_checker is None:
+        return {
+            "decision": "deny",
+            "reason": "Delivery Guard unavailable",
+        }
+
+    try:
+        guard_res = guard_checker(payload)
+    except Exception:
+        return {
+            "decision": "deny",
+            "reason": "Delivery Guard evaluation failed",
+        }
+
+    if (
+        not isinstance(guard_res, tuple)
+        or len(guard_res) != 2
+        or not isinstance(guard_res[0], bool)
+        or not isinstance(guard_res[1], str)
+    ):
+        return {
+            "decision": "deny",
+            "reason": "Delivery Guard evaluation failed",
+        }
+
+    guard_ok, guard_reason = guard_res
+    if not guard_ok:
+        return {
+            "decision": "deny",
+            "reason": guard_reason or "Delivery Guard denied action.",
+        }
+
+    # Gate 2: Mighty Mouse PreToolUse (only reached if Gate 1 allowed)
+    try:
+        return run_antigravity_pre_tool_use(
+            raw_input,
+            event_id=eid,
+            tool_signatures=tool_signatures,
+            contract_version=contract_version,
+        )
+    except Exception:
+        return {
+            "decision": "deny",
+            "reason": "Composite PreToolUse runtime failure",
+        }
+
+
+def composite_pre_tool_use_main() -> None:
+    """Composite PreToolUse CLI entrypoint reading stdin."""
+    try:
+        raw_input = sys.stdin.read()
+    except Exception:
+        raw_input = ""
+
+    result = run_antigravity_composite_pre_tool_use(raw_input)
+    sys.stdout.write(json.dumps(result, sort_keys=True) + "\n")
+    sys.stdout.flush()
+
+
 def main() -> None:
     """PreToolUse CLI entrypoint reading stdin and printing decision JSON."""
     try:

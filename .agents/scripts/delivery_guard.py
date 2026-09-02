@@ -167,12 +167,9 @@ def is_dry_run_command_allowed(cmd: str) -> tuple[bool, str]:
     return False, f"Command '{cmd_clean}' is not in the dry-run allowlist."
 
 
-def evaluate_tool_call(payload: dict):
+def check_tool_call(payload: dict) -> tuple[bool, str]:
     if not isinstance(payload, dict):
-        emit_decision(
-            False, "Denied: Malformed hook payload; expected JSON object."
-        )
-        return
+        return False, "Denied: Malformed hook payload; expected JSON object."
 
     # Extract tool_name and tool_input from nested toolCall or flat aliases
     tool_call = payload.get("toolCall")
@@ -180,14 +177,13 @@ def evaluate_tool_call(payload: dict):
         tool_name = tool_call.get("name")
         args_raw = tool_call.get("args")
         if args_raw is not None and not isinstance(args_raw, dict):
-            emit_decision(
-                False, "Denied: Malformed nested toolCall.args; expected dict."
+            return (
+                False,
+                "Denied: Malformed nested toolCall.args; expected dict.",
             )
-            return
         tool_input = args_raw if isinstance(args_raw, dict) else {}
     elif "toolCall" in payload and payload.get("toolCall") is not None:
-        emit_decision(False, "Denied: Malformed nested toolCall structure.")
-        return
+        return False, "Denied: Malformed nested toolCall structure."
     else:
         tool_name = (
             payload.get("tool_name")
@@ -206,11 +202,9 @@ def evaluate_tool_call(payload: dict):
             tool_input = {}
 
     if not tool_name or not isinstance(tool_name, str):
-        emit_decision(True, "Non-guarded action")
-        return
+        return True, "Non-guarded action"
     if not tool_name.strip():
-        emit_decision(True, "Non-guarded action")
-        return
+        return True, "Non-guarded action"
 
     tool_name = tool_name.strip()
 
@@ -260,7 +254,7 @@ def evaluate_tool_call(payload: dict):
             "multi_replace_file_content",
         ]
         if tool_name in write_tools:
-            emit_decision(
+            return (
                 False,
                 "Denied: Write requested outside of an active /deliver run.",
             )
@@ -272,13 +266,13 @@ def evaluate_tool_call(payload: dict):
             )
             ok, reason = is_dry_run_command_allowed(cmd)
             if not ok:
-                emit_decision(
+                return (
                     False,
                     "Denied: Mutating shell command outside active /deliver "
                     f"workflow run: {reason}",
                 )
-            emit_decision(True, "Allowed read-only shell command")
-        emit_decision(True, "Allowed non-mutating tool")
+            return True, "Allowed read-only shell command"
+        return True, "Allowed non-mutating tool"
 
     is_dry_run = state.get("dry_run", "false").lower() in ["true", "1", "yes"]
     plan_status = state.get("plan_status", "PENDING").upper()
@@ -321,24 +315,23 @@ def evaluate_tool_call(payload: dict):
 
         if is_dry_run:
             if _is_inside_run_dir(target_abs):
-                emit_decision(
+                return (
                     True,
                     "Allowed artifact write inside run directory "
                     "during --dry-run.",
                 )
-            else:
-                emit_decision(
-                    False,
-                    f"Denied: File write to '{target_file}' "
-                    "is prohibited during --dry-run mode.",
-                )
+            return (
+                False,
+                f"Denied: File write to '{target_file}' "
+                "is prohibited during --dry-run mode.",
+            )
 
         # Live mode file write checks
         if _is_inside_run_dir(target_abs):
-            emit_decision(True, "Allowed run artifact write.")
+            return True, "Allowed run artifact write."
 
         if plan_status != "READY" or capability_gate != "PASSED":
-            emit_decision(
+            return (
                 False,
                 f"Denied: Implementation edit to '{target_file}' prohibited "
                 f"before plan validation READY and capability_gate PASSED "
@@ -346,39 +339,64 @@ def evaluate_tool_call(payload: dict):
                 f"capability_gate={capability_gate}).",
             )
 
-        emit_decision(True, "Allowed implementation edit in live mode.")
+        return True, "Allowed implementation edit in live mode."
 
     # 3. Shell Command Tool (run_command)
     if tool_name == "run_command":
         cmd = (
-                tool_input.get("CommandLine")
-                or tool_input.get("command")
-                or ""
-            )
+            tool_input.get("CommandLine")
+            or tool_input.get("command")
+            or ""
+        )
 
         if is_dry_run:
             ok, reason = is_dry_run_command_allowed(cmd)
             if ok:
-                emit_decision(True, reason)
-            else:
-                emit_decision(False, f"Denied in --dry-run mode: {reason}")
+                return True, reason
+            return False, f"Denied in --dry-run mode: {reason}"
 
         # Live mode git commit checks
         if "git commit" in cmd:
             last_exit_code = state.get("last_exit_code", "1")
-            standards_count = int(state.get("standards_count", "1")) if state.get("standards_count", "1").isdigit() else 1
-            spec_count = int(state.get("spec_count", "1")) if state.get("spec_count", "1").isdigit() else 1
-            
+            standards_count = (
+                int(state.get("standards_count", "1"))
+                if state.get("standards_count", "1").isdigit()
+                else 1
+            )
+            spec_count = (
+                int(state.get("spec_count", "1"))
+                if state.get("spec_count", "1").isdigit()
+                else 1
+            )
+
             if plan_status != "READY":
-                emit_decision(False, "Denied: git commit prohibited before plan validation READY.")
+                return (
+                    False,
+                    "Denied: git commit prohibited before plan validation "
+                    "READY.",
+                )
             if last_exit_code != "0":
-                emit_decision(False, "Denied: git commit prohibited while test verification fails.")
+                return (
+                    False,
+                    "Denied: git commit prohibited while test verification "
+                    "fails.",
+                )
             if standards_count > 0 or spec_count > 0:
-                emit_decision(False, f"Denied: git commit prohibited while unresolved code-review findings exist (standards={standards_count}, spec={spec_count}).")
+                return (
+                    False,
+                    "Denied: git commit prohibited while unresolved "
+                    f"code-review findings exist "
+                    f"(standards={standards_count}, spec={spec_count}).",
+                )
 
-        emit_decision(True, "Allowed shell command in live mode.")
+        return True, "Allowed shell command in live mode."
 
-    emit_decision(True, "Allowed tool call")
+    return True, "Allowed tool call"
+
+
+def evaluate_tool_call(payload: dict) -> None:
+    allowed, reason = check_tool_call(payload)
+    emit_decision(allowed, reason)
 
 
 def main():

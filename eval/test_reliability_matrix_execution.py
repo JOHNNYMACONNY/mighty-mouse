@@ -410,45 +410,46 @@ def mock_trial_environment(tmp_path: Path):
     adapter_dir = Path(".mighty-mouse")
     adapter_path = adapter_dir / "mcp-adapter.json"
     created_adapter = False
-    if not adapter_path.is_file():
-        adapter_dir.mkdir(parents=True, exist_ok=True)
-        from mighty_mouse_mcp.server import _get_mcp_tool_signatures
 
-        cfg = HostAdapter.build_adapter_config(
-            repository="JOHNNYMACONNY/mighty-mouse",
-            model_digest=canonical_digest,
-            model_class="local-small",
-            effective_context_limit=8192,
-            runtime_kind="antigravity",
-            runtime_version="1.0.0",
-            ollama_model="gemma4:e4b",
-            tool_signatures=_get_mcp_tool_signatures(),
-        )
-        adapter_path.write_text(json.dumps(cfg), encoding="utf-8")
-        created_adapter = True
-    else:
-        cfg = json.loads(adapter_path.read_text(encoding="utf-8"))
+    with patch.object(
+        HostAdapter,
+        "resolve_ollama_model_digest",
+        return_value=canonical_digest,
+    ):
+        if not adapter_path.is_file():
+            adapter_dir.mkdir(parents=True, exist_ok=True)
+            from mighty_mouse_mcp.server import _get_mcp_tool_signatures
 
-    test_digest = cfg.get("model_digest", canonical_digest)
+            cfg = HostAdapter.build_adapter_config(
+                repository="JOHNNYMACONNY/mighty-mouse",
+                model_digest=canonical_digest,
+                model_class="local-small",
+                effective_context_limit=8192,
+                runtime_kind="antigravity",
+                runtime_version="1.0.0",
+                ollama_model="gemma4:e4b",
+                tool_signatures=_get_mcp_tool_signatures(),
+            )
+            adapter_path.write_text(json.dumps(cfg), encoding="utf-8")
+            created_adapter = True
+        else:
+            cfg = json.loads(adapter_path.read_text(encoding="utf-8"))
 
-    prov_info = {
-        "host": "http://localhost:11434",
-        "available": True,
-        "version": "0.33.2",
-        "model": "gemma4:e4b",
-        "model_digest": test_digest,
-    }
+        test_digest = cfg.get("model_digest", canonical_digest)
 
-    try:
-        with patch.object(
-            HostAdapter,
-            "resolve_ollama_model_digest",
-            return_value=test_digest,
-        ):
+        prov_info = {
+            "host": "http://localhost:11434",
+            "available": True,
+            "version": "0.33.2",
+            "model": "gemma4:e4b",
+            "model_digest": test_digest,
+        }
+
+        try:
             yield ws_root, out_dir, tasks_dir, prov_info
-    finally:
-        if created_adapter and adapter_path.is_file():
-            adapter_path.unlink()
+        finally:
+            if created_adapter and adapter_path.is_file():
+                adapter_path.unlink()
 
 
 def test_execute_trial_arm_control_once(mock_trial_environment) -> None:
@@ -948,6 +949,11 @@ def test_real_adapter_context_readiness_zero_generation(
         "sha256:4c27e0f5b5adf02a"
         "c956c7322bd2ee7636fe3f45a8512c9aba5385242cb6e09a"
     )
+    monkeypatch.setattr(
+        HostAdapter,
+        "resolve_ollama_model_digest",
+        lambda m: canonical_digest,
+    )
     adapter_dir = Path(".mighty-mouse")
     adapter_path = adapter_dir / "mcp-adapter.json"
     created_adapter = False
@@ -971,11 +977,6 @@ def test_real_adapter_context_readiness_zero_generation(
         cfg = json.loads(adapter_path.read_text(encoding="utf-8"))
 
     digest = cfg.get("model_digest", canonical_digest)
-    monkeypatch.setattr(
-        HostAdapter,
-        "resolve_ollama_model_digest",
-        lambda m: digest,
-    )
 
     try:
         ok, err = verify_runtime_context_readiness(

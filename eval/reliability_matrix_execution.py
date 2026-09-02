@@ -1004,19 +1004,21 @@ def execute_matrix_plan(
     """Execute all units in an execution plan under SingleInstanceLock."""
     from eval.reliability_matrix import run_preflight
 
-    target_base = plan.get("experiment_base_sha", plan.get("base_sha", EXPERIMENT_BASE_SHA))
+    target_base = plan.get(
+        "experiment_base_sha", plan.get("base_sha", EXPERIMENT_BASE_SHA)
+    )
     target_harness = plan.get("harness_sha") or resolve_harness_sha()
     asserted_harness = resolve_harness_sha()
 
     if target_base != EXPERIMENT_BASE_SHA:
         raise ValueError(
-            f"Execution plan experiment_base_sha '{target_base}' does not match "
-            f"asserted base '{EXPERIMENT_BASE_SHA}'"
+            f"Execution plan experiment_base_sha '{target_base}' does not "
+            f"match asserted base '{EXPERIMENT_BASE_SHA}'"
         )
     if plan.get("harness_sha") and plan["harness_sha"] != asserted_harness:
         raise ValueError(
-            f"Execution plan harness_sha '{plan['harness_sha']}' does not match "
-            f"asserted harness '{asserted_harness}'"
+            f"Execution plan harness_sha '{plan['harness_sha']}' does not "
+            f"match asserted harness '{asserted_harness}'"
         )
 
     delta_ok, changed_or_unapproved = verify_baseline_harness_delta(
@@ -1024,7 +1026,7 @@ def execute_matrix_plan(
     )
     if not delta_ok:
         raise RuntimeError(
-            f"Baseline-to-harness delta check failed closed before generation. "
+            "Baseline-to-harness delta check failed closed before generation. "
             f"Unapproved paths changed: {changed_or_unapproved}"
         )
     changed_paths = changed_or_unapproved
@@ -1062,7 +1064,9 @@ def execute_matrix_plan(
                 "harness_sha": target_harness,
                 "baseline_to_harness_changed_paths": changed_paths,
                 "trial_count": 0,
-                "arms": list({unit["arm"] for unit in plan.get("trial_units", [])}),
+                "arms": sorted(
+                    {unit["arm"] for unit in plan.get("trial_units", [])}
+                ),
                 "metrics": {
                     "arms": {},
                     "total_passed": 0,
@@ -1144,4 +1148,3 @@ def execute_matrix_plan(
             json.dumps(summary, indent=2), encoding="utf-8"
         )
         return summary
-

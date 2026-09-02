@@ -1000,8 +1000,10 @@ def test_trace_artifact_written_and_hashed(mock_trial_environment) -> None:
     assert record["validity"]["trace_artifact_sha256"] == expected_sha
 
 
-def test_fresh_workspace_purges_stale_files(mock_trial_environment) -> None:
-    """Trial execution purges stale files from pre-existing workspaces and starts empty."""
+def test_fresh_workspace_purges_stale_files(
+    mock_trial_environment,
+) -> None:
+    """Trial execution purges stale files and starts empty."""
     from eval.reliability_matrix_execution import prepare_fresh_trial_workspace
 
     ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
@@ -1034,7 +1036,12 @@ def test_fresh_workspace_purges_stale_files(mock_trial_environment) -> None:
     }
 
     mock_resp = "```python:legacy_link.py\npass\n```"
-    mock_meta = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "latency_seconds": 0.1}
+    mock_meta = {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15,
+        "latency_seconds": 0.1,
+    }
     pass_verif = {"status": "success", "scope": "PASS", "adherence": "PASS"}
 
     with patch(
@@ -1055,15 +1062,17 @@ def test_fresh_workspace_purges_stale_files(mock_trial_environment) -> None:
 
     assert record["verification"]["terminal_passed"] is True
     assert not stale_file.exists()
-    # Workspace should not have harness artifacts like task.json or model_config.yaml
+    # Workspace should not have harness artifacts
     assert not (target_ws / "task.json").exists()
     assert not (target_ws / "model_config.yaml").exists()
     assert not (target_ws / ".mighty-mouse").exists()
     assert (target_ws / "legacy_link.py").exists()
 
 
-def test_canonical_adapter_provenance_and_truthful_control(mock_trial_environment) -> None:
-    """Control has null agent/tool fields; MM arms have real resolved context values."""
+def test_canonical_adapter_provenance_and_truthful_control(
+    mock_trial_environment,
+) -> None:
+    """Control has null agent fields; MM arms have real values."""
     ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
     harness_sha = resolve_harness_sha()
 
@@ -1082,7 +1091,12 @@ def test_canonical_adapter_provenance_and_truthful_control(mock_trial_environmen
     }
 
     mock_resp = "```python:legacy_link.py\npass\n```"
-    mock_meta = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "latency_seconds": 0.1}
+    mock_meta = {
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15,
+        "latency_seconds": 0.1,
+    }
     pass_verif = {"status": "success", "scope": "PASS", "adherence": "PASS"}
 
     with patch(
@@ -1147,8 +1161,10 @@ def test_canonical_adapter_provenance_and_truthful_control(mock_trial_environmen
     assert mm_prov["agent_config_sha256"] is not None
 
 
-def test_fail_closed_on_unapproved_harness_delta(mock_trial_environment) -> None:
-    """Execution halts before trial execution if delta outside allowed paths is detected."""
+def test_fail_closed_on_unapproved_harness_delta(
+    mock_trial_environment,
+) -> None:
+    """Execution halts before trial if unapproved delta detected."""
     ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
     plan_unit = {
         "order_index": 0,
@@ -1167,7 +1183,10 @@ def test_fail_closed_on_unapproved_harness_delta(mock_trial_environment) -> None
         "eval.reliability_matrix_execution.verify_baseline_harness_delta",
         return_value=(False, ["eval/unapproved_file.py"]),
     ):
-        with pytest.raises(RuntimeError, match="Baseline-to-harness delta check failed closed"):
+        with pytest.raises(
+            RuntimeError,
+            match="Baseline-to-harness delta check failed closed",
+        ):
             execute_trial_unit(
                 plan_unit,
                 experiment_id="test-delta-fail",
@@ -1236,8 +1255,10 @@ def test_true_zero_generation_dry_run(mock_trial_environment) -> None:
     assert summary["metrics"]["total_tokens"] is None
 
 
-def test_scoped_preflight_gate_stops_execution(mock_trial_environment) -> None:
-    """execute_matrix_plan aborts before executing trials if scoped preflight fails."""
+def test_scoped_preflight_gate_stops_execution(
+    mock_trial_environment,
+) -> None:
+    """execute_matrix_plan aborts before trials if preflight fails."""
     ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
     harness_sha = resolve_harness_sha()
     mini_plan = {
@@ -1273,7 +1294,10 @@ def test_scoped_preflight_gate_stops_execution(mock_trial_environment) -> None:
             "blocking_reasons": ["Worktree dirty", "Ollama unreachable"],
         },
     ):
-        with pytest.raises(RuntimeError, match="Scoped preflight failed before execution"):
+        with pytest.raises(
+            RuntimeError,
+            match="Scoped preflight failed before execution",
+        ):
             execute_matrix_plan(
                 mini_plan,
                 workspace_root=ws_root,
@@ -1283,8 +1307,10 @@ def test_scoped_preflight_gate_stops_execution(mock_trial_environment) -> None:
             )
 
 
-def test_failed_generation_attempt_accounting(mock_trial_environment) -> None:
-    """A model request that raises is still recorded as an attempted generation."""
+def test_failed_generation_attempt_accounting(
+    mock_trial_environment,
+) -> None:
+    """A model request that raises is still recorded as attempt."""
     capture = CaptureOllamaUsage()
     with capture:
         def mock_gen_fail(self, sys, user):
@@ -1342,8 +1368,10 @@ def test_failed_generation_attempt_accounting(mock_trial_environment) -> None:
     assert "Ollama HTTP 500" in str(rec["validity"]["infrastructure_error"])
 
 
-def test_authoritative_first_verification_verifier_crash_and_no_recovery(mock_trial_environment) -> None:
-    """Verifier crash classifies as verifier_error and does not trigger recovery."""
+def test_authoritative_first_verification_verifier_crash_and_no_recovery(
+    mock_trial_environment,
+) -> None:
+    """Verifier crash classifies as verifier_error; no recovery."""
     ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
     plan_unit = {
         "order_index": 0,
@@ -1380,4 +1408,3 @@ def test_authoritative_first_verification_verifier_crash_and_no_recovery(mock_tr
     assert rec["execution"]["recovery_attempted"] is False
     assert rec["validity"]["verifier_completed"] is False
     assert "Disk I/O error" in str(rec["validity"]["infrastructure_error"])
-

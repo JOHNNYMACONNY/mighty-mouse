@@ -48,7 +48,8 @@ Mighty Mouse acts as a high-reliability **cognitive exoskeleton** built around 4
 ## 🚀 Future Evolution & Roadmap
 
 - [x] **Multi-Agent Swarm Orchestration**: Splitting execution into specialized Planner, Coder, and Reviewer subagents.
-- [ ] **Real-Time IDE & MCP Hooks**: Background self-healing directly inside Antigravity, Cursor, Claude Code, and Windsurf.
+- [x] **Antigravity Real-Time Hooks**: Host-native lifecycle hooks with deterministic composite PreToolUse, file-write-only PostToolUse, canonical verification, and bounded single-attempt self-healing recovery.
+- [ ] **Real-Time IDE & MCP Hooks (Cursor, Claude Code, Windsurf)**: Background self-healing across remaining host environments.
 - [ ] **Cross-Model Frontier Parity**: Expanding perpetual benchmark evaluation to Llama 3 and Qwen models.
 
 ---
@@ -64,6 +65,16 @@ Mighty Mouse can be used as a **Python Library**, exposed as an **MCP Server**, 
   - `swarm_execute`: canonical multi-agent swarm execution with isolated verification and single winner application via `HostAdapter.solve_swarm`
   - Policy controls: `policy_status`, `policy_preview`, `policy_pin`, `policy_rollback`
   - Compute scaling controls: `compute_scaling_status`, `compute_scaling_preview`, `compute_scaling_pin`
+
+### Antigravity Host Hooks (Production Registration & Self-Healing)
+
+Mighty Mouse provides production lifecycle hooks for Antigravity (`.agents/hooks.json`):
+
+- **Deterministic Composite PreToolUse**: Consolidated single authoritative entrypoint (`.agents/scripts/composite_pretooluse.py` / `mighty-mouse-antigravity-pretooluse`) that evaluates Delivery Guard first with immediate denial short-circuit. If Delivery Guard is unavailable or fails, requests fail-closed deny. Tool execution is allowed only when all applicable guard gates pass.
+- **File-Write-Only PostToolUse**: Invoked exclusively on file-write tools (`write_to_file`, `replace_file_content`, `multi_replace_file_content`) via `mighty-mouse-antigravity-posttooluse`. Excludes `run_command`. The public projection returned to the host is strictly `{}`.
+- **Opt-In Verification (`MIGHTY_MOUSE_POST_ACTION_VERIFY=1`)**: When enabled, runs canonical project verification on file-write completion and records a content-free v2 Signal receipt (`retry_count=0`). When disabled (default), verification does not run and no signals are written.
+- **Opt-In Self-Healing Recovery (`MIGHTY_MOUSE_POST_ACTION_RECOVERY=1` + `MIGHTY_MOUSE_POST_ACTION_RECOVERY_CONFIG`)**: When verification fails, evaluates bounded recovery eligibility. If eligible and configured with an operator model config, executes at most one single bounded recovery attempt via the canonical agent solver (`HostAdapter.solve`).
+- **Strict Boundary Invariants**: Recovery attempt ceiling is strictly 1; modifications are restricted to canonical target path allowlist; file deletions are prohibited; workspace hygiene cleanup is disabled. Following the recovery attempt, canonical re-verification runs and records a retry v2 Signal (`retry_count=1`, `outcome="passed"` or `"failed"`). Public output remains strictly `{}`.
 
 ---
 

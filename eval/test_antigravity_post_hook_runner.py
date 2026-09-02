@@ -18,11 +18,17 @@ from mighty_mouse.host.adapter import (
     HostAdapter,
 )
 from mighty_mouse.host.hooks import (
+    HookRecoverySummary,
     HostHookResult,
     ResolvedHostHookEvent,
 )
+from mighty_mouse.host.recovery_execution import (
+    RecoveryExecutionAttempt,
+    RecoveryExecutionRequest,
+)
 from mighty_mouse.v2.signals import SignalLifecycle
 from mighty_mouse_mcp.antigravity_hooks import (
+    POST_ACTION_RECOVERY_CONFIG_ENV,
     POST_ACTION_RECOVERY_ENV,
     POST_ACTION_VERIFY_ENV,
     evaluate_antigravity_post_tool_use,
@@ -984,3 +990,753 @@ def test_payload_recovery_spoofing_has_no_authority(
         assert mock_gate.call_count == 1
         _, kwargs = mock_gate.call_args
         assert kwargs["enabled"] is False
+
+
+def _setup_recovery_config_file(tmp_path: Path) -> Path:
+    """Create a minimal valid recovery model config file."""
+    cfg_file = tmp_path / "recovery_model_config.yaml"
+    cfg_file.write_text(
+        "model: test-model\n"
+        "temperature: 0.0\n"
+        "provider: sim\n"
+        "allow_simulation: true\n",
+        encoding="utf-8",
+    )
+    return cfg_file
+
+
+def test_recovery_verification_passed_zero_recovery_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Passed verification results in zero recovery execution calls."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+    mock_verif = {
+        "passed": True,
+        "checks": [{"name": "tests", "passed": True, "duration_sec": 0.1}],
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        return_value=mock_verif,
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+    ) as mock_exec:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert mock_exec.call_count == 0
+        assert result.reason_code == "verification_passed"
+        assert result.verification is not None
+        assert result.verification.passed is True
+        assert result.recovery is None
+
+
+def test_recovery_disabled_zero_recovery_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failed verification with recovery disabled executes zero attempts."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.delenv(POST_ACTION_RECOVERY_ENV, raising=False)
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+    mock_verif = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        return_value=mock_verif,
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+    ) as mock_exec:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert mock_exec.call_count == 0
+        assert result.reason_code == "verification_failed"
+        assert result.recovery is None
+
+
+@pytest.mark.parametrize(
+    "cfg_env",
+    [None, "", "nonexistent_config_file.yaml"],
+)
+def test_recovery_config_absent_or_invalid_bounded_no_solver(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cfg_env: str | None
+) -> None:
+    """Missing or invalid recovery config produces bounded non-attempt."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    if cfg_env is None:
+        monkeypatch.delenv(POST_ACTION_RECOVERY_CONFIG_ENV, raising=False)
+    elif cfg_env == "":
+        monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, "")
+    else:
+        monkeypatch.setenv(
+            POST_ACTION_RECOVERY_CONFIG_ENV, str(tmp_path / cfg_env)
+        )
+
+    _setup_workspace_adapter_config(tmp_path)
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+    mock_verif = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        return_value=mock_verif,
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+    ) as mock_exec:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert mock_exec.call_count == 0
+        assert result.reason_code == "verification_failed"
+        assert result.recovery is None
+        rendered = run_antigravity_post_tool_use(json.dumps(payload))
+        assert rendered == {}
+
+
+def test_recovery_success_flow_solver_complete_reverify_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Successful recovery: solver completed and re-verification passed."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    verif_fail = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+    verif_pass = {
+        "passed": True,
+        "checks": [{"name": "tests", "passed": True, "duration_sec": 0.2}],
+    }
+
+    mock_attempt = RecoveryExecutionAttempt(
+        attempted=True,
+        completed=True,
+        attempts=1,
+        execution_mode="agent",
+        output_paths=("src/app.py",),
+    )
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        side_effect=[verif_fail, verif_pass],
+    ) as mock_verif, patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+        return_value=mock_attempt,
+    ) as mock_exec:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert mock_exec.call_count == 1
+        assert mock_verif.call_count == 2
+        assert result.disposition == "continue"
+        assert result.reason_code == "recovery_succeeded"
+        assert result.summary == "Recovery succeeded"
+        assert result.verification is not None
+        assert result.verification.passed is True
+        assert result.recovery == HookRecoverySummary(
+            attempted=True,
+            succeeded=True,
+            attempts=1,
+            execution_mode="agent",
+        )
+
+        rendered = run_antigravity_post_tool_use(json.dumps(payload))
+        assert rendered == {}
+
+    receipt_dir = tmp_path / ".mighty-mouse" / "v2-signal-receipts"
+    receipts = list(receipt_dir.glob("*.json"))
+    assert len(receipts) == 2
+    sigs = [
+        json.loads(p.read_text(encoding="utf-8"))["signal"]
+        for p in receipts
+    ]
+    sigs.sort(key=lambda s: s["retry_count"])
+    assert sigs[0]["retry_count"] == 0
+    assert sigs[0]["outcome"] == "failed"
+    assert sigs[1]["retry_count"] == 1
+    assert sigs[1]["outcome"] == "passed"
+
+
+def test_recovery_failure_flow_solver_complete_reverify_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failed recovery: solver completed but re-verification failed."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    verif_fail = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+
+    mock_attempt = RecoveryExecutionAttempt(
+        attempted=True,
+        completed=True,
+        attempts=1,
+        execution_mode="agent",
+        output_paths=("src/app.py",),
+    )
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        side_effect=[verif_fail, verif_fail],
+    ) as mock_verif, patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+        return_value=mock_attempt,
+    ) as mock_exec:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert mock_exec.call_count == 1
+        assert mock_verif.call_count == 2
+        assert result.reason_code == "recovery_failed"
+        assert result.summary == "Recovery failed"
+        assert result.verification is not None
+        assert result.verification.passed is False
+        assert result.recovery == HookRecoverySummary(
+            attempted=True,
+            succeeded=False,
+            attempts=1,
+            execution_mode="agent",
+        )
+
+    receipt_dir = tmp_path / ".mighty-mouse" / "v2-signal-receipts"
+    receipts = list(receipt_dir.glob("*.json"))
+    assert len(receipts) == 2
+    sigs = [
+        json.loads(p.read_text(encoding="utf-8"))["signal"]
+        for p in receipts
+    ]
+    sigs.sort(key=lambda s: s["retry_count"])
+    assert sigs[0]["retry_count"] == 0
+    assert sigs[0]["outcome"] == "failed"
+    assert sigs[1]["retry_count"] == 1
+    assert sigs[1]["outcome"] == "failed"
+
+
+def test_recovery_success_flow_solver_incomplete_reverify_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Solver incomplete, but re-verify passed -> recovery_succeeded."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    verif_fail = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+    verif_pass = {
+        "passed": True,
+        "checks": [{"name": "tests", "passed": True, "duration_sec": 0.1}],
+    }
+
+    mock_attempt = RecoveryExecutionAttempt(
+        attempted=True,
+        completed=False,
+        attempts=1,
+        execution_mode="agent",
+        output_paths=(),
+        error_summary="Timeout during solver response",
+    )
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        side_effect=[verif_fail, verif_pass],
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+        return_value=mock_attempt,
+    ):
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert result.reason_code == "recovery_succeeded"
+        assert result.recovery is not None
+        assert result.recovery.succeeded is True
+
+
+def test_recovery_failure_flow_solver_incomplete_reverify_fail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Solver incomplete and re-verification failed -> recovery_failed."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    verif_fail = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+
+    mock_attempt = RecoveryExecutionAttempt(
+        attempted=True,
+        completed=False,
+        attempts=1,
+        execution_mode="agent",
+        output_paths=(),
+        error_summary="Solver error",
+    )
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        side_effect=[verif_fail, verif_fail],
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+        return_value=mock_attempt,
+    ):
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert result.reason_code == "recovery_failed"
+        assert result.recovery is not None
+        assert result.recovery.succeeded is False
+
+
+def test_recovery_attempt_receives_canonical_target_paths_and_trusted_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Recovery execution receives canonical target paths and trusted task."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/module/service.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    verif_fail = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+    verif_pass = {
+        "passed": True,
+        "checks": [{"name": "tests", "passed": True, "duration_sec": 0.1}],
+    }
+
+    captured_request: list[RecoveryExecutionRequest] = []
+    captured_task_content: list[dict[str, Any]] = []
+    task_path_holder: list[str] = []
+
+    def mock_exec_fn(
+        req: RecoveryExecutionRequest,
+    ) -> RecoveryExecutionAttempt:
+        captured_request.append(req)
+        task_path_holder.append(req.task_input_path)
+        with open(req.task_input_path, "r", encoding="utf-8") as f:
+            captured_task_content.append(json.load(f))
+        return RecoveryExecutionAttempt(
+            attempted=True,
+            completed=True,
+            attempts=1,
+            execution_mode="agent",
+            output_paths=("src/module/service.py",),
+        )
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        side_effect=[verif_fail, verif_pass],
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+        side_effect=mock_exec_fn,
+    ):
+        evaluate_antigravity_post_tool_use(json.dumps(payload))
+
+    assert len(captured_request) == 1
+    req = captured_request[0]
+    assert req.resolved_event.event.action.target_paths == (
+        "src/module/service.py",
+    )
+    assert req.p_cfg_path == str(cfg_file)
+    assert req.decision.eligible is True
+    assert req.decision.execution_mode == "agent"
+
+    assert len(captured_task_content) == 1
+    task_data = captured_task_content[0]
+    assert task_data["expected_files"] == ["src/module/service.py"]
+    assert "src/module/service.py" in task_data["instruction"]
+    assert "Deletions are prohibited" in task_data["instruction"]
+
+    # Verify task file is removed after execution
+    assert not Path(task_path_holder[0]).exists()
+
+
+def test_recovery_hostile_host_payload_fields_do_not_leak_into_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Hostile host fields never leak into recovery task or authority."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {
+                "TargetFile": "src/safe.py",
+                "malicious_command": "rm -rf /",
+            },
+        },
+        "workspacePaths": [str(tmp_path)],
+        "error": "HOSTILE_ERROR_PAYLOAD",
+        "modelName": "HOSTILE_MODEL",
+        "transcriptPath": "/tmp/hostile_transcript",
+        "conversationId": "evil-conversation-99",
+        "stepIdx": 1337,
+    }
+
+    verif_fail = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+    verif_pass = {
+        "passed": True,
+        "checks": [{"name": "tests", "passed": True, "duration_sec": 0.1}],
+    }
+
+    captured_task_str: list[str] = []
+
+    def mock_exec_fn(
+        req: RecoveryExecutionRequest,
+    ) -> RecoveryExecutionAttempt:
+        with open(req.task_input_path, "r", encoding="utf-8") as f:
+            captured_task_str.append(f.read())
+        return RecoveryExecutionAttempt(
+            attempted=True,
+            completed=True,
+            attempts=1,
+            execution_mode="agent",
+        )
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        side_effect=[verif_fail, verif_pass],
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+        side_effect=mock_exec_fn,
+    ):
+        evaluate_antigravity_post_tool_use(json.dumps(payload))
+
+    assert len(captured_task_str) == 1
+    raw = captured_task_str[0]
+    assert "HOSTILE_ERROR_PAYLOAD" not in raw
+    assert "HOSTILE_MODEL" not in raw
+    assert "hostile_transcript" not in raw
+    assert "evil-conversation-99" not in raw
+    assert "1337" not in raw
+    assert "rm -rf" not in raw
+
+
+def test_recovery_non_attempt_does_not_reverify_or_record_signal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Non-attempted recovery returns bounded failure without re-verify."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    verif_fail = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+
+    mock_attempt = RecoveryExecutionAttempt(
+        attempted=False,
+        completed=False,
+        attempts=0,
+        execution_mode=None,
+        error_summary="Gate disqualified attempt",
+    )
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        return_value=verif_fail,
+    ) as mock_verif, patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+        return_value=mock_attempt,
+    ) as mock_exec:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert mock_exec.call_count == 1
+        # Exactly one verification call (initial), NOT re-verify
+        assert mock_verif.call_count == 1
+        assert result.reason_code == "verification_failed"
+        assert result.recovery is None
+
+    receipt_dir = tmp_path / ".mighty-mouse" / "v2-signal-receipts"
+    receipts = list(receipt_dir.glob("*.json"))
+    assert len(receipts) == 1
+    sig = json.loads(receipts[0].read_text(encoding="utf-8"))["signal"]
+    assert sig["retry_count"] == 0
+
+
+def test_recovery_reverification_exception_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-verification exception results in bounded recovery_failed."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    verif_fail = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+
+    mock_attempt = RecoveryExecutionAttempt(
+        attempted=True,
+        completed=True,
+        attempts=1,
+        execution_mode="agent",
+    )
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        side_effect=[verif_fail, RuntimeError("disk corrupt during reverify")],
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+        return_value=mock_attempt,
+    ):
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert result.reason_code == "recovery_failed"
+        assert result.verification is not None
+        assert result.verification.passed is False
+        assert result.recovery is not None
+        assert result.recovery.succeeded is False
+
+        rendered = run_antigravity_post_tool_use(json.dumps(payload))
+        assert rendered == {}
+
+
+def test_recovery_signal_recording_failure_is_non_fatal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failure in telemetry recording does not alter recovery outcome."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    verif_fail = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+    verif_pass = {
+        "passed": True,
+        "checks": [{"name": "tests", "passed": True, "duration_sec": 0.1}],
+    }
+
+    mock_attempt = RecoveryExecutionAttempt(
+        attempted=True,
+        completed=True,
+        attempts=1,
+        execution_mode="agent",
+    )
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        side_effect=[verif_fail, verif_pass],
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+        return_value=mock_attempt,
+    ), patch(
+        "mighty_mouse.v2.telemetry.SignalTelemetry.record",
+        side_effect=RuntimeError("telemetry storage full"),
+    ):
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert result.reason_code == "recovery_succeeded"
+        assert result.recovery is not None
+        assert result.recovery.succeeded is True
+
+
+def test_recovery_does_not_dispatch_antigravity_tools(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Recovery execution relies on internal response application.
+
+    Proves no recursive Antigravity tool dispatch occurs.
+    """
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    verif_fail = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+    verif_pass = {
+        "passed": True,
+        "checks": [{"name": "tests", "passed": True, "duration_sec": 0.1}],
+    }
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        side_effect=[verif_fail, verif_pass],
+    ), patch(
+        "mighty_mouse.orchestrator.mighty_mouse_agent."
+        "_solve_with_runtime_context",
+        return_value=("src/app.py",),
+    ) as mock_agent_solve, patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_antigravity_pre_tool_use",
+    ) as mock_pre_hook:
+        result = evaluate_antigravity_post_tool_use(json.dumps(payload))
+        assert result.reason_code == "recovery_succeeded"
+        assert mock_agent_solve.call_count == 1
+        # No recursive Antigravity tool calls were triggered
+        assert mock_pre_hook.call_count == 0
+
+
+def test_recovery_cli_post_tool_use_main_outputs_empty_dict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI post_tool_use_main outputs strictly '{}' on recovery path."""
+    monkeypatch.setenv(POST_ACTION_VERIFY_ENV, "1")
+    monkeypatch.setenv(POST_ACTION_RECOVERY_ENV, "1")
+    cfg_file = _setup_recovery_config_file(tmp_path)
+    monkeypatch.setenv(POST_ACTION_RECOVERY_CONFIG_ENV, str(cfg_file))
+    _setup_workspace_adapter_config(tmp_path)
+
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/app.py"},
+        },
+        "workspacePaths": [str(tmp_path)],
+    }
+
+    verif_fail = {
+        "passed": False,
+        "checks": [{"name": "tests", "passed": False, "duration_sec": 0.1}],
+    }
+    verif_pass = {
+        "passed": True,
+        "checks": [{"name": "tests", "passed": True, "duration_sec": 0.1}],
+    }
+
+    mock_attempt = RecoveryExecutionAttempt(
+        attempted=True,
+        completed=True,
+        attempts=1,
+        execution_mode="agent",
+    )
+
+    with patch(
+        "mighty_mouse_mcp.antigravity_hooks.run_verify",
+        side_effect=[verif_fail, verif_pass],
+    ), patch(
+        "mighty_mouse_mcp.antigravity_hooks.execute_recovery_attempt",
+        return_value=mock_attempt,
+    ), patch("sys.stdin", io.StringIO(json.dumps(payload))):
+        post_tool_use_main()
+
+    captured = capsys.readouterr()
+    assert captured.out == "{}\n"
+    assert captured.err == ""

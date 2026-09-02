@@ -12,6 +12,10 @@ HostHookEvent (post_action), resolves authoritative AdapterRuntimeContext,
 checks process-level opt-in (MIGHTY_MOUSE_POST_ACTION_VERIFY=1), executes
 canonical run_verify for file_write actions, converts results to bounded
 HookVerificationSummary, records one canonical content-free v2 Signal,
+evaluates bounded recovery eligibility when verification fails and
+MIGHTY_MOUSE_POST_ACTION_RECOVERY=1, executes at most one bounded recovery
+attempt using operator configuration MIGHTY_MOUSE_POST_ACTION_RECOVERY_CONFIG,
+re-runs canonical verification, records retry v2 Signal (retry_count=1),
 and outputs strictly {} as single JSON object.
 
 Enforces the core architectural invariant: host payload != authority.
@@ -31,6 +35,9 @@ from mighty_mouse.host.adapter import (
     HostAdapter,
 )
 from mighty_mouse.host.antigravity import (
+    _resolve_dict_alias,
+    _resolve_nested_tool_call,
+    _resolve_target_file,
     adapt_antigravity_post_tool_use,
     adapt_antigravity_pre_tool_use,
     render_antigravity_post_tool_use_result,
@@ -38,12 +45,19 @@ from mighty_mouse.host.antigravity import (
 )
 from mighty_mouse.host.hooks import (
     HOST_HOOK_SCHEMA_VERSION,
+    HookRecoverySummary,
     HookVerificationSummary,
+    HostHookAction,
     HostHookEvent,
     HostHookResult,
     ResolvedHostHookEvent,
 )
 from mighty_mouse.host.recovery import evaluate_recovery_gate
+from mighty_mouse.host.recovery_execution import (
+    RecoveryExecutionAttempt,
+    RecoveryExecutionRequest,
+    execute_recovery_attempt,
+)
 from mighty_mouse.v2.foundation import Mode, Scope, TaskCategory
 from mighty_mouse.v2.signals import SignalLifecycle
 from mighty_mouse.v2.telemetry import SignalTelemetry
@@ -55,6 +69,7 @@ from mighty_mouse_mcp.server import (
 
 POST_ACTION_VERIFY_ENV = "MIGHTY_MOUSE_POST_ACTION_VERIFY"
 POST_ACTION_RECOVERY_ENV = "MIGHTY_MOUSE_POST_ACTION_RECOVERY"
+POST_ACTION_RECOVERY_CONFIG_ENV = "MIGHTY_MOUSE_POST_ACTION_RECOVERY_CONFIG"
 
 
 def _generate_event_id(prefix: str = "pre") -> str:
@@ -75,6 +90,71 @@ def _make_denial(
         reason_code=reason_code,
         summary=summary,
     )
+
+
+def _record_verification_signal(
+    ctx: Any,
+    verif_dict: dict[str, Any],
+    passed: bool,
+    *,
+    retry_count: int = 0,
+) -> None:
+    """Record canonical content-free v2 Signal using authoritative context."""
+    try:
+        category = _verifier_category(verif_dict)
+        scope = Scope(
+            mode=Mode.CODING,
+            repository=ctx.repository,
+            task_category=TaskCategory.UNKNOWN,
+            model_class=ctx.model_class,
+        )
+        lifecycle = SignalLifecycle(Path(ctx.state_dir))
+        telemetry = SignalTelemetry(lifecycle)
+        checks = verif_dict.get("checks", [])
+        duration_ms = round(
+            sum(check.get("duration_sec", 0.0) for check in checks) * 1000
+        )
+        telemetry.record(
+            signal_id=f"signal-{secrets.randbelow(10**30):030d}",
+            scope=scope,
+            model_digest=str(ctx.model_identity.artifact_digest),
+            execution_profile_id=str(ctx.execution_profile.profile_id),
+            outcome="passed" if passed else "failed",
+            duration_ms=duration_ms,
+            retry_count=retry_count,
+            verifier_category=category,
+            verifier_result="passed" if passed else "failed",
+        )
+    except Exception:
+        # Signal recording errors must not alter Host Hook result
+        pass
+
+
+def _create_recovery_task_file(
+    resolved: ResolvedHostHookEvent,
+    verification: HookVerificationSummary,
+) -> str:
+    """Create trusted, privacy-safe recovery task input file."""
+    state_dir = Path(resolved.runtime_context.state_dir)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    target_paths = resolved.event.action.target_paths
+    task_id = f"recovery-{secrets.randbelow(10**30):030d}"
+    paths_str = ", ".join(target_paths)
+    instruction = (
+        f"Canonical verification failed ({verification.summary}). "
+        f"Repair implementation in {paths_str}. "
+        "Modifications are strictly restricted to these files. "
+        "Deletions are prohibited."
+    )
+    task_payload = {
+        "id": task_id,
+        "instruction": instruction,
+        "expected_files": list(target_paths),
+        "task_category": "coding",
+    }
+    task_path = state_dir / f"{task_id}.json"
+    task_path.write_text(json.dumps(task_payload, indent=2), encoding="utf-8")
+    return str(task_path)
 
 
 def run_antigravity_pre_tool_use(
@@ -216,6 +296,37 @@ def evaluate_antigravity_post_tool_use(
             eid, "internal_error", "Unexpected adapter return type"
         )
 
+    # 2b. Canonical target_paths resolution for file_write actions
+    if adapted.action.kind == "file_write" and not adapted.action.target_paths:
+        try:
+            _, nested_args, _ = _resolve_nested_tool_call(payload)
+            if nested_args is not None:
+                tool_input = nested_args
+            else:
+                tool_input_raw, _ = _resolve_dict_alias(
+                    payload, ("tool_input", "args", "arguments", "input")
+                )
+                tool_input = tool_input_raw or {}
+            raw_path, conflict = _resolve_target_file(
+                tool_input, workspaces=[adapted.workspace]
+            )
+            if raw_path and not conflict:
+                action = HostHookAction(
+                    kind=adapted.action.kind,
+                    mutation_class=adapted.action.mutation_class,
+                    target_paths=(raw_path,),
+                )
+                adapted = HostHookEvent(
+                    schema_version=adapted.schema_version,
+                    event_id=adapted.event_id,
+                    phase=adapted.phase,
+                    workspace=adapted.workspace,
+                    action=action,
+                    source=adapted.source,
+                )
+        except Exception:
+            pass
+
     # 3. Authoritative runtime context resolution
     signatures = (
         tool_signatures
@@ -306,33 +417,7 @@ def evaluate_antigravity_post_tool_use(
     reason_code = "verification_passed" if passed else "verification_failed"
 
     # 7. Record canonical content-free v2 Signal using authoritative context
-    try:
-        category = _verifier_category(verif_dict)
-        scope = Scope(
-            mode=Mode.CODING,
-            repository=ctx.repository,
-            task_category=TaskCategory.UNKNOWN,
-            model_class=ctx.model_class,
-        )
-        lifecycle = SignalLifecycle(Path(ctx.state_dir))
-        telemetry = SignalTelemetry(lifecycle)
-        duration_ms = round(
-            sum(check.get("duration_sec", 0.0) for check in checks) * 1000
-        )
-        telemetry.record(
-            signal_id=f"signal-{secrets.randbelow(10**30):030d}",
-            scope=scope,
-            model_digest=str(ctx.model_identity.artifact_digest),
-            execution_profile_id=str(ctx.execution_profile.profile_id),
-            outcome="passed" if passed else "failed",
-            duration_ms=duration_ms,
-            retry_count=0,
-            verifier_category=category,
-            verifier_result="passed" if passed else "failed",
-        )
-    except Exception:
-        # Signal recording errors must not alter Host Hook result
-        pass
+    _record_verification_signal(ctx, verif_dict, passed, retry_count=0)
 
     verification_summary = HookVerificationSummary(
         occurred=True,
@@ -340,10 +425,10 @@ def evaluate_antigravity_post_tool_use(
         summary=summary_text,
     )
 
-    # 8. Recovery gate shadow evaluation (v1: no execution, shadow only)
+    # 8. Recovery gate evaluation
+    recovery_enabled = os.environ.get(POST_ACTION_RECOVERY_ENV) == "1"
     try:
-        recovery_enabled = os.environ.get(POST_ACTION_RECOVERY_ENV) == "1"
-        _ = evaluate_recovery_gate(
+        decision = evaluate_recovery_gate(
             resolved,
             verification_summary,
             enabled=recovery_enabled,
@@ -351,16 +436,125 @@ def evaluate_antigravity_post_tool_use(
             recovery_in_progress=False,
         )
     except Exception:
-        # Shadow gate errors must be non-fatal and not alter HostHookResult
-        pass
+        # Gate evaluation errors must be non-fatal and not alter result
+        decision = None
+
+    if decision is None or not decision.eligible:
+        return HostHookResult(
+            schema_version=HOST_HOOK_SCHEMA_VERSION,
+            event_id=eid,
+            disposition="continue",
+            reason_code=reason_code,
+            summary=summary_text,
+            verification=verification_summary,
+            recovery=None,
+        )
+
+    # 9. Bounded recovery execution boundary (operator opt-in configuration)
+    recovery_cfg = os.environ.get(POST_ACTION_RECOVERY_CONFIG_ENV)
+    if not recovery_cfg or not os.path.isfile(os.path.abspath(recovery_cfg)):
+        return HostHookResult(
+            schema_version=HOST_HOOK_SCHEMA_VERSION,
+            event_id=eid,
+            disposition="continue",
+            reason_code=reason_code,
+            summary=summary_text,
+            verification=verification_summary,
+            recovery=None,
+        )
+
+    cfg_abs = os.path.abspath(recovery_cfg)
+    task_path: str | None = None
+    attempt: RecoveryExecutionAttempt | None = None
+
+    try:
+        task_path = _create_recovery_task_file(resolved, verification_summary)
+        request = RecoveryExecutionRequest(
+            resolved_event=resolved,
+            decision=decision,
+            p_cfg_path=cfg_abs,
+            task_input_path=task_path,
+        )
+        attempt = execute_recovery_attempt(request)
+    except Exception:
+        attempt = None
+    finally:
+        if task_path:
+            try:
+                if os.path.isfile(task_path):
+                    os.remove(task_path)
+            except OSError:
+                pass
+
+    if attempt is None or not attempt.attempted:
+        return HostHookResult(
+            schema_version=HOST_HOOK_SCHEMA_VERSION,
+            event_id=eid,
+            disposition="continue",
+            reason_code=reason_code,
+            summary=summary_text,
+            verification=verification_summary,
+            recovery=None,
+        )
+
+    # 10. Canonical re-verification after actual attempted recovery
+    try:
+        reverif_dict = run_verify(adapted.workspace)
+    except Exception:
+        reverif_dict = {
+            "passed": False,
+            "checks": [],
+            "summary": "Re-verification execution error",
+        }
+
+    reverif_checks = reverif_dict.get("checks", [])
+    reverif_raw_passed = bool(reverif_dict.get("passed", False))
+
+    if not reverif_checks:
+        reverif_passed = False
+        reverif_summary_text = "No executable checks detected"
+    else:
+        reverif_passed = reverif_raw_passed
+        reverif_summary_text = (
+            "Verification passed" if reverif_passed else "Verification failed"
+        )
+
+    # Record second Signal (retry_count=1)
+    _record_verification_signal(
+        ctx,
+        reverif_dict,
+        reverif_passed,
+        retry_count=1,
+    )
+
+    final_verif_summary = HookVerificationSummary(
+        occurred=True,
+        passed=reverif_passed,
+        summary=reverif_summary_text,
+    )
+
+    recovery_summary = HookRecoverySummary(
+        attempted=True,
+        succeeded=reverif_passed,
+        attempts=1,
+        execution_mode="agent",
+    )
+
+    final_reason_code = (
+        "recovery_succeeded" if reverif_passed else "recovery_failed"
+    )
+    final_summary_text = (
+        "Recovery succeeded" if reverif_passed else "Recovery failed"
+    )
 
     return HostHookResult(
         schema_version=HOST_HOOK_SCHEMA_VERSION,
         event_id=eid,
         disposition="continue",
-        reason_code=reason_code,
-        summary=summary_text,
-        verification=verification_summary,
+        reason_code=final_reason_code,
+        summary=final_summary_text,
+        verification=final_verif_summary,
+        recovery=recovery_summary,
     )
 
 

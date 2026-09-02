@@ -1,25 +1,12 @@
 {
-  "delivery-guard": {
-    "PreToolUse": [
-      {
-        "matcher": "write_to_file|replace_file_content|multi_replace_file_content|run_command",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "test -f scripts/delivery_guard.py && exec python3 scripts/delivery_guard.py; exec python3 .agents/scripts/delivery_guard.py"
-          }
-        ]
-      }
-    ]
-  },
   "mighty-mouse-antigravity-pretooluse": {
     "PreToolUse": [
       {
-        "matcher": "write_to_file|replace_file_content|multi_replace_file_content|run_command",
+        "matcher": "^(write_to_file|replace_file_content|multi_replace_file_content|run_command)$",
         "hooks": [
           {
             "type": "command",
-            "command": "mighty-mouse-antigravity-pretooluse"
+            "command": "test -f scripts/composite_pretooluse.py && exec python3 scripts/composite_pretooluse.py; exec python3 .agents/scripts/composite_pretooluse.py"
           }
         ]
       }
@@ -28,7 +15,7 @@
   "mighty-mouse-antigravity-posttooluse": {
     "PostToolUse": [
       {
-        "matcher": "write_to_file|replace_file_content|multi_replace_file_content|run_command",
+        "matcher": "^(write_to_file|replace_file_content|multi_replace_file_content)$",
         "hooks": [
           {
             "type": "command",

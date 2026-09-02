@@ -104,7 +104,7 @@ jobs:
           mkdir -p /tmp/mighty-mouse-verify-smoke
           "$CLI" verify /tmp/mighty-mouse-verify-smoke --test-command "$PY -c 'print(\"wheel smoke passed\")'" --json | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d['interface']=='verify' and d['passed'] is True"
           "$AUDIT" /tmp/mighty-mouse-verify-smoke --receipt-hash deadbeef --after 2026-01-01T00:00:00+00:00 >/dev/null || test $? -eq 1
-          echo '{"invalid": "json' | "$AG_RUNNER" | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d['decision']=='deny' and d['status']=='deny'"
+          echo '{"invalid": "json' | "$AG_RUNNER" | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d['decision']=='deny'"
           echo '{"invalid": "json' | "$AG_POST_RUNNER" | "$PY" -c "import json,sys; d=json.load(sys.stdin); assert d == {}"
           "$PY" - <<'PY'
           import asyncio

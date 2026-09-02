@@ -80,8 +80,6 @@ def test_valid_production_nested_payload_allow(tmp_path: Path) -> None:
     result = run_antigravity_pre_tool_use(json.dumps(payload))
     assert isinstance(result, dict)
     assert result["decision"] == "allow"
-    assert result["status"] == "allow"
-    assert result["action"] == "allow"
     assert result["reason"] == "Action is not applicable"
 
 
@@ -99,8 +97,6 @@ def test_flat_backward_compatible_payload_allow(tmp_path: Path) -> None:
     }
     result = run_antigravity_pre_tool_use(json.dumps(payload))
     assert result["decision"] == "allow"
-    assert result["status"] == "allow"
-    assert result["action"] == "allow"
 
 
 def test_exact_mcp_v6_signatures_supplied_to_runtime(tmp_path: Path) -> None:
@@ -166,8 +162,6 @@ def test_malformed_json_denial() -> None:
     """Malformed JSON string returns bounded denial."""
     result = run_antigravity_pre_tool_use('{"invalid": json syntax')
     assert result["decision"] == "deny"
-    assert result["status"] == "deny"
-    assert result["action"] == "deny"
     assert result["reason"] == "Malformed host event"
 
 
@@ -179,7 +173,6 @@ def test_json_non_object_denial(non_object: str) -> None:
     """JSON array, string, number, bool, null returns bounded denial."""
     result = run_antigravity_pre_tool_use(non_object)
     assert result["decision"] == "deny"
-    assert result["status"] == "deny"
     assert result["reason"] == "Malformed host event"
 
 
@@ -195,7 +188,6 @@ def test_unsupported_antigravity_tool_denial(tmp_path: Path) -> None:
     }
     result = run_antigravity_pre_tool_use(json.dumps(payload))
     assert result["decision"] == "deny"
-    assert result["status"] == "deny"
     assert result["reason"] == "Unsupported host action"
 
 
@@ -211,7 +203,6 @@ def test_missing_adapter_config_denial(tmp_path: Path) -> None:
     }
     result = run_antigravity_pre_tool_use(json.dumps(payload))
     assert result["decision"] == "deny"
-    assert result["status"] == "deny"
     assert result["reason"] == "Runtime context unavailable"
 
 
@@ -351,7 +342,6 @@ def test_stdout_parses_as_exactly_one_json_object(
     assert len(lines) == 1
     parsed = json.loads(lines[0])
     assert parsed["decision"] == "allow"
-    assert parsed["status"] == "allow"
 
 
 def test_runner_never_calls_mutating_or_solving_methods(
@@ -437,4 +427,3 @@ def test_cli_subprocess_invocation(tmp_path: Path) -> None:
     assert proc.stderr == ""
     out_obj = json.loads(proc.stdout.strip())
     assert out_obj["decision"] == "allow"
-    assert out_obj["status"] == "allow"

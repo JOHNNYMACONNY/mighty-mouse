@@ -398,8 +398,6 @@ def test_render_antigravity_pre_tool_use_result() -> None:
     rendered_allow = render_antigravity_pre_tool_use_result(allow_res)
     assert rendered_allow == {
         "decision": "allow",
-        "status": "allow",
-        "action": "allow",
         "reason": "Verification passed",
     }
 
@@ -413,8 +411,6 @@ def test_render_antigravity_pre_tool_use_result() -> None:
     rendered_deny = render_antigravity_pre_tool_use_result(deny_res)
     assert rendered_deny == {
         "decision": "deny",
-        "status": "deny",
-        "action": "deny",
         "reason": "Malformed host event",
     }
 

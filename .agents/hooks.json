@@ -1,14 +1,41 @@
 {
-  "hooks": [
-    {
-      "event": "PreToolUse",
-      "tools": [
-        "write_to_file",
-        "replace_file_content",
-        "multi_replace_file_content",
-        "run_command"
-      ],
-      "command": "python3 .agents/scripts/delivery_guard.py"
-    }
-  ]
+  "delivery-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "write_to_file|replace_file_content|multi_replace_file_content|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f scripts/delivery_guard.py && exec python3 scripts/delivery_guard.py; exec python3 .agents/scripts/delivery_guard.py"
+          }
+        ]
+      }
+    ]
+  },
+  "mighty-mouse-antigravity-pretooluse": {
+    "PreToolUse": [
+      {
+        "matcher": "write_to_file|replace_file_content|multi_replace_file_content|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mighty-mouse-antigravity-pretooluse"
+          }
+        ]
+      }
+    ]
+  },
+  "mighty-mouse-antigravity-posttooluse": {
+    "PostToolUse": [
+      {
+        "matcher": "write_to_file|replace_file_content|multi_replace_file_content|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mighty-mouse-antigravity-posttooluse"
+          }
+        ]
+      }
+    ]
+  }
 }

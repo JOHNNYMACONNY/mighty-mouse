@@ -694,15 +694,11 @@ def render_antigravity_pre_tool_use_result(
     if result.disposition == "allow":
         return {
             "decision": "allow",
-            "status": "allow",
-            "action": "allow",
             "reason": host_reason,
         }
     elif result.disposition == "deny":
         return {
             "decision": "deny",
-            "status": "deny",
-            "action": "deny",
             "reason": host_reason,
         }
     else:

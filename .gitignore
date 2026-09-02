@@ -17,6 +17,7 @@ scratch/
 /CHECKLIST.md
 
 # Local run artifacts
+.mighty-mouse/
 .autonomous-delivery/
 baseline_run.log
 baseline_run_m3.log

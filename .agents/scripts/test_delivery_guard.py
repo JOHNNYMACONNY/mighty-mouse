@@ -4,7 +4,6 @@ Unit tests for delivery_guard.py safety hook script.
 Runs representative PreToolUse JSON payloads through delivery_guard.py stdin.
 """
 
-import os
 import sys
 import json
 import subprocess
@@ -29,7 +28,12 @@ class TestDeliveryGuard(unittest.TestCase):
         shutil.rmtree(self.test_dir)
 
     def run_guard(self, payload: dict) -> tuple[int, dict]:
-        if "workspace_path" not in payload and "cwd" not in payload:
+        has_ws = (
+            "workspace_path" in payload
+            or "cwd" in payload
+            or "workspacePaths" in payload
+        )
+        if not has_ws:
             payload["workspace_path"] = self.test_dir
 
         proc = subprocess.Popen(
@@ -107,7 +111,9 @@ class TestDeliveryGuard(unittest.TestCase):
         self.setup_run("conv-dry", "run-dry-1", {"dry_run": "true", "plan_status": "READY"})
         payload = {
             "tool_name": "replace_file_content",
-            "tool_input": {"TargetFile": f"{self.test_dir}/src/mighty_mouse/v2/policy.py"},
+            "tool_input": {"TargetFile": (
+                        f"{self.test_dir}/src/mighty_mouse/v2/policy.py"
+                    )},
             "conversation_id": "conv-dry"
         }
         code, res = self.run_guard(payload)
@@ -152,19 +158,26 @@ class TestDeliveryGuard(unittest.TestCase):
         self.setup_run("conv-live", "run-live-1", {"dry_run": "false", "plan_status": "PENDING", "capability_gate": "PASSED"})
         payload = {
             "tool_name": "replace_file_content",
-            "tool_input": {"TargetFile": f"{self.test_dir}/src/mighty_mouse/v2/policy.py"},
+            "tool_input": {"TargetFile": (
+                        f"{self.test_dir}/src/mighty_mouse/v2/policy.py"
+                    )},
             "conversation_id": "conv-live"
         }
         code, res = self.run_guard(payload)
         self.assertEqual(code, 1)
         self.assertEqual(res.get("decision"), "deny")
-        self.assertIn("prohibited before plan validation READY", res.get("reason", ""))
+        self.assertIn(
+            "prohibited before plan validation READY",
+            res.get("reason", ""),
+        )
 
     def test_live_mode_allows_source_edits_when_ready_and_passed(self):
         self.setup_run("conv-live", "run-live-1", {"dry_run": "false", "plan_status": "READY", "capability_gate": "PASSED"})
         payload = {
             "tool_name": "replace_file_content",
-            "tool_input": {"TargetFile": f"{self.test_dir}/src/mighty_mouse/v2/policy.py"},
+            "tool_input": {"TargetFile": (
+                        f"{self.test_dir}/src/mighty_mouse/v2/policy.py"
+                    )},
             "conversation_id": "conv-live"
         }
         code, res = self.run_guard(payload)
@@ -206,6 +219,255 @@ class TestDeliveryGuard(unittest.TestCase):
         code, res = self.run_guard(payload)
         self.assertEqual(code, 0)
         self.assertEqual(res.get("decision"), "allow")
+
+    # --- 4. Production Nested toolCall & workspacePaths Shape ---
+    def test_production_nested_tool_call_unmapped_denial(self):
+        payload = {
+            "toolCall": {
+                "name": "replace_file_content",
+                "args": {"TargetFile": f"{self.test_dir}/src/main.py"},
+            },
+            "conversationId": "conv-unmapped-prod",
+            "workspacePaths": [self.test_dir],
+            "stepIdx": 1,
+        }
+        code, res = self.run_guard(payload)
+        self.assertEqual(code, 1)
+        self.assertEqual(res.get("decision"), "deny")
+        self.assertIn("outside of an active /deliver", res.get("reason", ""))
+
+    def test_production_nested_tool_call_unmapped_command_denial(self):
+        payload = {
+            "toolCall": {
+                "name": "run_command",
+                "args": {"CommandLine": "git commit -m 'unauthorized'"},
+            },
+            "conversationId": "conv-unmapped-prod",
+            "workspacePaths": [self.test_dir],
+            "stepIdx": 1,
+        }
+        code, res = self.run_guard(payload)
+        self.assertEqual(code, 1)
+        self.assertEqual(res.get("decision"), "deny")
+
+    def test_production_nested_tool_call_read_only_command_allowed(self):
+        payload = {
+            "toolCall": {
+                "name": "run_command",
+                "args": {"CommandLine": "git status"},
+            },
+            "conversationId": "conv-unmapped-prod",
+            "workspacePaths": [self.test_dir],
+            "stepIdx": 1,
+        }
+        code, res = self.run_guard(payload)
+        self.assertEqual(code, 0)
+        self.assertEqual(res.get("decision"), "allow")
+
+    def test_production_nested_tool_call_dry_run_artifact_write_allowed(self):
+        self.setup_run(
+            "conv-prod-dry",
+            "run-prod-dry-1",
+            {"dry_run": "true", "plan_status": "PENDING"},
+        )
+        art_path = self.runs_dir / "run-prod-dry-1" / "plan.md"
+        artifact_path = str(art_path.resolve())
+        payload = {
+            "toolCall": {
+                "name": "write_to_file",
+                "args": {"TargetFile": artifact_path},
+            },
+            "conversationId": "conv-prod-dry",
+            "workspacePaths": [self.test_dir],
+            "stepIdx": 2,
+        }
+        code, res = self.run_guard(payload)
+        self.assertEqual(code, 0)
+        self.assertEqual(res.get("decision"), "allow")
+
+    def test_production_nested_tool_call_dry_run_source_denial(self):
+        self.setup_run(
+            "conv-prod-dry",
+            "run-prod-dry-1",
+            {"dry_run": "true", "plan_status": "READY"},
+        )
+        payload = {
+            "toolCall": {
+                "name": "replace_file_content",
+                "args": {
+                    "TargetFile": (
+                        f"{self.test_dir}/src/mighty_mouse/v2/policy.py"
+                    )
+                },
+            },
+            "conversationId": "conv-prod-dry",
+            "workspacePaths": [self.test_dir],
+            "stepIdx": 3,
+        }
+        code, res = self.run_guard(payload)
+        self.assertEqual(code, 1)
+        self.assertEqual(res.get("decision"), "deny")
+        self.assertIn("prohibited during --dry-run", res.get("reason", ""))
+
+    def test_production_nested_tool_call_live_mode_before_ready_denial(self):
+        self.setup_run(
+            "conv-prod-live",
+            "run-prod-live-1",
+            {
+                "dry_run": "false",
+                "plan_status": "PENDING",
+                "capability_gate": "PASSED",
+            },
+        )
+        payload = {
+            "toolCall": {
+                "name": "replace_file_content",
+                "args": {
+                    "TargetFile": (
+                        f"{self.test_dir}/src/mighty_mouse/v2/policy.py"
+                    )
+                },
+            },
+            "conversationId": "conv-prod-live",
+            "workspacePaths": [self.test_dir],
+            "stepIdx": 4,
+        }
+        code, res = self.run_guard(payload)
+        self.assertEqual(code, 1)
+        self.assertEqual(res.get("decision"), "deny")
+        self.assertIn(
+            "prohibited before plan validation READY",
+            res.get("reason", ""),
+        )
+
+    def test_production_nested_tool_call_live_mode_when_ready_allowed(self):
+        self.setup_run(
+            "conv-prod-live",
+            "run-prod-live-1",
+            {
+                "dry_run": "false",
+                "plan_status": "READY",
+                "capability_gate": "PASSED",
+            },
+        )
+        payload = {
+            "toolCall": {
+                "name": "replace_file_content",
+                "args": {
+                    "TargetFile": (
+                        f"{self.test_dir}/src/mighty_mouse/v2/policy.py"
+                    )
+                },
+            },
+            "conversationId": "conv-prod-live",
+            "workspacePaths": [self.test_dir],
+            "stepIdx": 5,
+        }
+        code, res = self.run_guard(payload)
+        self.assertEqual(code, 0)
+        self.assertEqual(res.get("decision"), "allow")
+
+    def test_production_nested_tool_call_git_commit_verification_failure(self):
+        self.setup_run("conv-prod-live", "run-prod-live-1", {
+            "dry_run": "false",
+            "plan_status": "READY",
+            "capability_gate": "PASSED",
+            "last_exit_code": "1",
+            "standards_count": "0",
+            "spec_count": "0",
+        })
+        payload = {
+            "toolCall": {
+                "name": "run_command",
+                "args": {"CommandLine": "git commit -m 'fix'"},
+            },
+            "conversationId": "conv-prod-live",
+            "workspacePaths": [self.test_dir],
+            "stepIdx": 6,
+        }
+        code, res = self.run_guard(payload)
+        self.assertEqual(code, 1)
+        self.assertEqual(res.get("decision"), "deny")
+
+    def test_production_nested_tool_call_git_commit_all_checks_pass(self):
+        self.setup_run("conv-prod-live", "run-prod-live-1", {
+            "dry_run": "false",
+            "plan_status": "READY",
+            "capability_gate": "PASSED",
+            "last_exit_code": "0",
+            "standards_count": "0",
+            "spec_count": "0",
+        })
+        payload = {
+            "toolCall": {
+                "name": "run_command",
+                "args": {"CommandLine": "git commit -m 'fix'"},
+            },
+            "conversationId": "conv-prod-live",
+            "workspacePaths": [self.test_dir],
+            "stepIdx": 7,
+        }
+        code, res = self.run_guard(payload)
+        self.assertEqual(code, 0)
+        self.assertEqual(res.get("decision"), "allow")
+
+    def test_malformed_nested_tool_call_denial(self):
+        payload_non_dict = {
+            "toolCall": "not-a-dict",
+            "conversationId": "conv-malformed",
+            "workspacePaths": [self.test_dir],
+        }
+        code, res = self.run_guard(payload_non_dict)
+        self.assertEqual(code, 1)
+        self.assertEqual(res.get("decision"), "deny")
+        self.assertIn(
+            "Malformed nested toolCall structure",
+            res.get("reason", ""),
+        )
+
+        payload_bad_args = {
+            "toolCall": {
+                "name": "run_command",
+                "args": "not-a-dict",
+            },
+            "conversationId": "conv-malformed",
+            "workspacePaths": [self.test_dir],
+        }
+        code, res = self.run_guard(payload_bad_args)
+        self.assertEqual(code, 1)
+        self.assertEqual(res.get("decision"), "deny")
+        self.assertIn("Malformed nested toolCall.args", res.get("reason", ""))
+
+    def test_multiple_workspace_paths_resolution(self):
+        self.setup_run(
+            "conv-multi",
+            "run-multi-1",
+            {
+                "dry_run": "false",
+                "plan_status": "READY",
+                "capability_gate": "PASSED",
+            },
+        )
+        other_dir = tempfile.mkdtemp()
+        try:
+            payload = {
+                "toolCall": {
+                    "name": "replace_file_content",
+                    "args": {
+                        "TargetFile": (
+                            f"{self.test_dir}/src/mighty_mouse/v2/policy.py"
+                        ),
+                    },
+                },
+                "conversationId": "conv-multi",
+                "workspacePaths": [other_dir, self.test_dir],
+                "stepIdx": 8,
+            }
+            code, res = self.run_guard(payload)
+            self.assertEqual(code, 0)
+            self.assertEqual(res.get("decision"), "allow")
+        finally:
+            shutil.rmtree(other_dir)
 
 
 if __name__ == "__main__":

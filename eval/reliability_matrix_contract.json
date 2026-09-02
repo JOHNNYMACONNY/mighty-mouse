@@ -218,6 +218,8 @@
         "recovery_attempt_ceiling",
         "dry_run",
         "generation_calls",
+        "preflight_passed",
+        "blocking_reasons",
         "timestamp"
       ],
       "properties": {
@@ -311,6 +313,11 @@
         "recovery_attempt_ceiling": { "type": "integer", "enum": [1] },
         "dry_run": { "type": "boolean", "enum": [true] },
         "generation_calls": { "type": "integer", "enum": [0] },
+        "preflight_passed": { "type": "boolean" },
+        "blocking_reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "timestamp": { "type": "string" }
       }
     },

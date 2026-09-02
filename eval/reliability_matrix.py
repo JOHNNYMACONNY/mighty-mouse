@@ -152,21 +152,26 @@ def get_baseline_tracked_tasks(
     base_sha: str,
     tasks_dir: Path,
     repo_root: Path = Path("."),
-) -> set[str] | None:
-    """Retrieve set of task filenames tracked in Git tree at base_sha."""
-    try:
-        res = subprocess.run(
-            ["git", "ls-tree", "-r", "--name-only", base_sha, str(tasks_dir)],
-            cwd=repo_root,
-            capture_output=True,
-            text=True,
-            check=True,
+) -> set[str]:
+    """Retrieve set of task filenames tracked in Git tree at base_sha.
+
+    Fails closed if git command fails.
+    """
+    res = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", base_sha, str(tasks_dir)],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if res.returncode != 0:
+        err = res.stderr.strip() or f"exit code {res.returncode}"
+        raise RuntimeError(
+            f"Git tree lookup failed for '{base_sha}': {err}"
         )
-        return {
-            Path(line).name for line in res.stdout.splitlines() if line.strip()
-        }
-    except (subprocess.CalledProcessError, OSError, ValueError):
-        return None
+    return {
+        Path(line).name for line in res.stdout.splitlines() if line.strip()
+    }
 
 
 def evaluate_tier_corpus(
@@ -183,13 +188,18 @@ def evaluate_tier_corpus(
 
     sha = base_sha or resolve_base_sha()
     tracked_tasks: set[str] | None = None
+    git_lookup_error: str | None = None
     if check_git_tracking and sha:
-        tracked_tasks = get_baseline_tracked_tasks(sha, tasks_dir)
+        try:
+            tracked_tasks = get_baseline_tracked_tasks(sha, tasks_dir)
+        except Exception as exc:
+            git_lookup_error = str(exc)
 
     results: list[dict[str, Any]] = []
 
     for name, tasks in tiers_cfg.items():
-        if tasks == "all" or name == "tier_2":
+        is_rollup = (tasks == "all")
+        if is_rollup:
             results.append({
                 "name": name,
                 "is_rollup": True,
@@ -209,6 +219,21 @@ def evaluate_tier_corpus(
                 "total_configured": 0,
                 "available_tasks": 0,
                 "missing_tasks": [f"invalid_tier_config_{bad_type}"],
+                "blocked": True,
+                "sample_task": None,
+            })
+            continue
+
+        if git_lookup_error is not None:
+            # Fail closed on git provenance lookup error
+            results.append({
+                "name": name,
+                "is_rollup": False,
+                "total_configured": len(tasks),
+                "available_tasks": 0,
+                "missing_tasks": [
+                    f"git_provenance_error: {git_lookup_error}"
+                ],
                 "blocked": True,
                 "sample_task": None,
             })
@@ -376,6 +401,7 @@ def run_preflight(
     ollama_host: str = DEFAULT_HOST,
     ollama_model: str = DEFAULT_MODEL,
     lock_path: Path | None = None,
+    check_git_tracking: bool = True,
 ) -> dict[str, Any]:
     """Execute zero-generation dry-run checks under SingleInstanceLock."""
     out_path = output_dir or Path(f"eval/results/m12/{experiment_id}")
@@ -390,13 +416,15 @@ def run_preflight(
                 f"actual {current_sha}"
             )
 
-        is_clean, _ = check_git_clean()
+        is_clean, unclean_items = check_git_clean()
         config_hash = compute_sha256_file(config_path)
 
         schema = load_contract_schema(contract_path)
         schema_valid = isinstance(schema, dict) and "definitions" in schema
 
-        tiers = evaluate_tier_corpus(config_path, tasks_dir, target_sha)
+        tiers = evaluate_tier_corpus(
+            config_path, tasks_dir, target_sha, check_git_tracking
+        )
         server_info = check_ollama_provenance(ollama_host, ollama_model)
 
         out_path.mkdir(parents=True, exist_ok=True)
@@ -411,6 +439,39 @@ def run_preflight(
             }
             for arm in ARMS.values()
         ]
+
+        blocking_reasons: list[str] = []
+        if not is_clean:
+            blocking_reasons.append(
+                f"Worktree contains unapproved dirty files: {unclean_items}"
+            )
+        if not schema_valid:
+            blocking_reasons.append("Schema contract validation failed")
+        if not server_info.get("available", False):
+            blocking_reasons.append(
+                f"Ollama server unavailable at {ollama_host}: "
+                f"{server_info.get('error', 'unknown error')}"
+            )
+        if server_info.get("model_digest") in ("unknown", "", None):
+            blocking_reasons.append(
+                f"Model digest for '{ollama_model}' could not be resolved"
+            )
+
+        blocked_tiers = [
+            t["name"] for t in tiers if not t["is_rollup"] and t["blocked"]
+        ]
+        if blocked_tiers:
+            blocking_reasons.append(
+                f"Configured tiers blocked or missing from baseline: "
+                f"{', '.join(blocked_tiers)}"
+            )
+
+        if not (is_writable and out_path.is_dir()):
+            blocking_reasons.append(
+                f"Output directory '{out_path}' is not ready/writable"
+            )
+
+        preflight_passed = (len(blocking_reasons) == 0)
 
         report = {
             "schema_version": SCHEMA_VERSION,
@@ -432,6 +493,8 @@ def run_preflight(
             "recovery_attempt_ceiling": MAX_RECOVERY_ATTEMPTS,
             "dry_run": True,
             "generation_calls": 0,
+            "preflight_passed": preflight_passed,
+            "blocking_reasons": blocking_reasons,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -526,8 +589,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             ollama_host=args.host,
             ollama_model=args.model,
         )
+        passed = report["preflight_passed"]
+        status_word = "PASS" if passed else "BLOCKED / FAIL"
         print("=" * 70)
-        print("MIGHTY MOUSE RELIABILITY MATRIX PREFLIGHT: PASS")
+        print(f"MIGHTY MOUSE RELIABILITY MATRIX PREFLIGHT: {status_word}")
         print(f"Experiment ID:   {report['experiment_id']}")
         print(f"Base SHA:        {report['base_sha']}")
         print(f"Git Clean:       {report['git_clean']}")
@@ -539,6 +604,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Model Digest:    {server['model_digest'][:16]}...")
         print(f"Recovery Ceiling:{report['recovery_attempt_ceiling']} attempt")
         print(f"Dry Run Calls:   {report['generation_calls']} calls")
+        print(f"Preflight Status:{'PASSED' if passed else 'BLOCKED'}")
+        if report["blocking_reasons"]:
+            print("Blocking Reasons:")
+            for reason in report["blocking_reasons"]:
+                print(f"  [!] {reason}")
         print("-" * 70)
         print("Tiers Corpus Status:")
         for t in report["tiers"]:
@@ -557,7 +627,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     f"sample: {t['sample_task']})"
                 )
         print("=" * 70)
-        return 0
+        return 0 if passed else 1
     except SingleInstanceLockError as exc:
         print(
             f"[!] Preflight failed: Lock contention - {exc}",

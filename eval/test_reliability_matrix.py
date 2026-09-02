@@ -180,6 +180,8 @@ def test_preflight_report_schema_validation() -> None:
         "recovery_attempt_ceiling": 1,
         "dry_run": True,
         "generation_calls": 0,
+        "preflight_passed": True,
+        "blocking_reasons": [],
         "timestamp": "2026-09-02T20:00:00Z",
     }
     validate_payload_against_schema(valid_preflight, "preflight_report")
@@ -315,6 +317,41 @@ def test_baseline_git_tracking_blocks_untracked_tasks(
     assert status["blocked"] is True
     assert status["available_tasks"] == 1
     assert status["missing_tasks"] == ["untracked.json"]
+
+
+def test_git_lookup_failure_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tasks_dir = tmp_path / "tasks"
+    tasks_dir.mkdir()
+    (tasks_dir / "t1.json").write_text("{}", encoding="utf-8")
+
+    cfg_file = tmp_path / "test_config.json"
+    cfg_file.write_text(
+        json.dumps({"tiers": {"tier_test": ["t1.json"]}}),
+        encoding="utf-8",
+    )
+
+    def mock_tracked_error(
+        _sha: str, _dir: Path, _root: Path = Path(".")
+    ) -> set[str]:
+        raise RuntimeError("simulated git ls-tree failure")
+
+    monkeypatch.setattr(
+        "eval.reliability_matrix.get_baseline_tracked_tasks",
+        mock_tracked_error,
+    )
+
+    statuses = evaluate_tier_corpus(
+        config_path=cfg_file,
+        tasks_dir=tasks_dir,
+        base_sha="97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
+        check_git_tracking=True,
+    )
+    assert statuses[0]["blocked"] is True
+    assert statuses[0]["available_tasks"] == 0
+    assert "git_provenance_error" in statuses[0]["missing_tasks"][0]
 
 
 def test_live_baseline_corpus_tier_blocking() -> None:
@@ -494,6 +531,163 @@ def test_dry_run_preflight_zero_generation(
     assert saved_report["generation_calls"] == 0
 
 
+def test_blocked_tier_causes_overall_preflight_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out_dir = tmp_path / "results"
+    lock_file = tmp_path / "test.lock"
+
+    digest_val = (
+        "c6eb396dbd5992bbe3f5cdb947e8bbc0ee413d7c17e2beaae69f5d569cf982eb"
+    )
+
+    monkeypatch.setattr(
+        "eval.reliability_matrix.check_ollama_provenance",
+        lambda host, model: {
+            "host": host,
+            "available": True,
+            "version": "0.33.2",
+            "model": model,
+            "model_digest": digest_val,
+        },
+    )
+
+    report = run_preflight(
+        experiment_id="test-blocked",
+        output_dir=out_dir,
+        lock_path=lock_file,
+        check_git_tracking=True,
+    )
+    # Tier 8 & 9 are blocked on current baseline -> preflight must fail
+    assert report["preflight_passed"] is False
+    assert any("tier_8" in r for r in report["blocking_reasons"])
+    assert any("tier_9" in r for r in report["blocking_reasons"])
+
+
+def test_ollama_unavailable_causes_overall_preflight_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out_dir = tmp_path / "results"
+    lock_file = tmp_path / "test.lock"
+
+    monkeypatch.setattr(
+        "eval.reliability_matrix.check_ollama_provenance",
+        lambda host, model: {
+            "host": host,
+            "available": False,
+            "version": "unknown",
+            "model": model,
+            "model_digest": "unknown",
+            "error": "Connection refused",
+        },
+    )
+
+    report = run_preflight(
+        experiment_id="test-no-ollama",
+        output_dir=out_dir,
+        lock_path=lock_file,
+    )
+    assert report["preflight_passed"] is False
+    assert any(
+        "Ollama server unavailable" in r for r in report["blocking_reasons"]
+    )
+
+
+def test_dirty_worktree_causes_overall_preflight_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out_dir = tmp_path / "results"
+    lock_file = tmp_path / "test.lock"
+
+    monkeypatch.setattr(
+        "eval.reliability_matrix.check_git_clean",
+        lambda _root=Path("."): (False, ["?? unapproved_file.py"]),
+    )
+
+    digest_val = (
+        "c6eb396dbd5992bbe3f5cdb947e8bbc0ee413d7c17e2beaae69f5d569cf982eb"
+    )
+    monkeypatch.setattr(
+        "eval.reliability_matrix.check_ollama_provenance",
+        lambda host, model: {
+            "host": host,
+            "available": True,
+            "version": "0.33.2",
+            "model": model,
+            "model_digest": digest_val,
+        },
+    )
+
+    report = run_preflight(
+        experiment_id="test-dirty",
+        output_dir=out_dir,
+        lock_path=lock_file,
+    )
+    assert report["preflight_passed"] is False
+    assert any(
+        "unapproved dirty files" in r for r in report["blocking_reasons"]
+    )
+
+
+def test_clean_mocked_preflight_passes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out_dir = tmp_path / "results"
+    lock_file = tmp_path / "test.lock"
+
+    digest_val = (
+        "c6eb396dbd5992bbe3f5cdb947e8bbc0ee413d7c17e2beaae69f5d569cf982eb"
+    )
+    monkeypatch.setattr(
+        "eval.reliability_matrix.check_ollama_provenance",
+        lambda host, model: {
+            "host": host,
+            "available": True,
+            "version": "0.33.2",
+            "model": model,
+            "model_digest": digest_val,
+        },
+    )
+    monkeypatch.setattr(
+        "eval.reliability_matrix.check_git_clean",
+        lambda _root=Path("."): (True, []),
+    )
+    monkeypatch.setattr(
+        "eval.reliability_matrix.evaluate_tier_corpus",
+        lambda cfg, tdir, sha, check: [
+            {
+                "name": "tier_1",
+                "is_rollup": False,
+                "total_configured": 1,
+                "available_tasks": 1,
+                "missing_tasks": [],
+                "blocked": False,
+                "sample_task": "t1.json",
+            }
+        ],
+    )
+
+    report = run_preflight(
+        experiment_id="test-clean-pass",
+        output_dir=out_dir,
+        lock_path=lock_file,
+    )
+    assert report["preflight_passed"] is True
+    assert report["blocking_reasons"] == []
+
+    # main() returns 0 when preflight_passed is True
+    monkeypatch.setattr(
+        "eval.reliability_matrix.run_preflight",
+        lambda **kwargs: report,
+    )
+    exit_code = main(["--dry-run", "--output-dir", str(out_dir)])
+    assert exit_code == 0
+
+
 def test_dry_run_cli_main(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -518,10 +712,16 @@ def test_dry_run_cli_main(
         mock_check_provenance,
     )
 
+    # Against live baseline, Tier 8/9 blocked -> exit code 1
     exit_code = main([
         "--dry-run",
         "--experiment-id", "cli-test",
         "--output-dir", str(out_dir),
     ])
-    assert exit_code == 0
+    assert exit_code == 1
     assert (out_dir / "preflight_report.json").is_file()
+    saved = json.loads(
+        (out_dir / "preflight_report.json").read_text(encoding="utf-8")
+    )
+    assert saved["preflight_passed"] is False
+    assert saved["generation_calls"] == 0

@@ -501,4 +501,166 @@ def test_composite_pretooluse_import_failure_fails_closed() -> None:
     assert proc.returncode == 0
     res = json.loads(proc.stdout.strip())
     assert res["decision"] == "deny"
-    assert "execution failure" in res["reason"]
+    assert "runtime failure" in res["reason"]
+
+
+def test_composite_pretooluse_missing_guard_fails_closed(
+    monkeypatch,
+) -> None:
+    """When guard_checker is None, immediately deny without invoking MM."""
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/module.py"},
+        },
+        "workspacePaths": ["/tmp"],
+        "conversationId": "conv-test",
+    }
+    raw_input = json.dumps(payload)
+
+    import mighty_mouse_mcp.antigravity_hooks as ag_hooks
+
+    called = False
+
+    def _mock_mm(*args, **kwargs):
+        nonlocal called
+        called = True
+        return {"decision": "allow", "reason": "Should not be reached"}
+
+    monkeypatch.setattr(ag_hooks, "run_antigravity_pre_tool_use", _mock_mm)
+
+    res = run_antigravity_composite_pre_tool_use(
+        raw_input,
+        guard_checker=None,
+    )
+    assert res["decision"] == "deny"
+    assert res["reason"] == "Delivery Guard unavailable"
+    assert not called, "Mighty Mouse must not be called when guard is None"
+
+
+def test_composite_pretooluse_guard_exception_fails_closed(
+    monkeypatch,
+) -> None:
+    """When guard raises, deny without calling MM or leaking exception."""
+    payload = {
+        "toolCall": {
+            "name": "write_to_file",
+            "args": {"TargetFile": "src/module.py"},
+        },
+        "workspacePaths": ["/tmp"],
+        "conversationId": "conv-test",
+    }
+    raw_input = json.dumps(payload)
+
+    import mighty_mouse_mcp.antigravity_hooks as ag_hooks
+
+    called = False
+
+    def _mock_mm(*args, **kwargs):
+        nonlocal called
+        called = True
+        return {"decision": "allow"}
+
+    monkeypatch.setattr(ag_hooks, "run_antigravity_pre_tool_use", _mock_mm)
+
+    def _failing_guard(_):
+        raise RuntimeError("database_password=sensitive_token_leak")
+
+    res = run_antigravity_composite_pre_tool_use(
+        raw_input,
+        guard_checker=_failing_guard,
+    )
+    assert res["decision"] == "deny"
+    assert res["reason"] == "Delivery Guard evaluation failed"
+    assert "password" not in res["reason"]
+    assert "token" not in res["reason"]
+    assert not called, "Mighty Mouse must not be called after guard exception"
+
+
+def test_composite_pretooluse_guard_malformed_result_fails_closed(
+    monkeypatch,
+) -> None:
+    """Malformed guard return shapes deny without calling MM."""
+    payload = {"toolCall": {"name": "write_to_file"}}
+    raw_input = json.dumps(payload)
+
+    import mighty_mouse_mcp.antigravity_hooks as ag_hooks
+
+    called = False
+
+    def _mock_mm(*args, **kwargs):
+        nonlocal called
+        called = True
+        return {"decision": "allow"}
+
+    monkeypatch.setattr(ag_hooks, "run_antigravity_pre_tool_use", _mock_mm)
+
+    bad_returns = [
+        True,
+        "allow",
+        (True,),
+        (True, "ok", "extra"),
+        ("true", "ok"),
+        (True, 123),
+        None,
+    ]
+    for bad in bad_returns:
+        called = False
+        res = run_antigravity_composite_pre_tool_use(
+            raw_input,
+            guard_checker=lambda _, b=bad: b,
+        )
+        assert res["decision"] == "deny"
+        assert res["reason"] == "Delivery Guard evaluation failed"
+        assert not called, f"MM called for malformed guard return: {bad}"
+
+
+def test_composite_pretooluse_guard_non_bool_truthy_fails_closed(
+    monkeypatch,
+) -> None:
+    """Non-bool truthy guard values deny without calling MM."""
+    payload = {"toolCall": {"name": "write_to_file"}}
+    raw_input = json.dumps(payload)
+
+    import mighty_mouse_mcp.antigravity_hooks as ag_hooks
+
+    called = False
+
+    def _mock_mm(*args, **kwargs):
+        nonlocal called
+        called = True
+        return {"decision": "allow"}
+
+    monkeypatch.setattr(ag_hooks, "run_antigravity_pre_tool_use", _mock_mm)
+
+    non_bool_truthies = [(1, "ok"), ("yes", "ok"), ([1], "ok")]
+    for val in non_bool_truthies:
+        called = False
+        res = run_antigravity_composite_pre_tool_use(
+            raw_input,
+            guard_checker=lambda _, v=val: v,
+        )
+        assert res["decision"] == "deny"
+        assert res["reason"] == "Delivery Guard evaluation failed"
+        assert not called, f"MM called for non-bool truthy: {val}"
+
+
+def test_composite_pretooluse_wrapper_guard_import_fails_closed(
+) -> None:
+    """When delivery_guard import fails in wrapper, script returns deny."""
+    code = (
+        "import sys, runpy; "
+        "sys.modules['delivery_guard'] = None; "
+        f"runpy.run_path('{COMPOSITE_SCRIPT_PATH}', run_name='__main__')"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        input="{}",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0
+    res = json.loads(proc.stdout.strip())
+    assert res["decision"] == "deny"
+    assert res["reason"] == "Delivery Guard unavailable"

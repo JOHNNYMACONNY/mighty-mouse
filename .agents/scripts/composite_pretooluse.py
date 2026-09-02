@@ -53,13 +53,10 @@ def main() -> None:
             raw_input,
             guard_checker=_guard_checker,
         )
-    except Exception as exc:
+    except Exception:
         result = {
             "decision": "deny",
-            "reason": (
-                "Composite PreToolUse runtime execution failure: "
-                f"{exc}"
-            ),
+            "reason": "Composite PreToolUse runtime failure",
         }
 
     sys.stdout.write(json.dumps(result, sort_keys=True) + chr(10))

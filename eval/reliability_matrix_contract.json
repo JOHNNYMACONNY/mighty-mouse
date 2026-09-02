@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Mighty Mouse Reliability Matrix Contract",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "definitions": {
     "trial_record": {
       "type": "object",
@@ -23,7 +23,10 @@
             "schema_version",
             "experiment_id",
             "trial_id",
+            "trial_order_index",
+            "experiment_base_sha",
             "base_sha",
+            "harness_sha",
             "arm",
             "replicate"
           ],
@@ -31,7 +34,10 @@
             "schema_version": { "type": "string" },
             "experiment_id": { "type": "string" },
             "trial_id": { "type": "string" },
+            "trial_order_index": { "type": "integer", "minimum": 0 },
+            "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
             "base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
             "arm": {
               "type": "string",
               "enum": [
@@ -73,7 +79,10 @@
             "prompt_template_sha256",
             "execution_profile_id",
             "tool_contract_digest",
-            "runtime_version"
+            "runtime_version",
+            "experiment_base_sha",
+            "harness_sha",
+            "baseline_to_harness_changed_paths"
           ],
           "properties": {
             "provider": { "type": "string" },
@@ -84,7 +93,13 @@
             "prompt_template_sha256": { "type": "string" },
             "execution_profile_id": { "type": "string" },
             "tool_contract_digest": { "type": "string" },
-            "runtime_version": { "type": "string" }
+            "runtime_version": { "type": "string" },
+            "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "baseline_to_harness_changed_paths": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
           }
         },
         "execution": {
@@ -97,7 +112,8 @@
             "recovery_enabled",
             "recovery_attempt_limit",
             "recovery_attempted",
-            "recovery_completed"
+            "recovery_completed",
+            "recovery_trigger_source"
           ],
           "properties": {
             "swarm_concurrency": { "type": "integer", "minimum": 1, "maximum": 2 },
@@ -106,7 +122,11 @@
             "recovery_enabled": { "type": "boolean" },
             "recovery_attempt_limit": { "type": "integer", "minimum": 1, "maximum": 1 },
             "recovery_attempted": { "type": "boolean" },
-            "recovery_completed": { "type": "boolean" }
+            "recovery_completed": { "type": "boolean" },
+            "recovery_trigger_source": {
+              "type": "string",
+              "enum": ["none", "matrix_synthesized_post_action_v1"]
+            }
           }
         },
         "verification": {
@@ -188,13 +208,17 @@
             "provenance_complete",
             "token_coverage_complete",
             "verifier_completed",
-            "infrastructure_error"
+            "infrastructure_error",
+            "trace_artifact_relpath",
+            "trace_artifact_sha256"
           ],
           "properties": {
             "provenance_complete": { "type": "boolean" },
             "token_coverage_complete": { "type": "boolean" },
             "verifier_completed": { "type": "boolean" },
-            "infrastructure_error": { "type": ["string", "null"] }
+            "infrastructure_error": { "type": ["string", "null"] },
+            "trace_artifact_relpath": { "type": ["string", "null"] },
+            "trace_artifact_sha256": { "type": ["string", "null"] }
           }
         }
       }
@@ -205,7 +229,10 @@
       "required": [
         "schema_version",
         "experiment_id",
+        "experiment_base_sha",
         "base_sha",
+        "harness_sha",
+        "baseline_to_harness_changed_paths",
         "git_clean",
         "runner_lock_acquired",
         "schema_valid",
@@ -225,7 +252,13 @@
       "properties": {
         "schema_version": { "type": "string" },
         "experiment_id": { "type": "string" },
+        "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
         "base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "baseline_to_harness_changed_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "git_clean": { "type": "boolean" },
         "runner_lock_acquired": { "type": "boolean" },
         "schema_valid": { "type": "boolean" },
@@ -271,6 +304,10 @@
               "sample_task": { "type": ["string", "null"] }
             }
           }
+        },
+        "required_tiers": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
         },
         "arms": {
           "type": "array",
@@ -327,7 +364,10 @@
       "required": [
         "schema_version",
         "experiment_id",
+        "experiment_base_sha",
         "base_sha",
+        "harness_sha",
+        "baseline_to_harness_changed_paths",
         "trial_count",
         "arms",
         "metrics",
@@ -337,7 +377,13 @@
       "properties": {
         "schema_version": { "type": "string" },
         "experiment_id": { "type": "string" },
+        "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
         "base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "baseline_to_harness_changed_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "trial_count": { "type": "integer", "minimum": 0 },
         "arms": {
           "type": "array",
@@ -347,11 +393,82 @@
         "dry_run": { "type": "boolean" },
         "timestamp": { "type": "string" }
       }
+    },
+    "execution_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "experiment_id",
+        "experiment_base_sha",
+        "base_sha",
+        "harness_sha",
+        "replicates",
+        "tiers",
+        "trial_units",
+        "arm_order_seed",
+        "timestamp"
+      ],
+      "properties": {
+        "schema_version": { "type": "string" },
+        "experiment_id": { "type": "string" },
+        "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "replicates": { "type": "integer", "minimum": 1 },
+        "tiers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "trial_units": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "order_index",
+              "trial_order_index",
+              "trial_id",
+              "tier",
+              "task_id",
+              "task_file",
+              "arm",
+              "replicate",
+              "experiment_base_sha",
+              "harness_sha"
+            ],
+            "properties": {
+              "order_index": { "type": "integer", "minimum": 0 },
+              "trial_order_index": { "type": "integer", "minimum": 0 },
+              "trial_id": { "type": "string" },
+              "tier": { "type": "string" },
+              "task_id": { "type": "string" },
+              "task_file": { "type": "string" },
+              "arm": {
+                "type": "string",
+                "enum": [
+                  "control_once",
+                  "mm_single",
+                  "mm_swarm",
+                  "mm_single_recovery",
+                  "mm_swarm_recovery"
+                ]
+              },
+              "replicate": { "type": "integer", "minimum": 1 },
+              "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+              "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+            }
+          }
+        },
+        "arm_order_seed": { "type": "string" },
+        "timestamp": { "type": "string" }
+      }
     }
   },
   "oneOf": [
     { "$ref": "#/definitions/trial_record" },
     { "$ref": "#/definitions/preflight_report" },
-    { "$ref": "#/definitions/run_summary" }
+    { "$ref": "#/definitions/run_summary" },
+    { "$ref": "#/definitions/execution_plan" }
   ]
 }

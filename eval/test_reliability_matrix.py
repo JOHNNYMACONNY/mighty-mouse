@@ -49,7 +49,10 @@ def test_trial_record_schema_validation() -> None:
             "schema_version": SCHEMA_VERSION,
             "experiment_id": "m12-pilot-v1",
             "trial_id": "trial-001",
+            "trial_order_index": 0,
+            "experiment_base_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
             "base_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
+            "harness_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
             "arm": "control_once",
             "replicate": 1,
         },
@@ -69,6 +72,9 @@ def test_trial_record_schema_validation() -> None:
             "execution_profile_id": "default",
             "tool_contract_digest": "d" * 64,
             "runtime_version": "0.4.0",
+            "experiment_base_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
+            "harness_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
+            "baseline_to_harness_changed_paths": [],
         },
         "execution": {
             "swarm_concurrency": 1,
@@ -78,6 +84,7 @@ def test_trial_record_schema_validation() -> None:
             "recovery_attempt_limit": 1,
             "recovery_attempted": False,
             "recovery_completed": False,
+            "recovery_trigger_source": "none",
         },
         "verification": {
             "first_passed": True,
@@ -101,6 +108,8 @@ def test_trial_record_schema_validation() -> None:
             "token_coverage_complete": True,
             "verifier_completed": True,
             "infrastructure_error": None,
+            "trace_artifact_relpath": "traces/trial-001.json",
+            "trace_artifact_sha256": "e" * 64,
         },
     }
     validate_payload_against_schema(valid_record, "trial_record")
@@ -131,7 +140,10 @@ def test_preflight_report_schema_validation() -> None:
     valid_preflight = {
         "schema_version": SCHEMA_VERSION,
         "experiment_id": "m12-test-01",
+        "experiment_base_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
         "base_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
+        "harness_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
+        "baseline_to_harness_changed_paths": [],
         "git_clean": True,
         "runner_lock_acquired": True,
         "schema_valid": True,
@@ -671,6 +683,10 @@ def test_clean_mocked_preflight_passes(
         ],
     )
 
+    monkeypatch.setattr(
+        "eval.reliability_matrix.verify_runtime_context_readiness",
+        lambda *a, **kw: (True, None),
+    )
     report = run_preflight(
         experiment_id="test-clean-pass",
         output_dir=out_dir,

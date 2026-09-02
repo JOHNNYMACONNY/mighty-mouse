@@ -1,0 +1,350 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Mighty Mouse Reliability Matrix Contract",
+  "version": "1.0.0",
+  "definitions": {
+    "trial_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "task",
+        "provenance",
+        "execution",
+        "verification",
+        "cost",
+        "validity"
+      ],
+      "properties": {
+        "identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "experiment_id",
+            "trial_id",
+            "base_sha",
+            "arm",
+            "replicate"
+          ],
+          "properties": {
+            "schema_version": { "type": "string" },
+            "experiment_id": { "type": "string" },
+            "trial_id": { "type": "string" },
+            "base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "arm": {
+              "type": "string",
+              "enum": [
+                "control_once",
+                "mm_single",
+                "mm_swarm",
+                "mm_single_recovery",
+                "mm_swarm_recovery"
+              ]
+            },
+            "replicate": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "task": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "configured_tier",
+            "task_id",
+            "task_file",
+            "task_sha256"
+          ],
+          "properties": {
+            "configured_tier": { "type": "string" },
+            "task_id": { "type": "string" },
+            "task_file": { "type": "string" },
+            "task_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider",
+            "ollama_version",
+            "model",
+            "model_digest",
+            "agent_config_sha256",
+            "prompt_template_sha256",
+            "execution_profile_id",
+            "tool_contract_digest",
+            "runtime_version"
+          ],
+          "properties": {
+            "provider": { "type": "string" },
+            "ollama_version": { "type": "string" },
+            "model": { "type": "string" },
+            "model_digest": { "type": "string" },
+            "agent_config_sha256": { "type": "string" },
+            "prompt_template_sha256": { "type": "string" },
+            "execution_profile_id": { "type": "string" },
+            "tool_contract_digest": { "type": "string" },
+            "runtime_version": { "type": "string" }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "swarm_concurrency",
+            "internal_attempts",
+            "generation_calls",
+            "recovery_enabled",
+            "recovery_attempt_limit",
+            "recovery_attempted",
+            "recovery_completed"
+          ],
+          "properties": {
+            "swarm_concurrency": { "type": "integer", "minimum": 1, "maximum": 2 },
+            "internal_attempts": { "type": "integer", "minimum": 0 },
+            "generation_calls": { "type": "integer", "minimum": 0 },
+            "recovery_enabled": { "type": "boolean" },
+            "recovery_attempt_limit": { "type": "integer", "minimum": 1, "maximum": 1 },
+            "recovery_attempted": { "type": "boolean" },
+            "recovery_completed": { "type": "boolean" }
+          }
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "first_passed",
+            "first_failure_category",
+            "terminal_passed",
+            "terminal_failure_category",
+            "recovery_eligible",
+            "recovery_gate_reason"
+          ],
+          "properties": {
+            "first_passed": { "type": "boolean" },
+            "first_failure_category": {
+              "type": ["string", "null"],
+              "enum": [
+                "generation_error",
+                "response_schema_error",
+                "application_error",
+                "scope_failure",
+                "adherence_failure",
+                "test_failure",
+                "timeout",
+                "recovery_failed",
+                "verifier_error",
+                "infrastructure_error",
+                null
+              ]
+            },
+            "terminal_passed": { "type": "boolean" },
+            "terminal_failure_category": {
+              "type": ["string", "null"],
+              "enum": [
+                "generation_error",
+                "response_schema_error",
+                "application_error",
+                "scope_failure",
+                "adherence_failure",
+                "test_failure",
+                "timeout",
+                "recovery_failed",
+                "verifier_error",
+                "infrastructure_error",
+                null
+              ]
+            },
+            "recovery_eligible": { "type": "boolean" },
+            "recovery_gate_reason": { "type": ["string", "null"] }
+          }
+        },
+        "cost": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "primary_prompt_tokens",
+            "primary_completion_tokens",
+            "recovery_prompt_tokens",
+            "recovery_completion_tokens",
+            "total_tokens",
+            "wall_latency_seconds",
+            "model_latency_seconds"
+          ],
+          "properties": {
+            "primary_prompt_tokens": { "type": "integer", "minimum": 0 },
+            "primary_completion_tokens": { "type": "integer", "minimum": 0 },
+            "recovery_prompt_tokens": { "type": "integer", "minimum": 0 },
+            "recovery_completion_tokens": { "type": "integer", "minimum": 0 },
+            "total_tokens": { "type": "integer", "minimum": 0 },
+            "wall_latency_seconds": { "type": "number", "minimum": 0.0 },
+            "model_latency_seconds": { "type": "number", "minimum": 0.0 }
+          }
+        },
+        "validity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provenance_complete",
+            "token_coverage_complete",
+            "verifier_completed",
+            "infrastructure_error"
+          ],
+          "properties": {
+            "provenance_complete": { "type": "boolean" },
+            "token_coverage_complete": { "type": "boolean" },
+            "verifier_completed": { "type": "boolean" },
+            "infrastructure_error": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "preflight_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "experiment_id",
+        "base_sha",
+        "git_clean",
+        "runner_lock_acquired",
+        "schema_valid",
+        "config_path",
+        "config_sha256",
+        "ollama_server",
+        "tiers",
+        "arms",
+        "output_dir",
+        "recovery_attempt_ceiling",
+        "dry_run",
+        "generation_calls",
+        "timestamp"
+      ],
+      "properties": {
+        "schema_version": { "type": "string" },
+        "experiment_id": { "type": "string" },
+        "base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "git_clean": { "type": "boolean" },
+        "runner_lock_acquired": { "type": "boolean" },
+        "schema_valid": { "type": "boolean" },
+        "config_path": { "type": "string" },
+        "config_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "ollama_server": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host", "available", "version", "model", "model_digest"],
+          "properties": {
+            "host": { "type": "string" },
+            "available": { "type": "boolean" },
+            "version": { "type": "string" },
+            "model": { "type": "string" },
+            "model_digest": { "type": "string" },
+            "error": { "type": "string" }
+          }
+        },
+        "tiers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "is_rollup",
+              "total_configured",
+              "available_tasks",
+              "missing_tasks",
+              "blocked",
+              "sample_task"
+            ],
+            "properties": {
+              "name": { "type": "string" },
+              "is_rollup": { "type": "boolean" },
+              "total_configured": { "type": "integer", "minimum": 0 },
+              "available_tasks": { "type": "integer", "minimum": 0 },
+              "missing_tasks": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "blocked": { "type": "boolean" },
+              "sample_task": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "arms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "arm_id",
+              "description",
+              "execution_mode",
+              "recovery_enabled"
+            ],
+            "properties": {
+              "arm_id": {
+                "type": "string",
+                "enum": [
+                  "control_once",
+                  "mm_single",
+                  "mm_swarm",
+                  "mm_single_recovery",
+                  "mm_swarm_recovery"
+                ]
+              },
+              "description": { "type": "string" },
+              "execution_mode": { "type": "string" },
+              "recovery_enabled": { "type": "boolean" }
+            }
+          }
+        },
+        "output_dir": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "writable", "ready"],
+          "properties": {
+            "path": { "type": "string" },
+            "writable": { "type": "boolean" },
+            "ready": { "type": "boolean" }
+          }
+        },
+        "recovery_attempt_ceiling": { "type": "integer", "enum": [1] },
+        "dry_run": { "type": "boolean", "enum": [true] },
+        "generation_calls": { "type": "integer", "enum": [0] },
+        "timestamp": { "type": "string" }
+      }
+    },
+    "run_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "experiment_id",
+        "base_sha",
+        "trial_count",
+        "arms",
+        "metrics",
+        "dry_run",
+        "timestamp"
+      ],
+      "properties": {
+        "schema_version": { "type": "string" },
+        "experiment_id": { "type": "string" },
+        "base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "trial_count": { "type": "integer", "minimum": 0 },
+        "arms": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "metrics": { "type": "object" },
+        "dry_run": { "type": "boolean" },
+        "timestamp": { "type": "string" }
+      }
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/definitions/trial_record" },
+    { "$ref": "#/definitions/preflight_report" },
+    { "$ref": "#/definitions/run_summary" }
+  ]
+}

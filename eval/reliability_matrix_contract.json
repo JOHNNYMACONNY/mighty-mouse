@@ -89,11 +89,12 @@
             "ollama_version": { "type": "string" },
             "model": { "type": "string" },
             "model_digest": { "type": "string" },
-            "agent_config_sha256": { "type": "string" },
+            "agent_config_sha256": { "type": ["string", "null"] },
             "prompt_template_sha256": { "type": "string" },
-            "execution_profile_id": { "type": "string" },
-            "tool_contract_digest": { "type": "string" },
-            "runtime_version": { "type": "string" },
+            "execution_profile_id": { "type": ["string", "null"] },
+            "tool_contract_digest": { "type": ["string", "null"] },
+            "runtime_version": { "type": ["string", "null"] },
+            "runtime_kind": { "type": ["string", "null"] },
             "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
             "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
             "baseline_to_harness_changed_paths": {
@@ -192,11 +193,11 @@
             "model_latency_seconds"
           ],
           "properties": {
-            "primary_prompt_tokens": { "type": "integer", "minimum": 0 },
-            "primary_completion_tokens": { "type": "integer", "minimum": 0 },
-            "recovery_prompt_tokens": { "type": "integer", "minimum": 0 },
-            "recovery_completion_tokens": { "type": "integer", "minimum": 0 },
-            "total_tokens": { "type": "integer", "minimum": 0 },
+            "primary_prompt_tokens": { "type": ["integer", "null"], "minimum": 0 },
+            "primary_completion_tokens": { "type": ["integer", "null"], "minimum": 0 },
+            "recovery_prompt_tokens": { "type": ["integer", "null"], "minimum": 0 },
+            "recovery_completion_tokens": { "type": ["integer", "null"], "minimum": 0 },
+            "total_tokens": { "type": ["integer", "null"], "minimum": 0 },
             "wall_latency_seconds": { "type": "number", "minimum": 0.0 },
             "model_latency_seconds": { "type": "number", "minimum": 0.0 }
           }

@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
+import shutil
 import threading
 import time
 from typing import Any, Sequence
@@ -40,6 +41,7 @@ from eval.reliability_matrix import (
 )
 from eval.runner_lock import SingleInstanceLock
 from mighty_mouse.host.adapter import (
+    AdapterRuntimeContext,
     HostAdapter,
     MCP_TOOL_CONTRACT_VERSION,
 )
@@ -60,15 +62,13 @@ from mighty_mouse.orchestrator.response_application import (
     apply_response,
 )
 from mighty_mouse.services.verifiers.run_benchmark import verify_task
+from mighty_mouse_mcp.server import _get_mcp_tool_signatures
 
 logger = logging.getLogger(__name__)
 
 ARM_ORDER_SEED_PREFIX = "m12-arm-order-v1"
 P1_TIERS = ("tier_1", "tier_5", "tier_7")
-
-DEFAULT_TOOL_SIGNATURES: dict[str, Any] = {
-    "verify": lambda workspace: None,
-}
+CANONICAL_MODEL_CONFIG_PATH = Path("configs/mighty_mouse_v1.yaml")
 
 BARE_PROMPT_TEMPLATE = """You are completing a coding task.
 
@@ -126,11 +126,18 @@ class CaptureOllamaUsage:
             if prompt_tokens is None or completion_tokens is None:
                 self.token_coverage_complete = False
 
-            p_val = int(prompt_tokens or 0)
-            c_val = int(completion_tokens or 0)
-            t_val = int(
-                total_tokens if total_tokens is not None else (p_val + c_val)
+            p_val = int(prompt_tokens) if prompt_tokens is not None else None
+            c_val = (
+                int(completion_tokens)
+                if completion_tokens is not None
+                else None
             )
+            if total_tokens is not None:
+                t_val = int(total_tokens)
+            elif p_val is not None and c_val is not None:
+                t_val = p_val + c_val
+            else:
+                t_val = None
 
             event = {
                 "call_index": self.generation_calls,
@@ -166,26 +173,46 @@ class CaptureOllamaUsage:
         def wrapped_generate(
             client_self: Any, sys_instr: str, user_prompt: str
         ) -> str:
-            res = capture._original_generate(
-                client_self, sys_instr, user_prompt
-            )
-            meta = getattr(client_self, "last_metadata", {})
-            usage = meta.get("usage", {})
-            cfg = getattr(client_self, "config", {})
-            capture.record_generation(
-                phase=capture.active_phase,
-                model=getattr(client_self, "model_name", "unknown"),
-                provider="ollama",
-                temperature=cfg.get("temperature", 0.2),
-                max_tokens=cfg.get("max_tokens", 4000),
-                prompt_tokens=usage.get("prompt_tokens"),
-                completion_tokens=usage.get("completion_tokens"),
-                total_tokens=usage.get("total_tokens"),
-                latency_seconds=float(meta.get("latency_seconds", 0.0)),
-                thread_id=threading.get_ident(),
-                thread_name=threading.current_thread().name,
-            )
-            return res
+            t0 = time.monotonic()
+            try:
+                res = capture._original_generate(
+                    client_self, sys_instr, user_prompt
+                )
+                dt = time.monotonic() - t0
+                meta = getattr(client_self, "last_metadata", {})
+                usage = meta.get("usage", {})
+                cfg = getattr(client_self, "config", {})
+                capture.record_generation(
+                    phase=capture.active_phase,
+                    model=getattr(client_self, "model_name", "unknown"),
+                    provider="ollama",
+                    temperature=cfg.get("temperature", 0.2),
+                    max_tokens=cfg.get("max_tokens", 4000),
+                    prompt_tokens=usage.get("prompt_tokens"),
+                    completion_tokens=usage.get("completion_tokens"),
+                    total_tokens=usage.get("total_tokens"),
+                    latency_seconds=float(meta.get("latency_seconds", dt)),
+                    thread_id=threading.get_ident(),
+                    thread_name=threading.current_thread().name,
+                )
+                return res
+            except Exception:
+                dt = time.monotonic() - t0
+                cfg = getattr(client_self, "config", {})
+                capture.record_generation(
+                    phase=capture.active_phase,
+                    model=getattr(client_self, "model_name", "unknown"),
+                    provider="ollama",
+                    temperature=cfg.get("temperature", 0.2),
+                    max_tokens=cfg.get("max_tokens", 4000),
+                    prompt_tokens=None,
+                    completion_tokens=None,
+                    total_tokens=None,
+                    latency_seconds=dt,
+                    thread_id=threading.get_ident(),
+                    thread_name=threading.current_thread().name,
+                )
+                raise
 
         OllamaClient.generate_content = wrapped_generate
         return self
@@ -400,52 +427,73 @@ def classify_failure(
     return "test_failure"
 
 
-def setup_trial_workspace(
+def prepare_fresh_trial_workspace(
     workspace: Path,
-    task_config: dict[str, Any],
-    ollama_model: str,
-    ollama_host: str,
-    model_digest: str,
-    tool_signatures: dict[str, Any],
-    arm_name: str,
-) -> tuple[Path, Path]:
-    """Create isolated workspace, task file, p_cfg, and adapter config."""
-    workspace.mkdir(parents=True, exist_ok=True)
+    isolation_workspace: Path | None = None,
+) -> None:
+    """Enforce provably fresh, isolated, empty trial workspaces."""
+    if workspace.exists():
+        shutil.rmtree(workspace)
+    workspace.mkdir(parents=True, exist_ok=False)
 
-    task_file = workspace / "task.json"
-    task_file.write_text(json.dumps(task_config, indent=2), encoding="utf-8")
+    if isolation_workspace is not None:
+        if isolation_workspace.exists():
+            shutil.rmtree(isolation_workspace)
+        isolation_workspace.mkdir(parents=True, exist_ok=False)
 
-    p_cfg_path = workspace / "model_config.yaml"
-    p_cfg_content = (
-        f"model: {ollama_model}\n"
-        f"provider: ollama\n"
-        f"ollama_host: {ollama_host}\n"
-        f"temperature: 0.2\n"
-        f"max_tokens: 4000\n"
-        f"prompt_segments: []\n"
-        f"system_prompt_path: ''\n"
+
+def resolve_canonical_adapter_context(
+    repo_root: Path = Path("."),
+    expected_model: str = DEFAULT_MODEL,
+    expected_digest: str | None = None,
+    tool_signatures: dict[str, Any] | None = None,
+) -> AdapterRuntimeContext:
+    """Resolve and validate canonical repository adapter context."""
+    sigs = (
+        tool_signatures
+        if tool_signatures is not None
+        else _get_mcp_tool_signatures()
     )
-    p_cfg_path.write_text(p_cfg_content, encoding="utf-8")
+    state_dir = repo_root / ".mighty-mouse"
+    cfg_file = state_dir / "mcp-adapter.json"
+    if not cfg_file.is_file():
+        raise RuntimeError(
+            f"Canonical MCP adapter configuration missing at {cfg_file}. "
+            "Fail closed before generation."
+        )
 
-    state_dir = workspace / ".mighty-mouse"
-    state_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        ctx = HostAdapter.resolve_adapter_context(
+            workspace=str(repo_root),
+            state_dir=str(state_dir),
+            tool_signatures=sigs,
+            contract_version=MCP_TOOL_CONTRACT_VERSION,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Canonical adapter context resolution failed: {exc}"
+        ) from exc
 
-    adapter_config = HostAdapter.build_adapter_config(
-        repository="JOHNNYMACONNY/mighty-mouse",
-        model_digest=model_digest,
-        model_class="local-small",
-        effective_context_limit=8192,
-        runtime_kind="cline",
-        runtime_version="3.54.0",
-        ollama_model=ollama_model if arm_name != "control_once" else None,
-        tool_signatures=tool_signatures,
-        contract_version=MCP_TOOL_CONTRACT_VERSION,
-    )
-    (state_dir / "mcp-adapter.json").write_text(
-        json.dumps(adapter_config, indent=2), encoding="utf-8"
-    )
-
-    return task_file, p_cfg_path
+    if ctx.model_source != "ollama":
+        raise ValueError(
+            f"Canonical adapter model_source must be 'ollama', "
+            f"got '{ctx.model_source}'"
+        )
+    if ctx.ollama_model != expected_model:
+        raise ValueError(
+            f"Canonical adapter ollama_model must be '{expected_model}', "
+            f"got '{ctx.ollama_model}'"
+        )
+    if (
+        expected_digest
+        and ctx.model_identity.artifact_digest != expected_digest
+    ):
+        raise ValueError(
+            f"Canonical adapter model digest "
+            f"'{ctx.model_identity.artifact_digest}' does not match "
+            f"expected digest '{expected_digest}'"
+        )
+    return ctx
 
 
 def execute_trial_unit(
@@ -464,10 +512,15 @@ def execute_trial_unit(
     provenance_info: dict[str, Any] | None = None,
     timeout_sec: int = 120,
     usage_capture: CaptureOllamaUsage | None = None,
+    repo_root: Path = Path("."),
 ) -> dict[str, Any]:
     """Execute a single trial unit across one of the five arms."""
     target_harness = harness_sha or resolve_harness_sha()
-    sigs = tool_signatures or DEFAULT_TOOL_SIGNATURES
+    sigs = (
+        tool_signatures
+        if tool_signatures is not None
+        else _get_mcp_tool_signatures()
+    )
     arm = plan_unit["arm"]
     if arm not in ARMS:
         raise ValueError(f"Unknown arm '{arm}' in plan unit")
@@ -482,6 +535,17 @@ def execute_trial_unit(
     task_sha256 = compute_sha256_bytes(task_bytes)
     task_config = json.loads(task_bytes.decode("utf-8"))
 
+    # Baseline-to-harness delta check as an execution gate
+    delta_ok, changed_or_unapproved = verify_baseline_harness_delta(
+        base_sha, target_harness
+    )
+    if not delta_ok:
+        raise RuntimeError(
+            "Baseline-to-harness delta check failed closed before trial "
+            f"execution. Unapproved paths: {changed_or_unapproved}"
+        )
+    changed_paths = changed_or_unapproved
+
     server_info = provenance_info or check_ollama_provenance(
         ollama_host, ollama_model
     )
@@ -491,29 +555,30 @@ def execute_trial_unit(
     trial_workspace = workspace_root / trial_id
     iso_workspace = workspace_root / f"{trial_id}_verify"
 
-    task_file, p_cfg_file = setup_trial_workspace(
+    # Enforce fresh, empty application workspace
+    prepare_fresh_trial_workspace(
         trial_workspace,
-        task_config,
-        ollama_model,
-        ollama_host,
-        model_digest,
-        sigs,
-        arm,
+        iso_workspace if arm in ("mm_swarm", "mm_swarm_recovery") else None,
     )
-    if arm in ("mm_swarm", "mm_swarm_recovery"):
-        iso_workspace.mkdir(parents=True, exist_ok=True)
+
+    canonical_config_path = CANONICAL_MODEL_CONFIG_PATH
+    canonical_state_dir = repo_root / ".mighty-mouse"
+
+    resolved_ctx: AdapterRuntimeContext | None = None
+    if arm != "control_once":
+        exp_digest = (
+            model_digest
+            if model_digest != ("sha256:" + "0" * 64)
+            else None
+        )
+        resolved_ctx = resolve_canonical_adapter_context(
+            repo_root=repo_root,
+            expected_model=ollama_model,
+            expected_digest=exp_digest,
+            tool_signatures=sigs,
+        )
 
     adapter = HostAdapter()
-    profile, tool_contract_digest, prompt_template_digest = (
-        HostAdapter.build_execution_profile(
-            runtime_kind="cline",
-            runtime_version="3.54.0",
-            effective_context_limit=8192,
-            tool_signatures=sigs,
-            contract_version=MCP_TOOL_CONTRACT_VERSION,
-        )
-    )
-
     primary_exception: Exception | None = None
     first_verif: dict[str, Any] | None = None
     terminal_verif: dict[str, Any] | None = None
@@ -535,6 +600,7 @@ def execute_trial_unit(
 
         # 1. Primary Execution
         if arm == "control_once":
+            t0 = time.monotonic()
             try:
                 prompt = build_bare_prompt(task_config)
                 raw_response, meta = request_control_generation(
@@ -546,7 +612,9 @@ def execute_trial_unit(
                     prompt_tokens=meta.get("prompt_tokens"),
                     completion_tokens=meta.get("completion_tokens"),
                     total_tokens=meta.get("total_tokens"),
-                    latency_seconds=float(meta.get("latency_seconds", 0.0)),
+                    latency_seconds=float(
+                        meta.get("latency_seconds", time.monotonic() - t0)
+                    ),
                 )
                 apply_response(
                     ResponseApplicationRequest(
@@ -558,13 +626,22 @@ def execute_trial_unit(
                 )
             except Exception as exc:
                 primary_exception = exc
+                active_capture.record_generation(
+                    phase="primary",
+                    model=ollama_model,
+                    prompt_tokens=None,
+                    completion_tokens=None,
+                    total_tokens=None,
+                    latency_seconds=time.monotonic() - t0,
+                )
 
         elif arm in ("mm_single", "mm_single_recovery"):
             try:
                 adapter.solve(
                     workspace=str(trial_workspace),
-                    p_cfg_path=str(p_cfg_file),
-                    task_input=str(task_file),
+                    p_cfg_path=str(canonical_config_path.resolve()),
+                    task_input=str(task_json_path.resolve()),
+                    state_dir=str(canonical_state_dir.resolve()),
                     tool_signatures=sigs,
                 )
             except Exception as exc:
@@ -576,6 +653,7 @@ def execute_trial_unit(
                     workspace=str(trial_workspace),
                     task_input=json.dumps(task_config),
                     verification_workspace=str(iso_workspace),
+                    state_dir=str(canonical_state_dir.resolve()),
                     concurrency=SWARM_CONCURRENCY,
                     tool_signatures=sigs,
                     task_config=task_config,
@@ -585,31 +663,59 @@ def execute_trial_unit(
                 primary_exception = exc
 
         # 2. Authoritative First Verification
-        if primary_exception is None:
+        verifier_completed = False
+        verifier_exception: Exception | None = None
+        if trial_workspace.is_dir():
             try:
                 first_verif = verify_task(
                     task_config, workspace=str(trial_workspace)
                 )
+                verifier_completed = True
             except Exception as exc:
+                verifier_exception = exc
                 first_verif = {
                     "status": "fail",
                     "reason": f"Verifier crash: {exc}",
                 }
 
-        first_passed = (
-            first_verif is not None and first_verif.get("status") == "success"
-        )
-        first_failure_cat = (
-            None if first_passed
-            else classify_failure(first_verif, exception=primary_exception)
-        )
+        if verifier_exception is not None:
+            first_passed = False
+            first_failure_cat = "verifier_error"
+        elif primary_exception is not None and not verifier_completed:
+            first_passed = False
+            first_failure_cat = classify_failure(
+                first_verif, exception=primary_exception
+            )
+        elif (
+            first_verif is not None
+            and first_verif.get("status") == "success"
+        ):
+            first_passed = True
+            first_failure_cat = None
+        else:
+            first_passed = False
+            first_failure_cat = classify_failure(
+                first_verif, exception=primary_exception
+            )
 
         terminal_passed = first_passed
         terminal_verif = first_verif
         terminal_failure_cat = first_failure_cat
 
-        # 3. Recovery Handling (only for eligible arms on primary failure)
-        if arm_def.recovery_enabled and not first_passed:
+        # 3. Recovery Handling
+        # Recovery is permitted ONLY if:
+        # - arm has recovery_enabled
+        # - primary execution completed without uncaught primary exception
+        # - verifier ran and completed without crashing
+        # - first verification explicitly returned failure
+        if (
+            arm_def.recovery_enabled
+            and not first_passed
+            and primary_exception is None
+            and verifier_completed
+            and verifier_exception is None
+        ):
+            assert resolved_ctx is not None
             expected_files = tuple(task_config.get("expected_files", []))
             recovery_action = HostHookAction(
                 kind="file_write",
@@ -624,10 +730,6 @@ def execute_trial_unit(
                 action=recovery_action,
                 source="m12_reliability_matrix",
             )
-            resolved_ctx = adapter.resolve_adapter_context(
-                workspace=str(trial_workspace),
-                tool_signatures=sigs,
-            )
             resolved_event = ResolvedHostHookEvent(
                 event=recovery_event,
                 runtime_context=resolved_ctx,
@@ -635,9 +737,8 @@ def execute_trial_unit(
             verif_summary = HookVerificationSummary(
                 occurred=True,
                 passed=False,
-                summary=(
-                    first_verif.get("reason", "Primary verification failed")
-                    if first_verif else "Primary execution failed"
+                summary=first_verif.get(
+                    "reason", "Primary verification failed"
                 ),
             )
             decision = evaluate_recovery_gate(
@@ -655,8 +756,8 @@ def execute_trial_unit(
                 rec_request = RecoveryExecutionRequest(
                     resolved_event=resolved_event,
                     decision=decision,
-                    p_cfg_path=str(p_cfg_file),
-                    task_input_path=str(task_file),
+                    p_cfg_path=str(canonical_config_path.resolve()),
+                    task_input_path=str(task_json_path.resolve()),
                 )
                 attempt = execute_recovery_attempt(
                     rec_request,
@@ -696,25 +797,30 @@ def execute_trial_unit(
     primary_events = [e for e in events if e.get("phase") == "primary"]
     recovery_events = [e for e in events if e.get("phase") == "recovery"]
 
-    p_prompt_tok = sum(e["prompt_tokens"] for e in primary_events)
-    p_comp_tok = sum(e["completion_tokens"] for e in primary_events)
-    r_prompt_tok = sum(e["prompt_tokens"] for e in recovery_events)
-    r_comp_tok = sum(e["completion_tokens"] for e in recovery_events)
-    tot_tok = p_prompt_tok + p_comp_tok + r_prompt_tok + r_comp_tok
+    def _sum_tokens(ev_list: list[dict[str, Any]], field: str) -> int | None:
+        vals = [e[field] for e in ev_list]
+        if any(v is None for v in vals):
+            return None
+        return sum(vals)
+
+    p_prompt_tok = _sum_tokens(primary_events, "prompt_tokens")
+    p_comp_tok = _sum_tokens(primary_events, "completion_tokens")
+    r_prompt_tok = _sum_tokens(recovery_events, "prompt_tokens")
+    r_comp_tok = _sum_tokens(recovery_events, "completion_tokens")
+
+    if (
+        p_prompt_tok is not None
+        and p_comp_tok is not None
+        and r_prompt_tok is not None
+        and r_comp_tok is not None
+    ):
+        tot_tok: int | None = (
+            p_prompt_tok + p_comp_tok + r_prompt_tok + r_comp_tok
+        )
+    else:
+        tot_tok = None
+
     model_lat = round(sum(e["latency_seconds"] for e in events), 4)
-
-    prompt_sha = (
-        compute_sha256_bytes(BARE_PROMPT_TEMPLATE.encode("utf-8"))
-        if arm == "control_once"
-        else prompt_template_digest
-    )
-
-    p_cfg_hash = compute_sha256_file(p_cfg_file)
-
-    delta_ok, changed_or_unapproved = verify_baseline_harness_delta(
-        base_sha, target_harness
-    )
-    changed_paths = changed_or_unapproved if delta_ok else []
 
     trace_data = {
         "trial_id": trial_id,
@@ -743,6 +849,52 @@ def execute_trial_unit(
         "trial_order_index", plan_unit.get("order_index", 0)
     )
 
+    if arm == "control_once":
+        prov_record: dict[str, Any] = {
+            "provider": "ollama",
+            "ollama_version": str(server_info.get("version", "unknown")),
+            "model": ollama_model,
+            "model_digest": model_digest,
+            "agent_config_sha256": None,
+            "prompt_template_sha256": compute_sha256_bytes(
+                BARE_PROMPT_TEMPLATE.encode("utf-8")
+            ),
+            "execution_profile_id": None,
+            "tool_contract_digest": None,
+            "runtime_version": None,
+            "runtime_kind": None,
+            "experiment_base_sha": base_sha,
+            "harness_sha": target_harness,
+            "baseline_to_harness_changed_paths": changed_paths,
+        }
+    else:
+        assert resolved_ctx is not None
+        prov_record = {
+            "provider": "ollama",
+            "ollama_version": str(server_info.get("version", "unknown")),
+            "model": resolved_ctx.ollama_model or ollama_model,
+            "model_digest": resolved_ctx.model_identity.artifact_digest,
+            "agent_config_sha256": compute_sha256_file(canonical_config_path),
+            "prompt_template_sha256": (
+                resolved_ctx.execution_profile.prompt_template_digest
+            ),
+            "execution_profile_id": (
+                resolved_ctx.execution_profile.profile_id
+            ),
+            "tool_contract_digest": (
+                resolved_ctx.execution_profile.tool_contract_digest
+            ),
+            "runtime_version": (
+                resolved_ctx.execution_profile.runtime_version
+            ),
+            "runtime_kind": (
+                resolved_ctx.execution_profile.runtime_kind
+            ),
+            "experiment_base_sha": base_sha,
+            "harness_sha": target_harness,
+            "baseline_to_harness_changed_paths": changed_paths,
+        }
+
     trial_record: dict[str, Any] = {
         "identity": {
             "schema_version": SCHEMA_VERSION,
@@ -761,32 +913,13 @@ def execute_trial_unit(
             "task_file": task_file_name,
             "task_sha256": task_sha256,
         },
-        "provenance": {
-            "provider": "ollama",
-            "ollama_version": server_info.get("version", "unknown"),
-            "model": ollama_model,
-            "model_digest": model_digest,
-            "agent_config_sha256": p_cfg_hash,
-            "prompt_template_sha256": prompt_sha,
-            "execution_profile_id": (
-                "bare_baseline" if arm == "control_once"
-                else profile.profile_id
-            ),
-            "tool_contract_digest": (
-                "sha256:" + "0" * 64 if arm == "control_once"
-                else tool_contract_digest
-            ),
-            "runtime_version": "3.54.0",
-            "experiment_base_sha": base_sha,
-            "harness_sha": target_harness,
-            "baseline_to_harness_changed_paths": changed_paths,
-        },
+        "provenance": prov_record,
         "execution": {
             "swarm_concurrency": (
                 SWARM_CONCURRENCY if "swarm" in arm else 1
             ),
-            "internal_attempts": 1,
-            "generation_calls": len(events),
+            "internal_attempts": len(primary_events),
+            "generation_calls": active_capture.generation_calls,
             "recovery_enabled": arm_def.recovery_enabled,
             "recovery_attempt_limit": MAX_RECOVERY_ATTEMPTS,
             "recovery_attempted": recovery_attempted,
@@ -819,10 +952,19 @@ def execute_trial_unit(
                 server_info.get("available", False)
                 and model_digest not in ("unknown", "", None)
             ),
-            "token_coverage_complete": active_capture.token_coverage_complete,
-            "verifier_completed": terminal_verif is not None,
+            "token_coverage_complete": (
+                active_capture.token_coverage_complete
+                and (tot_tok is not None)
+            ),
+            "verifier_completed": verifier_completed,
             "infrastructure_error": (
-                None if primary_exception is None else str(primary_exception)
+                str(verifier_exception)
+                if verifier_exception is not None
+                else (
+                    str(primary_exception)
+                    if primary_exception is not None
+                    else None
+                )
             ),
             "trace_artifact_relpath": trace_relpath,
             "trace_artifact_sha256": trace_sha256,
@@ -835,8 +977,8 @@ def execute_trial_unit(
 
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
-        rec_file = output_dir / f"{trial_id}.json"
-        rec_file.write_text(
+        record_file = output_dir / f"{trial_id}.json"
+        record_file.write_text(
             json.dumps(trial_record, indent=2), encoding="utf-8"
         )
 
@@ -856,20 +998,89 @@ def execute_matrix_plan(
     lock_path: Path | None = None,
     dry_run: bool = False,
     tool_signatures: dict[str, Any] | None = None,
+    skip_preflight: bool = False,
+    repo_root: Path = Path("."),
 ) -> dict[str, Any]:
     """Execute all units in an execution plan under SingleInstanceLock."""
+    from eval.reliability_matrix import run_preflight
+
+    target_base = plan.get("experiment_base_sha", plan.get("base_sha", EXPERIMENT_BASE_SHA))
+    target_harness = plan.get("harness_sha") or resolve_harness_sha()
+    asserted_harness = resolve_harness_sha()
+
+    if target_base != EXPERIMENT_BASE_SHA:
+        raise ValueError(
+            f"Execution plan experiment_base_sha '{target_base}' does not match "
+            f"asserted base '{EXPERIMENT_BASE_SHA}'"
+        )
+    if plan.get("harness_sha") and plan["harness_sha"] != asserted_harness:
+        raise ValueError(
+            f"Execution plan harness_sha '{plan['harness_sha']}' does not match "
+            f"asserted harness '{asserted_harness}'"
+        )
+
+    delta_ok, changed_or_unapproved = verify_baseline_harness_delta(
+        target_base, target_harness
+    )
+    if not delta_ok:
+        raise RuntimeError(
+            f"Baseline-to-harness delta check failed closed before generation. "
+            f"Unapproved paths changed: {changed_or_unapproved}"
+        )
+    changed_paths = changed_or_unapproved
+
     lock = SingleInstanceLock(lock_path) if lock_path else SingleInstanceLock()
     with lock:
         output_dir.mkdir(parents=True, exist_ok=True)
+        if not skip_preflight:
+            preflight_report = run_preflight(
+                experiment_id=plan["experiment_id"],
+                base_sha=target_base,
+                harness_sha=target_harness,
+                output_dir=output_dir,
+                contract_path=contract_path,
+                config_path=config_path,
+                tasks_dir=tasks_dir,
+                ollama_host=ollama_host,
+                ollama_model=ollama_model,
+                required_tiers=plan.get("tiers", list(P1_TIERS)),
+                lock_instance=lock,
+            )
+            if not preflight_report.get("preflight_passed"):
+                reasons = preflight_report.get("blocking_reasons", [])
+                raise RuntimeError(
+                    f"Scoped preflight failed before execution: {reasons}"
+                )
+
+        if dry_run:
+            # dry_run=True guarantees ZERO execution and ZERO generation
+            summary = {
+                "schema_version": SCHEMA_VERSION,
+                "experiment_id": plan["experiment_id"],
+                "experiment_base_sha": target_base,
+                "base_sha": target_base,
+                "harness_sha": target_harness,
+                "baseline_to_harness_changed_paths": changed_paths,
+                "trial_count": 0,
+                "arms": list({unit["arm"] for unit in plan.get("trial_units", [])}),
+                "metrics": {
+                    "arms": {},
+                    "total_passed": 0,
+                    "total_tokens": None,
+                },
+                "dry_run": True,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            validate_payload_against_schema(
+                summary, "run_summary", contract_path
+            )
+            summary_file = output_dir / "run_summary.json"
+            summary_file.write_text(
+                json.dumps(summary, indent=2), encoding="utf-8"
+            )
+            return summary
+
         provenance = check_ollama_provenance(ollama_host, ollama_model)
-
-        target_base = plan.get("experiment_base_sha", plan["base_sha"])
-        target_harness = plan.get("harness_sha") or resolve_harness_sha()
-        delta_ok, changed_or_unapproved = verify_baseline_harness_delta(
-            target_base, target_harness
-        )
-        changed_paths = changed_or_unapproved if delta_ok else []
-
         trial_records: list[dict[str, Any]] = []
         for unit in plan.get("trial_units", []):
             rec = execute_trial_unit(
@@ -885,6 +1096,7 @@ def execute_matrix_plan(
                 ollama_model=ollama_model,
                 tool_signatures=tool_signatures,
                 provenance_info=provenance,
+                repo_root=repo_root,
             )
             trial_records.append(rec)
 
@@ -896,6 +1108,12 @@ def execute_matrix_plan(
             arm_counts[arm_name]["total"] += 1
             if rec["verification"]["terminal_passed"]:
                 arm_counts[arm_name]["passed"] += 1
+
+        all_tokens = [r["cost"]["total_tokens"] for r in trial_records]
+        if any(t is None for t in all_tokens):
+            run_total_tokens: int | None = None
+        else:
+            run_total_tokens = sum(all_tokens)  # type: ignore[arg-type]
 
         summary = {
             "schema_version": SCHEMA_VERSION,
@@ -912,11 +1130,9 @@ def execute_matrix_plan(
                     1 for r in trial_records
                     if r["verification"]["terminal_passed"]
                 ),
-                "total_tokens": sum(
-                    r["cost"]["total_tokens"] for r in trial_records
-                ),
+                "total_tokens": run_total_tokens,
             },
-            "dry_run": dry_run,
+            "dry_run": False,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -928,3 +1144,4 @@ def execute_matrix_plan(
             json.dumps(summary, indent=2), encoding="utf-8"
         )
         return summary
+

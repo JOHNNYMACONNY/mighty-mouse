@@ -16,7 +16,6 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 import threading
 from typing import Any, Sequence
 import urllib.error
@@ -378,8 +377,10 @@ def verify_runtime_context_readiness(
     model_digest: str,
     model: str = DEFAULT_MODEL,
     workspace: Path | None = None,
+    state_dir: Path | None = None,
+    tool_signatures: dict[str, Any] | None = None,
 ) -> tuple[bool, str | None]:
-    """Zero-generation readiness check using resolve_adapter_context."""
+    """Zero-generation readiness check on canonical adapter context."""
     try:
         from mighty_mouse.host.adapter import (
             HostAdapter,
@@ -387,30 +388,38 @@ def verify_runtime_context_readiness(
         )
         from mighty_mouse_mcp.server import _get_mcp_tool_signatures
 
-        sigs = _get_mcp_tool_signatures()
-        temp_ws = workspace or Path(tempfile.mkdtemp(prefix="mm_readiness_"))
-        state_dir = temp_ws / ".mighty-mouse"
-        state_dir.mkdir(parents=True, exist_ok=True)
-        cfg = HostAdapter.build_adapter_config(
-            repository="JOHNNYMACONNY/mighty-mouse",
-            model_digest=model_digest,
-            model_class="local-small",
-            effective_context_limit=8192,
-            runtime_kind="cline",
-            runtime_version="3.54.0",
-            ollama_model=model,
-            tool_signatures=sigs,
-            contract_version=MCP_TOOL_CONTRACT_VERSION,
+        sigs = (
+            tool_signatures
+            if tool_signatures is not None
+            else _get_mcp_tool_signatures()
         )
-        (state_dir / "mcp-adapter.json").write_text(
-            json.dumps(cfg, indent=2), encoding="utf-8"
-        )
+        target_ws = workspace or Path(".")
+        target_state = state_dir or (target_ws / ".mighty-mouse")
+        cfg_file = target_state / "mcp-adapter.json"
+        if not cfg_file.is_file():
+            return (
+                False,
+                f"Canonical adapter identity config missing: {cfg_file}",
+            )
+
         ctx = HostAdapter.resolve_adapter_context(
-            str(temp_ws),
-            str(state_dir),
+            str(target_ws),
+            str(target_state),
             tool_signatures=sigs,
             contract_version=MCP_TOOL_CONTRACT_VERSION,
         )
+        if ctx.model_source != "ollama":
+            return (
+                False,
+                f"Canonical adapter model_source must be 'ollama', "
+                f"got '{ctx.model_source}'",
+            )
+        if ctx.ollama_model != model:
+            return (
+                False,
+                f"Canonical adapter ollama_model must be '{model}', "
+                f"got '{ctx.ollama_model}'",
+            )
         if ctx.model_identity.artifact_digest != model_digest:
             return False, (
                 f"Digest mismatch: {ctx.model_identity.artifact_digest} "
@@ -515,12 +524,12 @@ def run_preflight(
     lock_path: Path | None = None,
     check_git_tracking: bool = True,
     required_tiers: Sequence[str] | None = None,
+    lock_instance: SingleInstanceLock | None = None,
 ) -> dict[str, Any]:
     """Execute zero-generation dry-run checks under SingleInstanceLock."""
     out_path = output_dir or Path(f"eval/results/m12/{experiment_id}")
-    lock = SingleInstanceLock(lock_path) if lock_path else SingleInstanceLock()
 
-    with lock:
+    def _execute_checks() -> dict[str, Any]:
         target_harness = harness_sha or resolve_harness_sha()
         target_base = base_sha or EXPERIMENT_BASE_SHA
 
@@ -668,6 +677,13 @@ def run_preflight(
         report_file.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
         return report
+
+    if lock_instance is not None:
+        return _execute_checks()
+
+    lock = SingleInstanceLock(lock_path) if lock_path else SingleInstanceLock()
+    with lock:
+        return _execute_checks()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

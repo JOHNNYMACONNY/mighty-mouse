@@ -14,6 +14,7 @@ from eval.reliability_matrix import (
     EXPERIMENT_BASE_SHA,
     SCHEMA_VERSION,
     SWARM_CONCURRENCY,
+    resolve_harness_sha,
     run_preflight,
     validate_payload_against_schema,
     verify_baseline_harness_delta,
@@ -402,18 +403,29 @@ def mock_trial_environment(tmp_path: Path):
         json.dumps(task_003), encoding="utf-8"
     )
 
+    canonical_digest = (
+        "sha256:4c27e0f5b5adf02a"
+        "c956c7322bd2ee7636fe3f45a8512c9aba5385242cb6e09a"
+    )
+    adapter_path = Path(".mighty-mouse") / "mcp-adapter.json"
+    if adapter_path.is_file():
+        cfg = json.loads(adapter_path.read_text(encoding="utf-8"))
+        test_digest = cfg.get("model_digest", canonical_digest)
+    else:
+        test_digest = canonical_digest
+
     prov_info = {
         "host": "http://localhost:11434",
         "available": True,
         "version": "0.33.2",
         "model": "gemma4:e4b",
-        "model_digest": "sha256:" + "d" * 64,
+        "model_digest": test_digest,
     }
 
     with patch.object(
         HostAdapter,
         "resolve_ollama_model_digest",
-        return_value="sha256:" + "d" * 64,
+        return_value=test_digest,
     ):
         yield ws_root, out_dir, tasks_dir, prov_info
 
@@ -763,12 +775,13 @@ def test_classify_failure_categories() -> None:
 def test_execute_matrix_plan_and_run_summary(mock_trial_environment) -> None:
     """Execute complete mini plan and verify run_summary.json schema."""
     ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
+    harness_sha = resolve_harness_sha()
     mini_plan = {
         "schema_version": SCHEMA_VERSION,
         "experiment_id": "test-mini-run",
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
         "base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": EXPERIMENT_BASE_SHA,
+        "harness_sha": harness_sha,
         "replicates": 1,
         "tiers": ["tier_1"],
         "trial_units": [
@@ -782,7 +795,7 @@ def test_execute_matrix_plan_and_run_summary(mock_trial_environment) -> None:
                 "arm": "control_once",
                 "replicate": 1,
                 "experiment_base_sha": EXPERIMENT_BASE_SHA,
-                "harness_sha": EXPERIMENT_BASE_SHA,
+                "harness_sha": harness_sha,
             }
         ],
         "arm_order_seed": ARM_ORDER_SEED_PREFIX,
@@ -812,6 +825,9 @@ def test_execute_matrix_plan_and_run_summary(mock_trial_environment) -> None:
     ), patch(
         "eval.reliability_matrix_execution.check_ollama_provenance",
         return_value=prov_info,
+    ), patch(
+        "eval.reliability_matrix.run_preflight",
+        return_value={"preflight_passed": True, "blocking_reasons": []},
     ):
         summary = execute_matrix_plan(
             mini_plan,
@@ -982,3 +998,386 @@ def test_trace_artifact_written_and_hashed(mock_trial_environment) -> None:
         == "traces/trial_trace_test.json"
     )
     assert record["validity"]["trace_artifact_sha256"] == expected_sha
+
+
+def test_fresh_workspace_purges_stale_files(mock_trial_environment) -> None:
+    """Trial execution purges stale files from pre-existing workspaces and starts empty."""
+    from eval.reliability_matrix_execution import prepare_fresh_trial_workspace
+
+    ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
+    trial_id = "trial_fresh_ws_test"
+    target_ws = ws_root / trial_id
+    target_ws.mkdir(parents=True, exist_ok=True)
+    stale_file = target_ws / "stale_output.py"
+    stale_file.write_text("# stale code from previous run", encoding="utf-8")
+
+    prepare_fresh_trial_workspace(target_ws)
+    assert target_ws.is_dir()
+    assert not stale_file.exists()
+    assert list(target_ws.iterdir()) == []
+
+    # Verify execute_trial_unit also cleans pre-existing workspace
+    stale_file.write_text("# new stale content", encoding="utf-8")
+    assert stale_file.is_file()
+
+    plan_unit = {
+        "order_index": 0,
+        "trial_order_index": 0,
+        "trial_id": trial_id,
+        "tier": "tier_1",
+        "task_id": "task_003",
+        "task_file": "task_003_legacy_link_circuitbreaker.json",
+        "arm": "control_once",
+        "replicate": 1,
+        "experiment_base_sha": EXPERIMENT_BASE_SHA,
+        "harness_sha": resolve_harness_sha(),
+    }
+
+    mock_resp = "```python:legacy_link.py\npass\n```"
+    mock_meta = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "latency_seconds": 0.1}
+    pass_verif = {"status": "success", "scope": "PASS", "adherence": "PASS"}
+
+    with patch(
+        "eval.reliability_matrix_execution.request_control_generation",
+        return_value=(mock_resp, mock_meta),
+    ), patch(
+        "eval.reliability_matrix_execution.verify_task",
+        return_value=pass_verif,
+    ):
+        record = execute_trial_unit(
+            plan_unit,
+            experiment_id="test-fresh-run",
+            workspace_root=ws_root,
+            tasks_dir=tasks_dir,
+            output_dir=out_dir,
+            provenance_info=prov_info,
+        )
+
+    assert record["verification"]["terminal_passed"] is True
+    assert not stale_file.exists()
+    # Workspace should not have harness artifacts like task.json or model_config.yaml
+    assert not (target_ws / "task.json").exists()
+    assert not (target_ws / "model_config.yaml").exists()
+    assert not (target_ws / ".mighty-mouse").exists()
+    assert (target_ws / "legacy_link.py").exists()
+
+
+def test_canonical_adapter_provenance_and_truthful_control(mock_trial_environment) -> None:
+    """Control has null agent/tool fields; MM arms have real resolved context values."""
+    ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
+    harness_sha = resolve_harness_sha()
+
+    # 1. Test control_once truthful provenance
+    plan_unit_control = {
+        "order_index": 0,
+        "trial_order_index": 0,
+        "trial_id": "trial_ctrl_prov",
+        "tier": "tier_1",
+        "task_id": "task_003",
+        "task_file": "task_003_legacy_link_circuitbreaker.json",
+        "arm": "control_once",
+        "replicate": 1,
+        "experiment_base_sha": EXPERIMENT_BASE_SHA,
+        "harness_sha": harness_sha,
+    }
+
+    mock_resp = "```python:legacy_link.py\npass\n```"
+    mock_meta = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15, "latency_seconds": 0.1}
+    pass_verif = {"status": "success", "scope": "PASS", "adherence": "PASS"}
+
+    with patch(
+        "eval.reliability_matrix_execution.request_control_generation",
+        return_value=(mock_resp, mock_meta),
+    ), patch(
+        "eval.reliability_matrix_execution.verify_task",
+        return_value=pass_verif,
+    ):
+        ctrl_rec = execute_trial_unit(
+            plan_unit_control,
+            experiment_id="test-prov-run",
+            workspace_root=ws_root,
+            tasks_dir=tasks_dir,
+            output_dir=out_dir,
+            provenance_info=prov_info,
+        )
+
+    validate_payload_against_schema(ctrl_rec, "trial_record")
+    ctrl_prov = ctrl_rec["provenance"]
+    assert ctrl_prov["execution_profile_id"] is None
+    assert ctrl_prov["tool_contract_digest"] is None
+    assert ctrl_prov["runtime_version"] is None
+    assert ctrl_prov["runtime_kind"] is None
+    assert ctrl_prov["agent_config_sha256"] is None
+
+    # 2. Test MM arm real provenance
+    plan_unit_mm = {
+        "order_index": 1,
+        "trial_order_index": 1,
+        "trial_id": "trial_mm_prov",
+        "tier": "tier_1",
+        "task_id": "task_003",
+        "task_file": "task_003_legacy_link_circuitbreaker.json",
+        "arm": "mm_single",
+        "replicate": 1,
+        "experiment_base_sha": EXPERIMENT_BASE_SHA,
+        "harness_sha": harness_sha,
+    }
+
+    with patch.object(
+        HostAdapter, "solve", return_value=None
+    ), patch(
+        "eval.reliability_matrix_execution.verify_task",
+        return_value=pass_verif,
+    ):
+        mm_rec = execute_trial_unit(
+            plan_unit_mm,
+            experiment_id="test-prov-run",
+            workspace_root=ws_root,
+            tasks_dir=tasks_dir,
+            output_dir=out_dir,
+            provenance_info=prov_info,
+        )
+
+    validate_payload_against_schema(mm_rec, "trial_record")
+    mm_prov = mm_rec["provenance"]
+    assert mm_prov["execution_profile_id"] is not None
+    assert mm_prov["tool_contract_digest"] is not None
+    assert mm_prov["runtime_kind"] == "antigravity"
+    assert mm_prov["runtime_version"] == "1.0.0"
+    assert mm_prov["agent_config_sha256"] is not None
+
+
+def test_fail_closed_on_unapproved_harness_delta(mock_trial_environment) -> None:
+    """Execution halts before trial execution if delta outside allowed paths is detected."""
+    ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
+    plan_unit = {
+        "order_index": 0,
+        "trial_order_index": 0,
+        "trial_id": "trial_delta_fail",
+        "tier": "tier_1",
+        "task_id": "task_003",
+        "task_file": "task_003_legacy_link_circuitbreaker.json",
+        "arm": "control_once",
+        "replicate": 1,
+        "experiment_base_sha": EXPERIMENT_BASE_SHA,
+        "harness_sha": resolve_harness_sha(),
+    }
+
+    with patch(
+        "eval.reliability_matrix_execution.verify_baseline_harness_delta",
+        return_value=(False, ["eval/unapproved_file.py"]),
+    ):
+        with pytest.raises(RuntimeError, match="Baseline-to-harness delta check failed closed"):
+            execute_trial_unit(
+                plan_unit,
+                experiment_id="test-delta-fail",
+                workspace_root=ws_root,
+                tasks_dir=tasks_dir,
+                output_dir=out_dir,
+                provenance_info=prov_info,
+            )
+
+
+def test_true_zero_generation_dry_run(mock_trial_environment) -> None:
+    """dry_run=True guarantees zero execution and zero generation calls."""
+    ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
+    harness_sha = resolve_harness_sha()
+    mini_plan = {
+        "schema_version": SCHEMA_VERSION,
+        "experiment_id": "test-dry-run",
+        "experiment_base_sha": EXPERIMENT_BASE_SHA,
+        "base_sha": EXPERIMENT_BASE_SHA,
+        "harness_sha": harness_sha,
+        "replicates": 1,
+        "tiers": ["tier_1"],
+        "trial_units": [
+            {
+                "order_index": 0,
+                "trial_order_index": 0,
+                "trial_id": "dry_trial_01",
+                "tier": "tier_1",
+                "task_id": "task_003",
+                "task_file": "task_003_legacy_link_circuitbreaker.json",
+                "arm": "control_once",
+                "replicate": 1,
+                "experiment_base_sha": EXPERIMENT_BASE_SHA,
+                "harness_sha": harness_sha,
+            }
+        ],
+        "arm_order_seed": ARM_ORDER_SEED_PREFIX,
+        "timestamp": "2026-09-02T20:00:00Z",
+    }
+
+    def poison_generation(*args, **kwargs):
+        raise AssertionError("Generation was invoked during dry_run=True!")
+
+    with patch(
+        "eval.reliability_matrix_execution.request_control_generation",
+        side_effect=poison_generation,
+    ), patch.object(
+        OllamaClient, "generate_content", side_effect=poison_generation
+    ), patch(
+        "eval.reliability_matrix.run_preflight",
+        return_value={"preflight_passed": True, "blocking_reasons": []},
+    ):
+        summary = execute_matrix_plan(
+            mini_plan,
+            workspace_root=ws_root,
+            output_dir=out_dir,
+            tasks_dir=tasks_dir,
+            lock_path=ws_root / "lock.file",
+            dry_run=True,
+        )
+
+    validate_payload_against_schema(summary, "run_summary")
+    assert summary["dry_run"] is True
+    assert summary["trial_count"] == 0
+    assert summary["metrics"]["total_passed"] == 0
+    assert summary["metrics"]["total_tokens"] is None
+
+
+def test_scoped_preflight_gate_stops_execution(mock_trial_environment) -> None:
+    """execute_matrix_plan aborts before executing trials if scoped preflight fails."""
+    ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
+    harness_sha = resolve_harness_sha()
+    mini_plan = {
+        "schema_version": SCHEMA_VERSION,
+        "experiment_id": "test-preflight-fail",
+        "experiment_base_sha": EXPERIMENT_BASE_SHA,
+        "base_sha": EXPERIMENT_BASE_SHA,
+        "harness_sha": harness_sha,
+        "replicates": 1,
+        "tiers": ["tier_1"],
+        "trial_units": [
+            {
+                "order_index": 0,
+                "trial_order_index": 0,
+                "trial_id": "fail_trial_01",
+                "tier": "tier_1",
+                "task_id": "task_003",
+                "task_file": "task_003_legacy_link_circuitbreaker.json",
+                "arm": "control_once",
+                "replicate": 1,
+                "experiment_base_sha": EXPERIMENT_BASE_SHA,
+                "harness_sha": harness_sha,
+            }
+        ],
+        "arm_order_seed": ARM_ORDER_SEED_PREFIX,
+        "timestamp": "2026-09-02T20:00:00Z",
+    }
+
+    with patch(
+        "eval.reliability_matrix.run_preflight",
+        return_value={
+            "preflight_passed": False,
+            "blocking_reasons": ["Worktree dirty", "Ollama unreachable"],
+        },
+    ):
+        with pytest.raises(RuntimeError, match="Scoped preflight failed before execution"):
+            execute_matrix_plan(
+                mini_plan,
+                workspace_root=ws_root,
+                output_dir=out_dir,
+                tasks_dir=tasks_dir,
+                lock_path=ws_root / "lock.file",
+            )
+
+
+def test_failed_generation_attempt_accounting(mock_trial_environment) -> None:
+    """A model request that raises is still recorded as an attempted generation."""
+    capture = CaptureOllamaUsage()
+    with capture:
+        def mock_gen_fail(self, sys, user):
+            raise RuntimeError("Model connection failed")
+        capture._original_generate = mock_gen_fail
+        client = OllamaClient({"model": "gemma4:e4b"})
+        with pytest.raises(RuntimeError, match="Model connection failed"):
+            client.generate_content("sys", "user")
+
+    assert capture.generation_calls == 1
+    assert capture.token_coverage_complete is False
+    assert len(capture.events) == 1
+    failed_ev = capture.events[0]
+    assert failed_ev["prompt_tokens"] is None
+    assert failed_ev["completion_tokens"] is None
+    assert failed_ev["total_tokens"] is None
+
+    # Raw control failure in execute_trial_unit
+    ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
+    plan_unit = {
+        "order_index": 0,
+        "trial_order_index": 0,
+        "trial_id": "trial_gen_exc",
+        "tier": "tier_1",
+        "task_id": "task_003",
+        "task_file": "task_003_legacy_link_circuitbreaker.json",
+        "arm": "control_once",
+        "replicate": 1,
+        "experiment_base_sha": EXPERIMENT_BASE_SHA,
+        "harness_sha": resolve_harness_sha(),
+    }
+
+    with patch(
+        "eval.reliability_matrix_execution.request_control_generation",
+        side_effect=RuntimeError("Ollama HTTP 500 error"),
+    ), patch(
+        "eval.reliability_matrix_execution.verify_task",
+        return_value={"status": "fail", "reason": "No files found"},
+    ):
+        rec = execute_trial_unit(
+            plan_unit,
+            experiment_id="test-gen-exc",
+            workspace_root=ws_root,
+            tasks_dir=tasks_dir,
+            output_dir=out_dir,
+            provenance_info=prov_info,
+        )
+
+    validate_payload_against_schema(rec, "trial_record")
+    assert rec["execution"]["generation_calls"] == 1
+    assert rec["execution"]["internal_attempts"] == 1
+    assert rec["cost"]["primary_prompt_tokens"] is None
+    assert rec["cost"]["total_tokens"] is None
+    assert rec["validity"]["token_coverage_complete"] is False
+    assert "Ollama HTTP 500" in str(rec["validity"]["infrastructure_error"])
+
+
+def test_authoritative_first_verification_verifier_crash_and_no_recovery(mock_trial_environment) -> None:
+    """Verifier crash classifies as verifier_error and does not trigger recovery."""
+    ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
+    plan_unit = {
+        "order_index": 0,
+        "trial_order_index": 0,
+        "trial_id": "trial_verifier_crash",
+        "tier": "tier_1",
+        "task_id": "task_003",
+        "task_file": "task_003_legacy_link_circuitbreaker.json",
+        "arm": "mm_single_recovery",
+        "replicate": 1,
+        "experiment_base_sha": EXPERIMENT_BASE_SHA,
+        "harness_sha": resolve_harness_sha(),
+    }
+
+    with patch.object(
+        HostAdapter, "solve", return_value=None
+    ), patch(
+        "eval.reliability_matrix_execution.verify_task",
+        side_effect=OSError("Disk I/O error during verification"),
+    ):
+        rec = execute_trial_unit(
+            plan_unit,
+            experiment_id="test-verif-crash",
+            workspace_root=ws_root,
+            tasks_dir=tasks_dir,
+            output_dir=out_dir,
+            provenance_info=prov_info,
+        )
+
+    validate_payload_against_schema(rec, "trial_record")
+    assert rec["verification"]["first_passed"] is False
+    assert rec["verification"]["first_failure_category"] == "verifier_error"
+    assert rec["verification"]["recovery_eligible"] is False
+    assert rec["execution"]["recovery_attempted"] is False
+    assert rec["validity"]["verifier_completed"] is False
+    assert "Disk I/O error" in str(rec["validity"]["infrastructure_error"])
+

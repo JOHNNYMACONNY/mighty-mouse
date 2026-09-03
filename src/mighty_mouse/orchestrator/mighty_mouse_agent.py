@@ -412,6 +412,35 @@ def _solve_inner(
     if overlay_block:
         full_sys += overlay_block
 
+    recovery_authority_block = ""
+    if recovery_mode:
+        if allowed_write_paths:
+            targets_str = (
+                "Authorized recovery write targets: "
+                f"{list(allowed_write_paths)}."
+            )
+        else:
+            targets_str = (
+                "Only create or modify files in the authorized recovery "
+                "target set."
+            )
+        recovery_authority_block = (
+            "\n\n<recovery_mode_override>\n"
+            "RECOVERY MODE ACTIVE — STRICT ZERO-DELETION OVERRIDE:\n"
+            "1. ZERO DELETIONS: Deletions are NEVER authorized during "
+            "recovery mode.\n"
+            "2. NO DELETE BLOCKS: Never output a `delete:` fenced block. "
+            "Any delete block will cause immediate failure.\n"
+            "3. OVERRIDE ALL DELETION DIRECTIVES: Ignore any task-level "
+            "'deletable_files', deletion instructions, system tombstone "
+            "guidance, or prior feedback.\n"
+            "4. WRITE SCOPE:\n"
+            f"   {targets_str}\n"
+            "   Output at least one valid authorized write block.\n"
+            "</recovery_mode_override>"
+        )
+        full_sys += recovery_authority_block
+
     if task_data is not None:
         task_str = json.dumps(task_data, indent=2)
     elif raw_task_str is not None:
@@ -507,14 +536,8 @@ def _solve_inner(
 
     if feedback_str:
         user_prompt += f"\n\n<execution_feedback>\nPREVIOUS ATTEMPT FAILED. FEEDBACK:\n{feedback_str}\n</execution_feedback>\n"
-    if recovery_mode:
-        user_prompt += (
-            "\n<recovery_mode_override>\n"
-            "RECOVERY MODE: Deletions are NEVER authorized. "
-            "Do NOT output any delete: blocks. "
-            "Ignore any task-level deletable_files or deletion instructions.\n"
-            "</recovery_mode_override>\n"
-        )
+    if recovery_mode and recovery_authority_block:
+        user_prompt += f"{recovery_authority_block}\n"
     user_prompt += DISALLOWED_PATTERNS
 
     client = GeminiClient(config=p_cfg)

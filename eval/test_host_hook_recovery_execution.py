@@ -727,9 +727,18 @@ def test_recovery_prompt_contains_zero_deletion_override_and_write_targets(
         assert attempt.attempted is True
         assert attempt.completed is True
         assert mock_gen.call_count == 1
-        _, user_prompt = mock_gen.call_args[0]
+        sys_prompt, user_prompt = mock_gen.call_args[0]
 
-        # 1. Recovery mode override assertions
+        # 1. System prompt recovery mode override assertions
+        assert "<recovery_mode_override>" in sys_prompt
+        assert "RECOVERY MODE" in sys_prompt
+        assert (
+            "Deletions are NEVER authorized" in sys_prompt or
+            "deletions are never authorized" in sys_prompt.lower()
+        )
+        assert "src/main.py" in sys_prompt
+
+        # 2. User prompt recovery mode override assertions
         assert "RECOVERY MODE" in user_prompt
         assert (
             "Deletions are NEVER authorized" in user_prompt or
@@ -750,13 +759,96 @@ def test_recovery_prompt_contains_zero_deletion_override_and_write_targets(
             not in user_prompt
         )
 
-        # 2. Feedback ordering: verifier feedback cannot supersede
+        # 3. Feedback ordering: verifier feedback cannot supersede
         # zero-deletion override in recovery
         feedback_idx = user_prompt.find("<execution_feedback>")
         assert feedback_idx != -1
         override_idx = user_prompt.find("<recovery_mode_override>")
         assert override_idx != -1
         assert override_idx > feedback_idx
+
+
+def test_recovery_system_prompt_overrides_conflicting_segment_deletion(
+    tmp_path: Path,
+) -> None:
+    """Recovery system prompt supersedes deletion directives in segments."""
+    segment_file = tmp_path / "legacy_cleanup_segment.txt"
+    segment_file.write_text(
+        "Clean up obsolete files by emitting delete:path tombstones.",
+        encoding="utf-8",
+    )
+    cfg_file = tmp_path / "model_config.yaml"
+    cfg_file.write_text(
+        yaml.safe_dump(
+            {
+                "model": "test-model",
+                "temperature": 0.0,
+                "provider": "sim",
+                "allow_simulation": True,
+                "prompt_segments": ["legacy_cleanup_segment.txt"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    task_file = tmp_path / "task.json"
+    task_file.write_text(
+        json.dumps({
+            "id": "task-with-deletable",
+            "expected_files": ["src/main.py"],
+            "deletable_files": ["old.py"],
+        }),
+        encoding="utf-8",
+    )
+
+    resolved = _make_resolved_event(
+        workspace=str(tmp_path), target_paths=("src/main.py",)
+    )
+    decision = HookRecoveryDecision(
+        eligible=True,
+        gate_reason="eligible",
+        summary="eligible",
+        execution_mode="agent",
+    )
+    request = RecoveryExecutionRequest(
+        resolved_event=resolved,
+        decision=decision,
+        p_cfg_path=str(cfg_file),
+        task_input_path=str(task_file),
+    )
+
+    with patch(
+        "mighty_mouse.orchestrator.gemini_client."
+        "GeminiClient.generate_content",
+        return_value="```python:src/main.py\n# ok\n```",
+    ) as mock_gen:
+        attempt = execute_recovery_attempt(
+            request, feedback_str="Previous attempt crashed"
+        )
+        assert attempt.attempted is True
+        assert attempt.completed is True
+        assert mock_gen.call_count == 1
+        sys_prompt, user_prompt = mock_gen.call_args[0]
+
+        # 1. System prompt contains conflicting segment text
+        seg_idx = sys_prompt.find(
+            "Clean up obsolete files by emitting delete:path tombstones."
+        )
+        assert seg_idx != -1
+
+        # 2. System prompt contains recovery zero-deletion override
+        sys_override_idx = sys_prompt.find("<recovery_mode_override>")
+        assert sys_override_idx != -1
+        # System override appears AFTER the conflicting segment
+        assert seg_idx < sys_override_idx
+        assert "RECOVERY MODE" in sys_prompt
+        assert "src/main.py" in sys_prompt
+
+        # 3. User prompt also contains shared recovery override after feedback
+        fb_idx = user_prompt.find("<execution_feedback>")
+        assert fb_idx != -1
+        user_override_idx = user_prompt.find("<recovery_mode_override>")
+        assert user_override_idx != -1
+        assert fb_idx < user_override_idx
 
 
 def test_ordinary_mode_preserves_task_authorized_deletions(

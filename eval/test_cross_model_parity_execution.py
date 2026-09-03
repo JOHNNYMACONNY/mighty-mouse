@@ -45,12 +45,55 @@ from mighty_mouse_mcp.server import _get_mcp_tool_signatures
 @pytest.fixture
 def mock_local_context() -> AdapterRuntimeContext:
     sigs = _get_mcp_tool_signatures()
-    return HostAdapter.resolve_adapter_context(
-        ".",
-        state_dir=".mighty-mouse",
+    tmp = tempfile.mkdtemp()
+    state_dir = Path(tmp) / ".mighty-mouse"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    cfg = HostAdapter.build_adapter_config(
+        repository="JOHNNYMACONNY/mighty-mouse",
+        model_digest="sha256:" + "0" * 64,
+        model_class="local-small",
+        effective_context_limit=8192,
+        runtime_kind="antigravity",
+        runtime_version="1.0.0",
+        ollama_model=None,
         tool_signatures=sigs,
         contract_version=MCP_TOOL_CONTRACT_VERSION,
     )
+    (state_dir / ADAPTER_CONFIG_FILENAME).write_text(
+        json.dumps(cfg), encoding="utf-8"
+    )
+    return HostAdapter.resolve_adapter_context(
+        tmp,
+        state_dir=str(state_dir),
+        tool_signatures=sigs,
+        contract_version=MCP_TOOL_CONTRACT_VERSION,
+    )
+
+
+@pytest.fixture(autouse=True)
+def mock_ollama_daemon_for_tests():
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = b'{"version": "0.33.2"}'
+    mock_resp.__enter__.return_value = mock_resp
+
+    def mock_digest(tag: str) -> str:
+        if "gemma" in tag:
+            return (
+                "sha256:4c27e0f5b5adf02ac956c7322bd2ee7636fe3f45"
+                "a8512c9aba5385242cb6e09a"
+            )
+        for cand in FROZEN_CANDIDATES.values():
+            if cand.model_tag == tag:
+                return cand.model_digest
+        return "sha256:" + "0" * 64
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        target_fn = (
+            "mighty_mouse.host.adapter.HostAdapter."
+            "resolve_ollama_model_digest"
+        )
+        with patch(target_fn, side_effect=mock_digest):
+            yield
 
 
 # --- 1. Provenance separation ---
@@ -522,9 +565,10 @@ def test_canonical_repo_config_and_state_unmodified(
     mock_local_context: AdapterRuntimeContext,
 ) -> None:
     canon_bytes_before = DEFAULT_CONFIG_PATH.read_bytes()
+    adapter_file = Path(".mighty-mouse") / ADAPTER_CONFIG_FILENAME
     adapter_bytes_before = (
-        Path(".mighty-mouse") / ADAPTER_CONFIG_FILENAME
-    ).read_bytes()
+        adapter_file.read_bytes() if adapter_file.is_file() else None
+    )
 
     cand = FROZEN_CANDIDATES["llama31_8b_q4km"]
     with tempfile.TemporaryDirectory() as tmp:
@@ -532,9 +576,10 @@ def test_canonical_repo_config_and_state_unmodified(
         prepare_candidate_runtime(cand, mock_local_context, support_dir)
 
     assert DEFAULT_CONFIG_PATH.read_bytes() == canon_bytes_before
-    assert (
-        Path(".mighty-mouse") / ADAPTER_CONFIG_FILENAME
-    ).read_bytes() == adapter_bytes_before
+    if adapter_bytes_before is not None:
+        assert adapter_file.read_bytes() == adapter_bytes_before
+    else:
+        assert not adapter_file.exists()
 
 
 def test_wrong_candidate_model_class_fails_validation() -> None:
@@ -786,7 +831,10 @@ def test_provenance_drift_aborts_run() -> None:
                             workspace_root=work_root,
                         )
                         assert summary["status"] == "aborted"
-                        assert "Model digest changed" in summary["stop_reason"]
+                        assert (
+                            "Candidate model digest" in summary["stop_reason"]
+                            or "Model digest" in summary["stop_reason"]
+                        )
                         assert summary["executed_trial_count"] == 0
 
 

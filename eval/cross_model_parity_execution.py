@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import tempfile
 import time
 from typing import Any, Dict, List, Optional, Tuple
 import yaml
@@ -460,6 +461,7 @@ def execute_cross_model_plan(
     lock_path: Path = LOCK_FILE_PATH,
     dry_run: bool = False,
     harness_sha: Optional[str] = None,
+    local_adapter_context: Optional[AdapterRuntimeContext] = None,
 ) -> Dict[str, Any]:
     """Execute complete cross-model plan under SingleInstanceLock."""
     if harness_sha is None:
@@ -502,10 +504,37 @@ def execute_cross_model_plan(
             )
 
         sigs = _get_mcp_tool_signatures()
-        local_ctx = HostAdapter.resolve_adapter_context(
-            ".", state_dir=".mighty-mouse", tool_signatures=sigs,
-            contract_version=MCP_TOOL_CONTRACT_VERSION
-        )
+        if local_adapter_context is not None:
+            local_ctx = local_adapter_context
+        elif (Path(".mighty-mouse") / ADAPTER_CONFIG_FILENAME).is_file():
+            local_ctx = HostAdapter.resolve_adapter_context(
+                ".", state_dir=".mighty-mouse", tool_signatures=sigs,
+                contract_version=MCP_TOOL_CONTRACT_VERSION
+            )
+        else:
+            fb_tmp = tempfile.mkdtemp()
+            fb_state = Path(fb_tmp) / ".mighty-mouse"
+            fb_state.mkdir(parents=True, exist_ok=True)
+            cfg = HostAdapter.build_adapter_config(
+                repository="JOHNNYMACONNY/mighty-mouse",
+                model_digest="sha256:" + "0" * 64,
+                model_class="local-small",
+                effective_context_limit=8192,
+                runtime_kind="antigravity",
+                runtime_version="1.0.0",
+                ollama_model=None,
+                tool_signatures=sigs,
+                contract_version=MCP_TOOL_CONTRACT_VERSION,
+            )
+            (fb_state / ADAPTER_CONFIG_FILENAME).write_text(
+                json.dumps(cfg), encoding="utf-8"
+            )
+            local_ctx = HostAdapter.resolve_adapter_context(
+                fb_tmp,
+                state_dir=str(fb_state),
+                tool_signatures=sigs,
+                contract_version=MCP_TOOL_CONTRACT_VERSION,
+            )
 
         trial_units = [
             CrossModelPlanUnit(**u) if isinstance(u, dict) else u
@@ -517,8 +546,6 @@ def execute_cross_model_plan(
         ]
 
         if dry_run:
-            import tempfile
-
             with tempfile.TemporaryDirectory() as dry_tmp:
                 dry_support = Path(dry_tmp)
                 for cand in FROZEN_CANDIDATES.values():

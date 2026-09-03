@@ -61,8 +61,8 @@ Mighty Mouse can be used as a **Python Library**, exposed as an **MCP Server**, 
 - **MCP Tools (v6)**:
   - `protocol`, `verify`, `setup_workspace`, `recording_audit`, `verify_and_record`
   - `run`: adaptive mode and policy selection for a workspace task
-  - `agent_execute`: canonical coding execution with compute scaling support via `HostAdapter.solve`
-  - `swarm_execute`: canonical multi-agent swarm execution with isolated verification and single winner application via `HostAdapter.solve_swarm`
+  - `agent_execute`: canonical coding execution with compute scaling support via `HostAdapter.solve` (recommended/default production coding topology: `MM_SINGLE_ALWAYS`)
+  - `swarm_execute`: canonical multi-agent swarm execution with isolated verification and single winner application via `HostAdapter.solve_swarm` (explicit opt-in compatibility interface; not the recommended default based on bounded Gemma 4 reliability qualification)
   - Policy controls: `policy_status`, `policy_preview`, `policy_pin`, `policy_rollback`
   - Compute scaling controls: `compute_scaling_status`, `compute_scaling_preview`, `compute_scaling_pin`
 
@@ -90,6 +90,8 @@ python -m venv .venv
 The core library and MCP transport support CPython 3.10, 3.11, 3.12, and 3.13.
 
 ## Two-Stage Execution & Agent CLI
+
+The recommended and default production coding topology is canonical single-agent execution (`HostAdapter.solve` / `agent_execute`, codified as `MM_SINGLE_ALWAYS`). Multi-agent swarm execution (`HostAdapter.solve_swarm` / `swarm_execute`) remains available as an explicit opt-in compatibility interface (`--mode swarm`), but is not the recommended default based on Milestone 12 reliability qualification. This decision is grounded in bounded local empirical evidence on `gemma4:e4b` (where single-agent execution with explicit checklist/planning artifacts demonstrated 100% reliability and distractor resistance) and is not a universal model-independent claim.
 
 Run the agent in unified mode (default), planner mode, or coder mode:
 

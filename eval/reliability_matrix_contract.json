@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Mighty Mouse Reliability Matrix Contract",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "definitions": {
     "trial_record": {
       "type": "object",
@@ -23,15 +23,21 @@
             "schema_version",
             "experiment_id",
             "trial_id",
+            "trial_order_index",
+            "experiment_base_sha",
             "base_sha",
+            "harness_sha",
             "arm",
             "replicate"
           ],
           "properties": {
-            "schema_version": { "type": "string" },
+            "schema_version": { "type": "string", "enum": ["1.1.0"] },
             "experiment_id": { "type": "string" },
             "trial_id": { "type": "string" },
+            "trial_order_index": { "type": "integer", "minimum": 0 },
+            "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
             "base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
             "arm": {
               "type": "string",
               "enum": [
@@ -73,18 +79,29 @@
             "prompt_template_sha256",
             "execution_profile_id",
             "tool_contract_digest",
-            "runtime_version"
+            "runtime_version",
+            "runtime_kind",
+            "experiment_base_sha",
+            "harness_sha",
+            "baseline_to_harness_changed_paths"
           ],
           "properties": {
             "provider": { "type": "string" },
             "ollama_version": { "type": "string" },
             "model": { "type": "string" },
             "model_digest": { "type": "string" },
-            "agent_config_sha256": { "type": "string" },
+            "agent_config_sha256": { "type": ["string", "null"] },
             "prompt_template_sha256": { "type": "string" },
-            "execution_profile_id": { "type": "string" },
-            "tool_contract_digest": { "type": "string" },
-            "runtime_version": { "type": "string" }
+            "execution_profile_id": { "type": ["string", "null"] },
+            "tool_contract_digest": { "type": ["string", "null"] },
+            "runtime_version": { "type": ["string", "null"] },
+            "runtime_kind": { "type": ["string", "null"] },
+            "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            "baseline_to_harness_changed_paths": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
           }
         },
         "execution": {
@@ -97,7 +114,8 @@
             "recovery_enabled",
             "recovery_attempt_limit",
             "recovery_attempted",
-            "recovery_completed"
+            "recovery_completed",
+            "recovery_trigger_source"
           ],
           "properties": {
             "swarm_concurrency": { "type": "integer", "minimum": 1, "maximum": 2 },
@@ -106,7 +124,11 @@
             "recovery_enabled": { "type": "boolean" },
             "recovery_attempt_limit": { "type": "integer", "minimum": 1, "maximum": 1 },
             "recovery_attempted": { "type": "boolean" },
-            "recovery_completed": { "type": "boolean" }
+            "recovery_completed": { "type": "boolean" },
+            "recovery_trigger_source": {
+              "type": "string",
+              "enum": ["none", "matrix_synthesized_post_action_v1"]
+            }
           }
         },
         "verification": {
@@ -172,11 +194,11 @@
             "model_latency_seconds"
           ],
           "properties": {
-            "primary_prompt_tokens": { "type": "integer", "minimum": 0 },
-            "primary_completion_tokens": { "type": "integer", "minimum": 0 },
-            "recovery_prompt_tokens": { "type": "integer", "minimum": 0 },
-            "recovery_completion_tokens": { "type": "integer", "minimum": 0 },
-            "total_tokens": { "type": "integer", "minimum": 0 },
+            "primary_prompt_tokens": { "type": ["integer", "null"], "minimum": 0 },
+            "primary_completion_tokens": { "type": ["integer", "null"], "minimum": 0 },
+            "recovery_prompt_tokens": { "type": ["integer", "null"], "minimum": 0 },
+            "recovery_completion_tokens": { "type": ["integer", "null"], "minimum": 0 },
+            "total_tokens": { "type": ["integer", "null"], "minimum": 0 },
             "wall_latency_seconds": { "type": "number", "minimum": 0.0 },
             "model_latency_seconds": { "type": "number", "minimum": 0.0 }
           }
@@ -187,14 +209,37 @@
           "required": [
             "provenance_complete",
             "token_coverage_complete",
+            "first_verifier_completed",
+            "terminal_verifier_completed",
             "verifier_completed",
-            "infrastructure_error"
+            "infrastructure_error",
+            "trace_artifact_relpath",
+            "trace_artifact_sha256",
+            "raw_response_artifacts"
           ],
           "properties": {
             "provenance_complete": { "type": "boolean" },
             "token_coverage_complete": { "type": "boolean" },
+            "first_verifier_completed": { "type": "boolean" },
+            "terminal_verifier_completed": { "type": "boolean" },
             "verifier_completed": { "type": "boolean" },
-            "infrastructure_error": { "type": ["string", "null"] }
+            "infrastructure_error": { "type": ["string", "null"] },
+            "trace_artifact_relpath": { "type": ["string", "null"] },
+            "trace_artifact_sha256": { "type": ["string", "null"] },
+            "raw_response_artifacts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["call_index", "phase", "relpath", "sha256"],
+                "properties": {
+                  "call_index": { "type": "integer", "minimum": 1 },
+                  "phase": { "type": "string" },
+                  "relpath": { "type": ["string", "null"] },
+                  "sha256": { "type": ["string", "null"] }
+                }
+              }
+            }
           }
         }
       }
@@ -205,7 +250,10 @@
       "required": [
         "schema_version",
         "experiment_id",
+        "experiment_base_sha",
         "base_sha",
+        "harness_sha",
+        "baseline_to_harness_changed_paths",
         "git_clean",
         "runner_lock_acquired",
         "schema_valid",
@@ -223,9 +271,15 @@
         "timestamp"
       ],
       "properties": {
-        "schema_version": { "type": "string" },
+        "schema_version": { "type": "string", "enum": ["1.1.0"] },
         "experiment_id": { "type": "string" },
+        "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
         "base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "baseline_to_harness_changed_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "git_clean": { "type": "boolean" },
         "runner_lock_acquired": { "type": "boolean" },
         "schema_valid": { "type": "boolean" },
@@ -271,6 +325,10 @@
               "sample_task": { "type": ["string", "null"] }
             }
           }
+        },
+        "required_tiers": {
+          "type": ["array", "null"],
+          "items": { "type": "string" }
         },
         "arms": {
           "type": "array",
@@ -327,24 +385,150 @@
       "required": [
         "schema_version",
         "experiment_id",
+        "experiment_base_sha",
         "base_sha",
+        "harness_sha",
+        "baseline_to_harness_changed_paths",
         "trial_count",
         "arms",
         "metrics",
+        "status",
+        "stop_reason",
         "dry_run",
         "timestamp"
       ],
       "properties": {
-        "schema_version": { "type": "string" },
+        "schema_version": { "type": "string", "enum": ["1.1.0"] },
         "experiment_id": { "type": "string" },
+        "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
         "base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "baseline_to_harness_changed_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "trial_count": { "type": "integer", "minimum": 0 },
         "arms": {
           "type": "array",
           "items": { "type": "string" }
         },
-        "metrics": { "type": "object" },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "arms",
+            "total_trials",
+            "total_analyzable",
+            "total_passed",
+            "total_infrastructure_excluded",
+            "total_tokens"
+          ],
+          "properties": {
+            "arms": {
+              "type": "object",
+              "additionalProperties": false,
+              "patternProperties": {
+                "^[a-z0-9_]+$": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "total",
+                    "analyzable",
+                    "passed",
+                    "infrastructure_excluded"
+                  ],
+                  "properties": {
+                    "total": { "type": "integer", "minimum": 0 },
+                    "analyzable": { "type": "integer", "minimum": 0 },
+                    "passed": { "type": "integer", "minimum": 0 },
+                    "infrastructure_excluded": { "type": "integer", "minimum": 0 }
+                  }
+                }
+              }
+            },
+            "total_trials": { "type": "integer", "minimum": 0 },
+            "total_analyzable": { "type": "integer", "minimum": 0 },
+            "total_passed": { "type": "integer", "minimum": 0 },
+            "total_infrastructure_excluded": { "type": "integer", "minimum": 0 },
+            "total_tokens": { "type": ["integer", "null"], "minimum": 0 }
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["completed", "aborted", "dry_run"]
+        },
+        "stop_reason": { "type": ["string", "null"] },
         "dry_run": { "type": "boolean" },
+        "timestamp": { "type": "string" }
+      }
+    },
+    "execution_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "experiment_id",
+        "experiment_base_sha",
+        "base_sha",
+        "harness_sha",
+        "replicates",
+        "tiers",
+        "trial_units",
+        "arm_order_seed",
+        "timestamp"
+      ],
+      "properties": {
+        "schema_version": { "type": "string", "enum": ["1.1.0"] },
+        "experiment_id": { "type": "string" },
+        "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "replicates": { "type": "integer", "minimum": 1 },
+        "tiers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "trial_units": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "order_index",
+              "trial_order_index",
+              "trial_id",
+              "tier",
+              "task_id",
+              "task_file",
+              "arm",
+              "replicate",
+              "experiment_base_sha",
+              "harness_sha"
+            ],
+            "properties": {
+              "order_index": { "type": "integer", "minimum": 0 },
+              "trial_order_index": { "type": "integer", "minimum": 0 },
+              "trial_id": { "type": "string" },
+              "tier": { "type": "string" },
+              "task_id": { "type": "string" },
+              "task_file": { "type": "string" },
+              "arm": {
+                "type": "string",
+                "enum": [
+                  "control_once",
+                  "mm_single",
+                  "mm_swarm",
+                  "mm_single_recovery",
+                  "mm_swarm_recovery"
+                ]
+              },
+              "replicate": { "type": "integer", "minimum": 1 },
+              "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+              "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+            }
+          }
+        },
+        "arm_order_seed": { "type": "string", "enum": ["m12-arm-order-v1"] },
         "timestamp": { "type": "string" }
       }
     }
@@ -352,6 +536,7 @@
   "oneOf": [
     { "$ref": "#/definitions/trial_record" },
     { "$ref": "#/definitions/preflight_report" },
-    { "$ref": "#/definitions/run_summary" }
+    { "$ref": "#/definitions/run_summary" },
+    { "$ref": "#/definitions/execution_plan" }
   ]
 }

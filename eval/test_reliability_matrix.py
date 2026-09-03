@@ -49,7 +49,10 @@ def test_trial_record_schema_validation() -> None:
             "schema_version": SCHEMA_VERSION,
             "experiment_id": "m12-pilot-v1",
             "trial_id": "trial-001",
+            "trial_order_index": 0,
+            "experiment_base_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
             "base_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
+            "harness_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
             "arm": "control_once",
             "replicate": 1,
         },
@@ -69,6 +72,10 @@ def test_trial_record_schema_validation() -> None:
             "execution_profile_id": "default",
             "tool_contract_digest": "d" * 64,
             "runtime_version": "0.4.0",
+            "runtime_kind": None,
+            "experiment_base_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
+            "harness_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
+            "baseline_to_harness_changed_paths": [],
         },
         "execution": {
             "swarm_concurrency": 1,
@@ -78,6 +85,7 @@ def test_trial_record_schema_validation() -> None:
             "recovery_attempt_limit": 1,
             "recovery_attempted": False,
             "recovery_completed": False,
+            "recovery_trigger_source": "none",
         },
         "verification": {
             "first_passed": True,
@@ -99,8 +107,13 @@ def test_trial_record_schema_validation() -> None:
         "validity": {
             "provenance_complete": True,
             "token_coverage_complete": True,
+            "first_verifier_completed": True,
+            "terminal_verifier_completed": True,
             "verifier_completed": True,
             "infrastructure_error": None,
+            "trace_artifact_relpath": "traces/trial-001.json",
+            "trace_artifact_sha256": "e" * 64,
+            "raw_response_artifacts": [],
         },
     }
     validate_payload_against_schema(valid_record, "trial_record")
@@ -131,7 +144,10 @@ def test_preflight_report_schema_validation() -> None:
     valid_preflight = {
         "schema_version": SCHEMA_VERSION,
         "experiment_id": "m12-test-01",
+        "experiment_base_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
         "base_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
+        "harness_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
+        "baseline_to_harness_changed_paths": [],
         "git_clean": True,
         "runner_lock_acquired": True,
         "schema_valid": True,
@@ -297,7 +313,7 @@ def test_baseline_git_tracking_blocks_untracked_tasks(
     cfg_file.write_text(json.dumps(cfg_data), encoding="utf-8")
 
     def mock_tracked(
-        _sha: str, _dir: Path, _root: Path = Path(".")
+        _sha: str, _dir: Path, *args: Any, **kwargs: Any
     ) -> set[str]:
         return {"tracked.json"}
 
@@ -604,7 +620,7 @@ def test_dirty_worktree_causes_overall_preflight_failure(
 
     monkeypatch.setattr(
         "eval.reliability_matrix.check_git_clean",
-        lambda _root=Path("."): (False, ["?? unapproved_file.py"]),
+        lambda *a, **kw: (False, ["?? unapproved_file.py"]),
     )
 
     digest_val = (
@@ -654,11 +670,11 @@ def test_clean_mocked_preflight_passes(
     )
     monkeypatch.setattr(
         "eval.reliability_matrix.check_git_clean",
-        lambda _root=Path("."): (True, []),
+        lambda *a, **kw: (True, []),
     )
     monkeypatch.setattr(
         "eval.reliability_matrix.evaluate_tier_corpus",
-        lambda cfg, tdir, sha, check: [
+        lambda *a, **kw: [
             {
                 "name": "tier_1",
                 "is_rollup": False,
@@ -671,6 +687,10 @@ def test_clean_mocked_preflight_passes(
         ],
     )
 
+    monkeypatch.setattr(
+        "eval.reliability_matrix.verify_runtime_context_readiness",
+        lambda *a, **kw: (True, None),
+    )
     report = run_preflight(
         experiment_id="test-clean-pass",
         output_dir=out_dir,

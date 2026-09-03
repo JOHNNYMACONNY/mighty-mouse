@@ -14,6 +14,7 @@ RESPONSE_PARSER_IMPLEMENTATION = (
 
 SUPPORTED_NON_AGENT_CALLERS = {
     "eval/autoresearch_harness.py": ("apply_response",),
+    "eval/reliability_matrix_execution.py": ("apply_response",),
     "eval/run_bare_baseline.py": ("apply_response",),
     # Deprecated evaluator remains executable and stays on canonical path
     # until its retirement receives a separate disposition.

@@ -27,7 +27,8 @@ from eval.runner_lock import SingleInstanceLock, SingleInstanceLockError
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
+EXPERIMENT_BASE_SHA = "06b3321b2ac0e3bb00d22484fbeb5845c138869d"
 DEFAULT_CONTRACT_PATH = Path("eval/reliability_matrix_contract.json")
 DEFAULT_CONFIG_PATH = Path("eval/evaluation_config.json")
 DEFAULT_TASKS_DIR = Path("tasks/benchmark")
@@ -35,6 +36,15 @@ DEFAULT_MODEL = "gemma4:e4b"
 DEFAULT_HOST = "http://localhost:11434"
 SWARM_CONCURRENCY = 2
 MAX_RECOVERY_ATTEMPTS = 1
+
+M12_HARNESS_ALLOWED_PATHS: frozenset[str] = frozenset({
+    "eval/reliability_matrix.py",
+    "eval/reliability_matrix_execution.py",
+    "eval/reliability_matrix_contract.json",
+    "eval/test_reliability_matrix.py",
+    "eval/test_reliability_matrix_execution.py",
+    "eval/test_non_agent_response_application_inventory.py",
+})
 
 
 @dataclass(frozen=True)
@@ -113,6 +123,50 @@ def resolve_base_sha(repo_root: Path = Path(".")) -> str:
     return res.stdout.strip()
 
 
+def resolve_harness_sha(repo_root: Path = Path(".")) -> str:
+    """Resolve exact current harness Git commit HEAD."""
+    return resolve_base_sha(repo_root)
+
+
+def verify_baseline_harness_delta(
+    base_sha: str,
+    harness_sha: str,
+    repo_root: Path = Path("."),
+) -> tuple[bool, list[str]]:
+    """Verify that delta between base and harness is strictly in M12 allowlist.
+
+    Fails closed if git diff command fails or if unapproved files are modified.
+    Returns (True, changed_paths) if all paths approved,
+    or (False, unapproved_paths) if any unapproved path is changed.
+    """
+    if base_sha == harness_sha:
+        return (True, [])
+    res = subprocess.run(
+        ["git", "diff", "--name-only", f"{base_sha}..{harness_sha}"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if res.returncode != 0:
+        err = res.stderr.strip() or f"exit code {res.returncode}"
+        raise RuntimeError(
+            f"Git diff failed between '{base_sha}' and '{harness_sha}': {err}"
+        )
+    changed: list[str] = []
+    unapproved: list[str] = []
+    for line in res.stdout.splitlines():
+        trimmed = line.strip()
+        if not trimmed:
+            continue
+        changed.append(trimmed)
+        if trimmed not in M12_HARNESS_ALLOWED_PATHS:
+            unapproved.append(trimmed)
+    if unapproved:
+        return (False, unapproved)
+    return (True, changed)
+
+
 def check_git_clean(repo_root: Path = Path(".")) -> tuple[bool, list[str]]:
     """Inspect worktree dirtiness excluding recognized user artifacts."""
     res = subprocess.run(
@@ -157,9 +211,17 @@ def get_baseline_tracked_tasks(
 
     Fails closed if git command fails.
     """
+    root_resolved = Path(repo_root).resolve()
+    if tasks_dir.is_absolute():
+        try:
+            git_path = str(tasks_dir.resolve().relative_to(root_resolved))
+        except ValueError:
+            git_path = str(tasks_dir)
+    else:
+        git_path = str(tasks_dir)
     res = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", base_sha, str(tasks_dir)],
-        cwd=repo_root,
+        ["git", "ls-tree", "-r", "--name-only", base_sha, git_path],
+        cwd=root_resolved,
         capture_output=True,
         text=True,
         check=False,
@@ -179,21 +241,34 @@ def evaluate_tier_corpus(
     tasks_dir: Path = DEFAULT_TASKS_DIR,
     base_sha: str | None = None,
     check_git_tracking: bool = True,
+    repo_root: Path = Path("."),
 ) -> list[dict[str, Any]]:
     """Dynamically audit configured tiers, disk files, and git tracking."""
-    if not config_path.is_file():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-    cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    root_resolved = Path(repo_root).resolve()
+    cfg_path = (
+        config_path
+        if config_path.is_absolute()
+        else (root_resolved / config_path)
+    )
+    if not cfg_path.is_file():
+        raise FileNotFoundError(f"Config file not found: {cfg_path}")
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     tiers_cfg = cfg.get("tiers", {})
 
-    sha = base_sha or resolve_base_sha()
+    sha = base_sha or resolve_base_sha(repo_root=root_resolved)
     tracked_tasks: set[str] | None = None
     git_lookup_error: str | None = None
     if check_git_tracking and sha:
         try:
-            tracked_tasks = get_baseline_tracked_tasks(sha, tasks_dir)
+            tracked_tasks = get_baseline_tracked_tasks(
+                sha, tasks_dir, root_resolved
+            )
         except Exception as exc:
             git_lookup_error = str(exc)
+
+    resolved_tasks_dir = (
+        tasks_dir if tasks_dir.is_absolute() else (root_resolved / tasks_dir)
+    )
 
     results: list[dict[str, Any]] = []
 
@@ -241,7 +316,7 @@ def evaluate_tier_corpus(
 
         missing = []
         for t in tasks:
-            exists_on_disk = (tasks_dir / t).is_file()
+            exists_on_disk = (resolved_tasks_dir / t).is_file()
             in_baseline = (
                 tracked_tasks is None or t in tracked_tasks
             )
@@ -282,6 +357,14 @@ def check_ollama_provenance(
     }
     base_url = host.rstrip("/")
     try:
+        from mighty_mouse.host.adapter import HostAdapter
+        server_info["model_digest"] = HostAdapter.resolve_ollama_model_digest(
+            model
+        )
+    except Exception:
+        pass
+
+    try:
         req_ver = urllib.request.Request(f"{base_url}/api/version")
         with urllib.request.urlopen(req_ver, timeout=timeout_sec) as resp:
             ver_data = json.loads(resp.read().decode("utf-8"))
@@ -296,9 +379,10 @@ def check_ollama_provenance(
                 None,
             )
             if selected:
-                server_info["model_digest"] = selected.get(
-                    "digest", "unknown"
-                )
+                if server_info["model_digest"] == "unknown":
+                    server_info["model_digest"] = selected.get(
+                        "digest", "unknown"
+                    )
                 server_info["available"] = True
             else:
                 server_info["error"] = (
@@ -308,6 +392,71 @@ def check_ollama_provenance(
         server_info["error"] = f"{type(exc).__name__}: {exc}"
 
     return server_info
+
+
+def verify_runtime_context_readiness(
+    model_digest: str,
+    model: str = DEFAULT_MODEL,
+    workspace: Path | None = None,
+    state_dir: Path | None = None,
+    tool_signatures: dict[str, Any] | None = None,
+    repo_root: Path = Path("."),
+) -> tuple[bool, str | None]:
+    """Zero-generation readiness check on canonical adapter context."""
+    try:
+        from mighty_mouse.host.adapter import (
+            HostAdapter,
+            MCP_TOOL_CONTRACT_VERSION,
+        )
+        from mighty_mouse_mcp.server import _get_mcp_tool_signatures
+
+        sigs = (
+            tool_signatures
+            if tool_signatures is not None
+            else _get_mcp_tool_signatures()
+        )
+        root_path = Path(repo_root).resolve()
+        target_ws = workspace or root_path
+        target_state = state_dir or (root_path / ".mighty-mouse")
+        canonical_model_config = root_path / "configs/mighty_mouse_v1.yaml"
+        if not canonical_model_config.is_file():
+            return (
+                False,
+                f"Canonical model config missing: {canonical_model_config}",
+            )
+        cfg_file = target_state / "mcp-adapter.json"
+        if not cfg_file.is_file():
+            return (
+                False,
+                f"Canonical adapter identity config missing: {cfg_file}",
+            )
+
+        ctx = HostAdapter.resolve_adapter_context(
+            str(target_ws),
+            str(target_state),
+            tool_signatures=sigs,
+            contract_version=MCP_TOOL_CONTRACT_VERSION,
+        )
+        if ctx.model_source != "ollama":
+            return (
+                False,
+                f"Canonical adapter model_source must be 'ollama', "
+                f"got '{ctx.model_source}'",
+            )
+        if ctx.ollama_model != model:
+            return (
+                False,
+                f"Canonical adapter ollama_model must be '{model}', "
+                f"got '{ctx.ollama_model}'",
+            )
+        if ctx.model_identity.artifact_digest != model_digest:
+            return False, (
+                f"Digest mismatch: {ctx.model_identity.artifact_digest} "
+                f"!= {model_digest}"
+            )
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
 
 
 class UsageInstrumentation:
@@ -394,6 +543,7 @@ def validate_payload_against_schema(
 def run_preflight(
     experiment_id: str = "m12-pilot-preflight",
     base_sha: str | None = None,
+    harness_sha: str | None = None,
     config_path: Path = DEFAULT_CONFIG_PATH,
     tasks_dir: Path = DEFAULT_TASKS_DIR,
     contract_path: Path = DEFAULT_CONTRACT_PATH,
@@ -402,28 +552,44 @@ def run_preflight(
     ollama_model: str = DEFAULT_MODEL,
     lock_path: Path | None = None,
     check_git_tracking: bool = True,
+    required_tiers: Sequence[str] | None = None,
+    lock_instance: SingleInstanceLock | None = None,
+    repo_root: Path = Path("."),
 ) -> dict[str, Any]:
     """Execute zero-generation dry-run checks under SingleInstanceLock."""
-    out_path = output_dir or Path(f"eval/results/m12/{experiment_id}")
-    lock = SingleInstanceLock(lock_path) if lock_path else SingleInstanceLock()
+    resolved_root = Path(repo_root).resolve()
+    out_path = output_dir or (
+        resolved_root / f"eval/results/m12/{experiment_id}"
+    )
 
-    with lock:
-        current_sha = resolve_base_sha()
-        target_sha = base_sha or current_sha
-        if base_sha and base_sha != current_sha:
-            raise ValueError(
-                f"Base SHA mismatch: requested {base_sha}, "
-                f"actual {current_sha}"
-            )
+    def _execute_checks() -> dict[str, Any]:
+        target_harness = harness_sha or resolve_harness_sha(
+            repo_root=resolved_root
+        )
+        target_base = base_sha or EXPERIMENT_BASE_SHA
 
-        is_clean, unclean_items = check_git_clean()
-        config_hash = compute_sha256_file(config_path)
+        is_clean, unclean_items = check_git_clean(resolved_root)
+        cfg_file = (
+            config_path
+            if config_path.is_absolute()
+            else (resolved_root / config_path)
+        )
+        config_hash = compute_sha256_file(cfg_file)
 
-        schema = load_contract_schema(contract_path)
+        contract_file = (
+            contract_path
+            if contract_path.is_absolute()
+            else (resolved_root / contract_path)
+        )
+        schema = load_contract_schema(contract_file)
         schema_valid = isinstance(schema, dict) and "definitions" in schema
 
         tiers = evaluate_tier_corpus(
-            config_path, tasks_dir, target_sha, check_git_tracking
+            config_path=cfg_file,
+            tasks_dir=tasks_dir,
+            base_sha=target_base,
+            check_git_tracking=check_git_tracking,
+            repo_root=resolved_root,
         )
         server_info = check_ollama_provenance(ollama_host, ollama_model)
 
@@ -457,9 +623,59 @@ def run_preflight(
                 f"Model digest for '{ollama_model}' could not be resolved"
             )
 
-        blocked_tiers = [
-            t["name"] for t in tiers if not t["is_rollup"] and t["blocked"]
-        ]
+        changed_paths: list[str] = []
+        try:
+            delta_ok, changed_or_unapproved = verify_baseline_harness_delta(
+                target_base, target_harness, repo_root=resolved_root
+            )
+            if not delta_ok:
+                blocking_reasons.append(
+                    "Unapproved delta outside M12 harness allowlist: "
+                    f"{changed_or_unapproved}"
+                )
+            else:
+                changed_paths = changed_or_unapproved
+        except Exception as exc:
+            blocking_reasons.append(f"Provenance verification error: {exc}")
+
+        if (
+            server_info.get("available", False)
+            and server_info.get("model_digest") not in ("unknown", "", None)
+        ):
+            ready_ok, ready_err = verify_runtime_context_readiness(
+                server_info["model_digest"],
+                ollama_model,
+                repo_root=resolved_root,
+            )
+            if not ready_ok:
+                blocking_reasons.append(
+                    f"Runtime context readiness check failed: {ready_err}"
+                )
+
+        if required_tiers is not None:
+            scoped_set = set(required_tiers)
+            blocked_tiers = [
+                t["name"]
+                for t in tiers
+                if (
+                    not t["is_rollup"]
+                    and t["name"] in scoped_set
+                    and t["blocked"]
+                )
+            ]
+            missing_configured_tiers = [
+                name for name in required_tiers
+                if not any(t["name"] == name for t in tiers)
+            ]
+            if missing_configured_tiers:
+                missing_str = ", ".join(missing_configured_tiers)
+                blocking_reasons.append(
+                    f"Required tiers not found in config: {missing_str}"
+                )
+        else:
+            blocked_tiers = [
+                t["name"] for t in tiers if not t["is_rollup"] and t["blocked"]
+            ]
         if blocked_tiers:
             blocking_reasons.append(
                 f"Configured tiers blocked or missing from baseline: "
@@ -476,7 +692,10 @@ def run_preflight(
         report = {
             "schema_version": SCHEMA_VERSION,
             "experiment_id": experiment_id,
-            "base_sha": target_sha,
+            "experiment_base_sha": target_base,
+            "base_sha": target_base,
+            "harness_sha": target_harness,
+            "baseline_to_harness_changed_paths": changed_paths,
             "git_clean": is_clean,
             "runner_lock_acquired": True,
             "schema_valid": schema_valid,
@@ -484,6 +703,9 @@ def run_preflight(
             "config_sha256": config_hash,
             "ollama_server": server_info,
             "tiers": tiers,
+            "required_tiers": (
+                list(required_tiers) if required_tiers is not None else None
+            ),
             "arms": arms_list,
             "output_dir": {
                 "path": str(out_path),
@@ -499,13 +721,25 @@ def run_preflight(
         }
 
         validate_payload_against_schema(
-            report, "preflight_report", contract_path
+            report, "preflight_report", contract_file
         )
 
         report_file = out_path / "preflight_report.json"
         report_file.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
         return report
+
+    if lock_instance is not None:
+        return _execute_checks()
+
+    resolved_lock_path = (
+        lock_path
+        if lock_path is not None
+        else (resolved_root / "logs/eval_runner.lock")
+    )
+    lock = SingleInstanceLock(resolved_lock_path)
+    with lock:
+        return _execute_checks()
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -527,8 +761,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--base-sha",
         type=str,
+        default=EXPERIMENT_BASE_SHA,
+        help="Assert expected experiment baseline commit SHA",
+    )
+    parser.add_argument(
+        "--harness-sha",
+        type=str,
         default=None,
-        help="Assert expected git commit SHA",
+        help="Assert expected harness commit SHA (default: current HEAD)",
+    )
+    parser.add_argument(
+        "--tiers",
+        nargs="*",
+        default=None,
+        help="Optional required tier subset (e.g. tier_1 tier_5 tier_7)",
     )
     parser.add_argument(
         "--config",
@@ -582,12 +828,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         report = run_preflight(
             experiment_id=args.experiment_id,
             base_sha=args.base_sha,
+            harness_sha=args.harness_sha,
             config_path=args.config,
             tasks_dir=args.tasks_dir,
             contract_path=args.contract,
             output_dir=args.output_dir,
             ollama_host=args.host,
             ollama_model=args.model,
+            required_tiers=args.tiers,
         )
         passed = report["preflight_passed"]
         status_word = "PASS" if passed else "BLOCKED / FAIL"
@@ -595,6 +843,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"MIGHTY MOUSE RELIABILITY MATRIX PREFLIGHT: {status_word}")
         print(f"Experiment ID:   {report['experiment_id']}")
         print(f"Base SHA:        {report['base_sha']}")
+        print(f"Harness SHA:     {report['harness_sha']}")
         print(f"Git Clean:       {report['git_clean']}")
         print("Runner Lock:     ACQUIRED (eval/runner_lock)")
         print(f"Schema Contract: VALID ({report['schema_version']})")

@@ -6,7 +6,7 @@ import copy
 import hashlib
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import yaml
 
 import jsonschema
@@ -343,28 +343,42 @@ def test_preflight_passes_without_model_generations() -> None:
             with patch(
                 "eval.cross_model_parity.check_git_clean_except_prototype"
             ):
-                import urllib.request as real_urllib
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = b'{"version": "0.33.2"}'
+                mock_resp.__enter__.return_value = mock_resp
 
-                real_urlopen = real_urllib.urlopen
-
-                def intercept_urlopen(
-                    req: Any, *args: Any, **kwargs: Any
-                ) -> Any:
+                def mock_urlopen(req: Any, *args: Any, **kwargs: Any) -> Any:
                     url = getattr(req, "full_url", str(req))
                     if "/api/generate" in url or "/api/chat" in url:
                         raise RuntimeError(
                             "Inference endpoint invoked during preflight!"
                         )
-                    return real_urlopen(req, *args, **kwargs)
+                    if "/api/version" in url:
+                        return mock_resp
+                    raise RuntimeError(f"Unexpected url: {url}")
 
-                with patch(
-                    "urllib.request.urlopen", side_effect=intercept_urlopen
-                ):
-                    report = run_preflight()
-                    assert report["status"] == "PASSED"
-                    assert report["generation_calls"] == 0
-                    assert report["mcp_tools_count"] == 15
-                    assert report["mcp_contract_version"] == "v6"
+                def mock_digest(model_tag: str) -> str:
+                    if "llama" in model_tag:
+                        return FROZEN_CANDIDATES[
+                            "llama31_8b_q4km"
+                        ].model_digest
+                    if "qwen" in model_tag:
+                        return FROZEN_CANDIDATES[
+                            "qwen25_7b_q4km"
+                        ].model_digest
+                    raise ValueError(f"Unknown model: {model_tag}")
+
+                resolve_fn = (
+                    "eval.cross_model_parity.HostAdapter."
+                    "resolve_ollama_model_digest"
+                )
+                with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+                    with patch(resolve_fn, side_effect=mock_digest):
+                        report = run_preflight()
+                        assert report["status"] == "PASSED"
+                        assert report["generation_calls"] == 0
+                        assert report["mcp_tools_count"] == 15
+                        assert report["mcp_contract_version"] == "v6"
 
 
 def test_preflight_fails_on_digest_mismatch() -> None:
@@ -376,17 +390,25 @@ def test_preflight_fails_on_digest_mismatch() -> None:
             with patch(
                 "eval.cross_model_parity.check_git_clean_except_prototype"
             ):
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = b'{"version": "0.33.2"}'
+                mock_resp.__enter__.return_value = mock_resp
+
                 resolve_fn = (
                     "eval.cross_model_parity.HostAdapter."
                     "resolve_ollama_model_digest"
                 )
-                with patch(resolve_fn, return_value="sha256:" + "f" * 64):
-                    report = run_preflight()
-                    assert report["status"] == "FAILED"
-                    assert any(
-                        "digest mismatch" in b.lower()
-                        for b in report["blocking_reasons"]
-                    )
+                with patch("urllib.request.urlopen", return_value=mock_resp):
+                    with patch(
+                        resolve_fn,
+                        return_value="sha256:" + "f" * 64,
+                    ):
+                        report = run_preflight()
+                        assert report["status"] == "FAILED"
+                        assert any(
+                            "digest mismatch" in b.lower()
+                            for b in report["blocking_reasons"]
+                        )
 
 
 def test_preflight_fails_on_missing_model() -> None:
@@ -398,23 +420,48 @@ def test_preflight_fails_on_missing_model() -> None:
             with patch(
                 "eval.cross_model_parity.check_git_clean_except_prototype"
             ):
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = b'{"version": "0.33.2"}'
+                mock_resp.__enter__.return_value = mock_resp
+
                 def fail_on_qwen(model_tag: str) -> str:
                     if "qwen" in model_tag:
                         raise RuntimeError(f"model '{model_tag}' not found")
-                    return (
-                        "sha256:667b0c1932bc6ffc593ed1d03f895bf2dc8dc6df21"
-                        "db3042284a6f4416b06a29"
-                    )
+                    return FROZEN_CANDIDATES[
+                        "llama31_8b_q4km"
+                    ].model_digest
 
                 resolve_fn = (
                     "eval.cross_model_parity.HostAdapter."
                     "resolve_ollama_model_digest"
                 )
-                with patch(resolve_fn, side_effect=fail_on_qwen):
+                with patch("urllib.request.urlopen", return_value=mock_resp):
+                    with patch(resolve_fn, side_effect=fail_on_qwen):
+                        report = run_preflight()
+                        assert report["status"] == "FAILED"
+                        assert any(
+                            "failed to validate candidate" in b.lower()
+                            for b in report["blocking_reasons"]
+                        )
+
+
+def test_preflight_fails_when_ollama_offline() -> None:
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        with patch(
+            "eval.cross_model_parity.get_current_git_sha",
+            return_value=M13_EXPERIMENT_BASE_SHA,
+        ):
+            with patch(
+                "eval.cross_model_parity.check_git_clean_except_prototype"
+            ):
+                with patch(
+                    "urllib.request.urlopen",
+                    side_effect=RuntimeError("Connection refused"),
+                ):
                     report = run_preflight()
                     assert report["status"] == "FAILED"
                     assert any(
-                        "failed to validate candidate" in b.lower()
+                        "failed to inspect ollama api" in b.lower()
                         for b in report["blocking_reasons"]
                     )
 

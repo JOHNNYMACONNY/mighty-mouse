@@ -151,18 +151,37 @@ def test_compact_cli_exposes_expired_receipt_maintenance(monkeypatch, tmp_path, 
     assert document == {"action": "compact", "compacted_receipts": 1, "interface": "signals"}
 
 
-def test_compaction_preserves_the_append_only_chain_for_retained_receipts(tmp_path):
+def test_compaction_preserves_the_append_only_chain_for_retained_receipts(
+    tmp_path,
+):
     lifecycle = SignalLifecycle(tmp_path)
     collected_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    lifecycle.collect(_signal(signal_id="signal-001"), now=collected_at)
-    lifecycle.collect(_signal(signal_id="signal-002"), now=collected_at + timedelta(days=1))
+    expired_id = lifecycle.collect(
+        _signal(signal_id="signal-001"), now=collected_at
+    )
+    retained_id = lifecycle.collect(
+        _signal(signal_id="signal-002"), now=collected_at + timedelta(days=1)
+    )
+    assert expired_id is not None
+    assert retained_id is not None
 
-    receipt_path = next(lifecycle.receipt_dir.glob("*.json"))
-    receipt_bytes = receipt_path.read_bytes()
+    expired_path = lifecycle.receipt_dir / f"{expired_id}.json"
+    retained_path = lifecycle.receipt_dir / f"{retained_id}.json"
+    assert expired_path.exists()
+    assert retained_path.exists()
+
+    retained_bytes = retained_path.read_bytes()
     lifecycle.compact(now=collected_at + timedelta(days=30))
 
-    assert lifecycle.history(now=collected_at + timedelta(days=30))["receipt_count"] == 1
-    assert receipt_path.read_bytes() == receipt_bytes
+    assert (
+        lifecycle.history(now=collected_at + timedelta(days=30))[
+            "receipt_count"
+        ]
+        == 1
+    )
+    assert not expired_path.exists()
+    assert retained_path.exists()
+    assert retained_path.read_bytes() == retained_bytes
 
 
 def test_aggregate_history_and_purge_remain_scoped_to_one_repository(tmp_path):

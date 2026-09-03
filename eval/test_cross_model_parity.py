@@ -20,6 +20,7 @@ from eval.cross_model_parity import (
     FROZEN_ANCHOR_TASKS,
     FROZEN_CANDIDATES,
     M13_ALLOWED_ARMS,
+    M13_CANONICAL_CONFIG_SHA256,
     M13_EXPERIMENT_BASE_SHA,
     M13_ORDER_SEED,
     M13_SCHEMA_VERSION,
@@ -849,3 +850,37 @@ def test_preflight_fails_on_mcp_signature_inspection_error() -> None:
                             validate_payload_against_schema(
                                 report, "preflight_report"
                             )
+
+
+def test_validate_plan_fails_closed_on_projection_exception() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        with patch(
+            "eval.cross_model_parity.project_candidate_config",
+            side_effect=RuntimeError("Syntax error in config"),
+        ):
+            report = validate_execution_plan(
+                plan, current_head=M13_EXPERIMENT_BASE_SHA
+            )
+            assert report["valid"] is False
+            assert any(
+                "projection failed" in e.lower() for e in report["errors"]
+            )
+
+
+def test_validate_plan_rejects_altered_canonical_config_sha_constant() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    plan["canonical_config_sha256"] = "0" * 64
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is False
+        assert any(
+            "canonical_config_sha256" in e.lower() for e in report["errors"]
+        )
+
+
+def test_canonical_config_file_hash_matches_frozen_constant() -> None:
+    actual = hashlib.sha256(DEFAULT_CONFIG_PATH.read_bytes()).hexdigest()
+    assert actual == M13_CANONICAL_CONFIG_SHA256

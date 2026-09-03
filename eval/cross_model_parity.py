@@ -25,6 +25,9 @@ M13_PLAN_DESIGN = "m13-cross-model-pilot-v1"
 M13_ORDER_SEED = "m13-cross-model-pilot-v1"
 M13_EFFECTIVE_CONTEXT_LIMIT = 32768
 M13_ALLOWED_ARMS = ("control_once", "mm_single")
+M13_CANONICAL_CONFIG_SHA256 = (
+    "f846fec3c052c76ab6f944c889baf7e8ed217beffaaa47ed8c5851fb82cba8f3"
+)
 
 DEFAULT_CONFIG_PATH = Path("configs/mighty_mouse_v1.yaml")
 DEFAULT_CONTRACT_PATH = Path("eval/cross_model_parity_contract.json")
@@ -291,6 +294,11 @@ def materialize_execution_plan(
     canonical_config_sha256 = hashlib.sha256(
         canonical_config_bytes
     ).hexdigest()
+    if canonical_config_sha256 != M13_CANONICAL_CONFIG_SHA256:
+        raise ValueError(
+            f"Canonical config SHA256 mismatch: expected "
+            f"{M13_CANONICAL_CONFIG_SHA256}, found {canonical_config_sha256}"
+        )
 
     projected_shas: Dict[str, str] = {}
     for cand_id, cand in FROZEN_CANDIDATES.items():
@@ -426,16 +434,23 @@ def validate_execution_plan(
             f"{DEFAULT_CONFIG_PATH}, found {plan.get('canonical_config_path')}"
         )
 
+    if plan.get("canonical_config_sha256") != M13_CANONICAL_CONFIG_SHA256:
+        errors.append(
+            f"canonical_config_sha256 mismatch: expected "
+            f"{M13_CANONICAL_CONFIG_SHA256}, "
+            f"found {plan.get('canonical_config_sha256')}"
+        )
+
     cfg_path_str = plan.get("canonical_config_path", "")
     cfg_path = Path(cfg_path_str) if cfg_path_str else DEFAULT_CONFIG_PATH
     if not cfg_path.exists():
         errors.append(f"canonical_config_path missing: {cfg_path}")
     else:
         disk_sha = hashlib.sha256(cfg_path.read_bytes()).hexdigest()
-        if plan.get("canonical_config_sha256") != disk_sha:
+        if disk_sha != M13_CANONICAL_CONFIG_SHA256:
             errors.append(
-                f"canonical_config_sha256 mismatch: plan has "
-                f"{plan.get('canonical_config_sha256')}, disk has {disk_sha}"
+                f"canonical config disk sha mismatch: expected "
+                f"{M13_CANONICAL_CONFIG_SHA256}, disk has {disk_sha}"
             )
 
     if plan.get("candidates") != FROZEN_CANDIDATES_JSON:
@@ -495,8 +510,9 @@ def validate_execution_plan(
             try:
                 _, psha = project_candidate_config(cand.model_tag, cfg_path)
                 projected_shas[cid] = psha
-            except Exception:
+            except Exception as e:
                 projected_shas[cid] = None
+                errors.append(f"Config projection failed for {cid}: {e}")
 
     for idx, u in enumerate(units):
         ord_idx = u.get("order_index")
@@ -592,7 +608,7 @@ def validate_execution_plan(
 
         if arm == "mm_single":
             exp_sha = projected_shas.get(cand_id)
-            if exp_sha and u.get("projected_config_sha256") != exp_sha:
+            if exp_sha is None or u.get("projected_config_sha256") != exp_sha:
                 errors.append(
                     f"projected_config_sha256 mismatch in unit {idx}: "
                     f"expected {exp_sha}, "

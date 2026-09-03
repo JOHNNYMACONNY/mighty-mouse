@@ -59,7 +59,7 @@
         },
         "canonical_config_sha256": {
           "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "const": "f846fec3c052c76ab6f944c889baf7e8ed217beffaaa47ed8c5851fb82cba8f3"
         },
         "candidates": {
           "type": "object"

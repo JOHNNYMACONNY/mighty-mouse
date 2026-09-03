@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import jsonschema
+import os
 from pathlib import Path
 import threading
 from unittest.mock import MagicMock, patch
@@ -13,9 +14,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from eval.reliability_matrix import (
+    DEFAULT_TASKS_DIR,
     EXPERIMENT_BASE_SHA,
     SCHEMA_VERSION,
     SWARM_CONCURRENCY,
+    compute_sha256_bytes,
     resolve_harness_sha,
     run_preflight,
     validate_payload_against_schema,
@@ -24,8 +27,10 @@ from eval.reliability_matrix import (
 import eval.run_bare_baseline as bare_baseline
 from eval.reliability_matrix_execution import (
     ARM_ORDER_SEED_PREFIX,
+    ARMS,
     BARE_PROMPT_TEMPLATE,
     CaptureOllamaUsage,
+    P1_TIERS,
     classify_failure,
     deterministic_arm_order,
     execute_matrix_plan,
@@ -1804,25 +1809,42 @@ def test_directive_1_frozen_control_prompt_byte_identity() -> None:
     """Prompt template and generated prompts match bare baseline exactly."""
     assert BARE_PROMPT_TEMPLATE == bare_baseline.PROMPT_TEMPLATE
 
-    p1_tasks = [
-        "tasks/tier_1/task_003_legacy_link_circuitbreaker.json",
-        "tasks/tier_5/task_047_stream_stack_enricher.json",
-        "tasks/tier_7/task_1415_file_proxy_retry.json",
-    ]
-    for task_rel in p1_tasks:
-        task_path = Path(task_rel)
-        if not task_path.is_file():
-            continue
+    plan = materialize_p1_plan()
+    unique_task_files: list[str] = []
+    seen: set[str] = set()
+    for u in plan["trial_units"]:
+        tf = u["task_file"]
+        if tf not in seen:
+            seen.add(tf)
+            unique_task_files.append(tf)
+
+    expected_task_ids = {"task_003", "task_047", "task_1415"}
+    checked_count = 0
+
+    for task_file in unique_task_files:
+        task_path = DEFAULT_TASKS_DIR / task_file
+        assert task_path.is_file(), f"Configured task file {task_path} missing"
         task_data = json.loads(task_path.read_text(encoding="utf-8"))
+        assert task_data["id"] in expected_task_ids
+
         bare_prompt = bare_baseline.build_prompt(task_data)
         expected = BARE_PROMPT_TEMPLATE.format(
-            task_description=task_data["task_description"],
-            files_context=bare_baseline.format_files_context(
-                task_data.get("files", {})
+            title=task_data.get("title", task_data["id"]),
+            description=task_data["description"],
+            constraints=json.dumps(
+                task_data.get("constraints", {}), sort_keys=True
             ),
+            expected_files=", ".join(task_data.get("expected_files", [])),
         )
         assert bare_prompt == expected
         assert bare_prompt.encode("utf-8") == expected.encode("utf-8")
+        assert (
+            compute_sha256_bytes(bare_prompt.encode("utf-8"))
+            == compute_sha256_bytes(expected.encode("utf-8"))
+        )
+        checked_count += 1
+
+    assert checked_count == 3
 
 
 def test_directive_2_plan_validation_cross_field_invariants() -> None:
@@ -1839,24 +1861,30 @@ def test_directive_2_plan_validation_cross_field_invariants() -> None:
     # 2) Bad harness_sha
     bad_plan = copy.deepcopy(plan)
     bad_plan["harness_sha"] = "0" * 40
-    with pytest.raises(ValueError, match="does not match current harness"):
+    with pytest.raises(ValueError, match="harness HEAD"):
         validate_execution_plan(bad_plan)
 
     # 3) Bad arm_order_seed
     bad_plan = copy.deepcopy(plan)
-    bad_plan["arm_order_seed"] = "bad-seed"
-    with pytest.raises((ValueError, jsonschema.ValidationError)):
+    bad_plan["arm_order_seed"] = "bad_seed"
+    with pytest.raises(
+        (ValueError, jsonschema.ValidationError),
+        match="arm_order_seed",
+    ):
         validate_execution_plan(bad_plan)
 
     # 4) Empty trial_units
     bad_plan = copy.deepcopy(plan)
     bad_plan["trial_units"] = []
-    with pytest.raises((ValueError, jsonschema.ValidationError)):
+    with pytest.raises(
+        (ValueError, jsonschema.ValidationError),
+        match="trial_units",
+    ):
         validate_execution_plan(bad_plan)
 
     # 5) Non-contiguous order_index
     bad_plan = copy.deepcopy(plan)
-    bad_plan["trial_units"][1]["order_index"] = 5
+    bad_plan["trial_units"][1]["order_index"] = 99
     with pytest.raises(ValueError, match="invalid order index"):
         validate_execution_plan(bad_plan)
 
@@ -1881,6 +1909,42 @@ def test_directive_2_plan_validation_cross_field_invariants() -> None:
         bad_plan["trial_units"][0]["arm"],
     )
     with pytest.raises(ValueError, match="canonical deterministic order"):
+        validate_execution_plan(bad_plan)
+
+    # 9) Unit tier does not match plan tiers
+    bad_plan = copy.deepcopy(plan)
+    bad_plan["trial_units"][0]["tier"] = "tier_5"
+    with pytest.raises(
+        (ValueError, jsonschema.ValidationError),
+        match="does not belong to plan tiers|not match plan tiers",
+    ):
+        validate_execution_plan(bad_plan)
+
+    # 10) Unit replicate exceeds plan replicates
+    bad_plan = copy.deepcopy(plan)
+    bad_plan["trial_units"][0]["replicate"] = 2
+    with pytest.raises(
+        (ValueError, jsonschema.ValidationError),
+        match="out of range|missing group",
+    ):
+        validate_execution_plan(bad_plan)
+
+    # 11) Duplicate tier in plan tiers
+    bad_plan = copy.deepcopy(plan)
+    bad_plan["tiers"] = ["tier_1", "tier_1"]
+    with pytest.raises(
+        (ValueError, jsonschema.ValidationError),
+        match="duplicates",
+    ):
+        validate_execution_plan(bad_plan)
+
+    # 12) Missing complete five-arm group
+    bad_plan = copy.deepcopy(plan)
+    bad_plan["trial_units"] = bad_plan["trial_units"][:-1]
+    with pytest.raises(
+        (ValueError, jsonschema.ValidationError),
+        match="expected 5|has 4 arms|groups",
+    ):
         validate_execution_plan(bad_plan)
 
 
@@ -2148,3 +2212,111 @@ def test_directive_10_authoritative_frozen_provenance_mismatch(
             provenance_info=prov_info,
             expected_digest="different_frozen_digest",
         )
+
+
+def test_plan_unit_tier_not_in_plan_tiers_fails_closed(
+    mock_trial_environment,
+) -> None:
+    """Plan unit tier differing from plan['tiers'] fails before any run."""
+    ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
+    plan = materialize_p1_plan(tiers=["tier_1"])
+    corrupt_plan = copy.deepcopy(plan)
+    corrupt_plan["trial_units"][0]["tier"] = "tier_5"
+
+    with pytest.raises(
+        (ValueError, jsonschema.ValidationError),
+        match="does not belong to plan tiers|not match plan tiers",
+    ):
+        execute_matrix_plan(
+            corrupt_plan,
+            workspace_root=ws_root,
+            output_dir=out_dir,
+            tasks_dir=tasks_dir,
+            dry_run=True,
+        )
+
+    # Ensure zero workspaces or artifacts were created
+    trial_ws = ws_root / corrupt_plan["trial_units"][0]["trial_id"]
+    assert not trial_ws.exists()
+    assert not (out_dir / "run_summary.json").exists()
+
+
+def test_plan_unit_replicate_exceeds_plan_replicates_fails() -> None:
+    """Plan with unit replicate outside 1..plan['replicates'] fails."""
+    plan = materialize_p1_plan(tiers=["tier_1"], replicates=1)
+    corrupt_plan = copy.deepcopy(plan)
+    corrupt_plan["trial_units"][0]["replicate"] = 2
+    with pytest.raises(
+        (ValueError, jsonschema.ValidationError),
+        match="out of range|missing group",
+    ):
+        validate_execution_plan(corrupt_plan)
+
+
+def test_plan_missing_complete_arm_group_fails() -> None:
+    """Plan missing any arm of a canonical 5-arm group fails validation."""
+    plan = materialize_p1_plan(tiers=["tier_1"], replicates=1)
+    corrupt_plan = copy.deepcopy(plan)
+    corrupt_plan["trial_units"] = corrupt_plan["trial_units"][:-1]
+    with pytest.raises(
+        (ValueError, jsonschema.ValidationError),
+        match="expected 5|has 4 arms|groups",
+    ):
+        validate_execution_plan(corrupt_plan)
+
+
+def test_plan_duplicate_tier_fails() -> None:
+    """Plan with duplicate tiers in plan['tiers'] fails validation."""
+    plan = materialize_p1_plan(tiers=["tier_1"], replicates=1)
+    corrupt_plan = copy.deepcopy(plan)
+    corrupt_plan["tiers"] = ["tier_1", "tier_1"]
+    with pytest.raises(
+        (ValueError, jsonschema.ValidationError),
+        match="duplicates",
+    ):
+        validate_execution_plan(corrupt_plan)
+
+
+def test_non_repo_cwd_explicit_repo_root_identical_p1_plan(
+    tmp_path: Path,
+) -> None:
+    """Foreign CWD with explicit repo_root materializes identical plan."""
+    repo_root = Path(".").resolve()
+    canonical_plan = materialize_p1_plan(repo_root=repo_root)
+
+    old_cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        foreign_plan = materialize_p1_plan(repo_root=repo_root)
+        validate_execution_plan(foreign_plan, repo_root=repo_root)
+    finally:
+        os.chdir(old_cwd)
+
+    assert foreign_plan["harness_sha"] == canonical_plan["harness_sha"]
+    assert foreign_plan["tiers"] == canonical_plan["tiers"]
+    assert len(foreign_plan["trial_units"]) == len(
+        canonical_plan["trial_units"]
+    )
+    for u_canon, u_foreign in zip(
+        canonical_plan["trial_units"], foreign_plan["trial_units"]
+    ):
+        assert u_canon["tier"] == u_foreign["tier"]
+        assert u_canon["task_id"] == u_foreign["task_id"]
+        assert u_canon["task_file"] == u_foreign["task_file"]
+        assert u_canon["arm"] == u_foreign["arm"]
+        assert u_canon["replicate"] == u_foreign["replicate"]
+        assert u_canon["order_index"] == u_foreign["order_index"]
+
+
+def test_canonical_p1_order_and_zero_generation_count() -> None:
+    """Canonical 15-unit P1 order unchanged; live generation count is zero."""
+    plan = materialize_p1_plan()
+    assert len(plan["trial_units"]) == 15
+    assert plan["tiers"] == list(P1_TIERS)
+    expected_tiers = ["tier_1"] * 5 + ["tier_5"] * 5 + ["tier_7"] * 5
+    actual_tiers = [u["tier"] for u in plan["trial_units"]]
+    assert actual_tiers == expected_tiers
+
+    capture = CaptureOllamaUsage()
+    assert capture.generation_calls == 0
+    assert len(ARMS) == 5

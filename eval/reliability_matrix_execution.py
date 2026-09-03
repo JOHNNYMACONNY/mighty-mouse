@@ -356,6 +356,7 @@ def materialize_p1_plan(
     output_dir: Path | None = None,
     replicates: int = 1,
     tiers: Sequence[str] = P1_TIERS,
+    repo_root: Path = Path("."),
 ) -> dict[str, Any]:
     """Deterministically materialize zero-generation P1 execution plan.
 
@@ -364,24 +365,43 @@ def materialize_p1_plan(
     deterministic_arm_order, and assembles the sequence of trial units.
     Selection always uses base_sha (defaulting to EXPERIMENT_BASE_SHA).
     """
-    if not config_path.is_file():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-    cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    resolved_root = Path(repo_root).resolve()
+    resolved_cfg = (
+        config_path
+        if config_path.is_absolute()
+        else (resolved_root / config_path)
+    )
+    if not resolved_cfg.is_file():
+        raise FileNotFoundError(f"Config file not found: {resolved_cfg}")
+    cfg = json.loads(resolved_cfg.read_text(encoding="utf-8"))
     tiers_cfg = cfg.get("tiers", {})
 
-    target_harness = harness_sha or resolve_harness_sha()
+    resolved_tasks_dir = (
+        tasks_dir
+        if tasks_dir.is_absolute()
+        else (resolved_root / tasks_dir)
+    )
+    resolved_contract = (
+        contract_path
+        if contract_path.is_absolute()
+        else (resolved_root / contract_path)
+    )
+
+    target_harness = harness_sha or resolve_harness_sha(
+        repo_root=resolved_root
+    )
     trial_units: list[dict[str, Any]] = []
     order_index = 0
 
     for tier in tiers:
         if tier not in tiers_cfg:
-            raise ValueError(f"Tier '{tier}' not configured in {config_path}")
+            raise ValueError(f"Tier '{tier}' not configured in {resolved_cfg}")
         tier_tasks = tiers_cfg[tier]
         if not isinstance(tier_tasks, list) or not tier_tasks:
             raise ValueError(f"Tier '{tier}' has invalid or empty tasks list")
 
         selected_file = select_deterministic_task(base_sha, tier, tier_tasks)
-        task_json_path = tasks_dir / selected_file
+        task_json_path = resolved_tasks_dir / selected_file
         if not task_json_path.is_file():
             raise FileNotFoundError(
                 f"Selected task file not found on disk: {task_json_path}"
@@ -421,11 +441,18 @@ def materialize_p1_plan(
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    validate_payload_against_schema(plan, "execution_plan", contract_path)
+    validate_payload_against_schema(
+        plan, "execution_plan", resolved_contract
+    )
 
     if output_dir is not None:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        plan_file = output_dir / "execution_plan.json"
+        resolved_out = (
+            output_dir
+            if output_dir.is_absolute()
+            else (resolved_root / output_dir)
+        )
+        resolved_out.mkdir(parents=True, exist_ok=True)
+        plan_file = resolved_out / "execution_plan.json"
         plan_file.write_text(json.dumps(plan, indent=2), encoding="utf-8")
 
     return plan
@@ -555,7 +582,13 @@ def validate_execution_plan(
     repo_root: Path = Path("."),
 ) -> None:
     """Strict execution plan validation and invariant attestation."""
-    validate_payload_against_schema(plan, "execution_plan", contract_path)
+    resolved_root = Path(repo_root).resolve()
+    resolved_contract = (
+        contract_path
+        if contract_path.is_absolute()
+        else (resolved_root / contract_path)
+    )
+    validate_payload_against_schema(plan, "execution_plan", resolved_contract)
 
     base_sha = plan.get("base_sha")
     exp_base_sha = plan.get("experiment_base_sha")
@@ -568,7 +601,6 @@ def validate_execution_plan(
             f"got base_sha='{base_sha}', experiment_base_sha='{exp_base_sha}'"
         )
 
-    resolved_root = Path(repo_root).resolve()
     current_harness = resolve_harness_sha(repo_root=resolved_root)
     if plan.get("harness_sha") != current_harness:
         plan_h = plan.get("harness_sha")
@@ -584,9 +616,20 @@ def validate_execution_plan(
             f"'{ARM_ORDER_SEED_PREFIX}', got '{plan_seed}'"
         )
 
-    trial_units = plan.get("trial_units")
-    if not isinstance(trial_units, list) or len(trial_units) == 0:
-        raise ValueError("Execution plan trial_units must be a non-empty list")
+    plan_tiers = plan.get("tiers")
+    if not isinstance(plan_tiers, list) or len(plan_tiers) == 0:
+        raise ValueError("Execution plan tiers must be a non-empty list")
+    if len(plan_tiers) != len(set(plan_tiers)):
+        raise ValueError(
+            f"Execution plan tiers contain duplicates: {plan_tiers}"
+        )
+
+    plan_replicates = plan.get("replicates")
+    if not isinstance(plan_replicates, int) or plan_replicates < 1:
+        raise ValueError(
+            f"Execution plan replicates must be an integer >= 1, "
+            f"got {plan_replicates}"
+        )
 
     cfg_file = (
         config_path
@@ -598,6 +641,17 @@ def validate_execution_plan(
     tiers_cfg = json.loads(cfg_file.read_text(encoding="utf-8")).get(
         "tiers", {}
     )
+
+    for pt in plan_tiers:
+        if pt not in tiers_cfg or not isinstance(tiers_cfg[pt], list):
+            raise ValueError(
+                f"Plan tier '{pt}' is not a valid non-rollup tier in "
+                f"{cfg_file}"
+            )
+
+    trial_units = plan.get("trial_units")
+    if not isinstance(trial_units, list) or len(trial_units) == 0:
+        raise ValueError("Execution plan trial_units must be a non-empty list")
 
     resolved_tasks_dir = (
         tasks_dir
@@ -637,9 +691,21 @@ def validate_execution_plan(
         seen_trial_ids.add(tid)
 
         tier = str(unit.get("tier", ""))
+        if tier not in plan_tiers:
+            raise ValueError(
+                f"Unit {i} tier '{tier}' does not belong to plan "
+                f"tiers {plan_tiers}"
+            )
+
+        replicate = int(unit.get("replicate", 0))
+        if replicate < 1 or replicate > plan_replicates:
+            raise ValueError(
+                f"Unit {i} replicate {replicate} out of range "
+                f"1..{plan_replicates}"
+            )
+
         task_id = str(unit.get("task_id", ""))
         arm = str(unit.get("arm", ""))
-        replicate = int(unit.get("replicate", 0))
         unit_tup = (tier, task_id, arm, replicate)
         if unit_tup in seen_tuples:
             raise ValueError(f"Duplicate unit tuple {unit_tup} in unit {i}")
@@ -656,10 +722,6 @@ def validate_execution_plan(
                 f"Unit {i} has unsafe task_file basename '{task_file}'"
             )
 
-        if tier not in tiers_cfg or not isinstance(tiers_cfg[tier], list):
-            raise ValueError(
-                f"Unit {i} tier '{tier}' invalid in {cfg_file}"
-            )
         if task_file not in tiers_cfg[tier]:
             raise ValueError(
                 f"Unit {i} task_file '{task_file}' not in tier '{tier}' list"
@@ -690,7 +752,39 @@ def validate_execution_plan(
         group_key = (tier, replicate)
         group_map.setdefault(group_key, []).append(unit)
 
+    unit_tiers_ordered: list[str] = []
+    seen_tiers_ordered: set[str] = set()
+    for u in trial_units:
+        ut = str(u.get("tier", ""))
+        if ut not in seen_tiers_ordered:
+            seen_tiers_ordered.add(ut)
+            unit_tiers_ordered.append(ut)
+    if unit_tiers_ordered != plan_tiers:
+        raise ValueError(
+            f"Ordered unique tiers from trial units {unit_tiers_ordered} "
+            f"do not match plan tiers {plan_tiers}"
+        )
+
+    for pt in plan_tiers:
+        for r in range(1, plan_replicates + 1):
+            key = (pt, r)
+            if key not in group_map:
+                raise ValueError(
+                    f"Execution plan missing group for tier '{pt}' "
+                    f"replicate {r}"
+                )
+    if len(group_map) != len(plan_tiers) * plan_replicates:
+        raise ValueError(
+            f"Execution plan has {len(group_map)} groups, "
+            f"expected {len(plan_tiers) * plan_replicates}"
+        )
+
     for (tier, replicate), group in group_map.items():
+        if len(group) != len(ARMS):
+            raise ValueError(
+                f"Tier '{tier}' rep {replicate} has {len(group)} arms, "
+                f"expected {len(ARMS)}"
+            )
         group_task_id = group[0]["task_id"]
         expected_arm_order = deterministic_arm_order(
             EXPERIMENT_BASE_SHA, group_task_id, replicate, list(ARMS.keys())
@@ -1356,8 +1450,13 @@ def execute_trial_unit(
         },
     }
 
+    resolved_contract = (
+        contract_path
+        if contract_path.is_absolute()
+        else (repo_root / contract_path)
+    )
     validate_payload_against_schema(
-        trial_record, "trial_record", contract_path
+        trial_record, "trial_record", resolved_contract
     )
 
     if output_dir is not None:
@@ -1389,11 +1488,16 @@ def execute_matrix_plan(
     from eval.reliability_matrix import run_preflight
 
     repo_root = Path(repo_root).resolve()
+    resolved_contract = (
+        contract_path
+        if contract_path.is_absolute()
+        else (repo_root / contract_path)
+    )
 
     # Attest and validate loaded execution plan before any side effects
     validate_execution_plan(
         plan,
-        contract_path=contract_path,
+        contract_path=resolved_contract,
         config_path=config_path,
         tasks_dir=tasks_dir,
         repo_root=repo_root,
@@ -1463,7 +1567,7 @@ def execute_matrix_plan(
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
             validate_payload_against_schema(
-                summary, "run_summary", contract_path
+                summary, "run_summary", resolved_contract
             )
             summary_file = output_dir / "run_summary.json"
             summary_file.write_text(
@@ -1637,7 +1741,7 @@ def execute_matrix_plan(
         }
 
         validate_payload_against_schema(
-            summary, "run_summary", contract_path
+            summary, "run_summary", resolved_contract
         )
         summary_file = output_dir / "run_summary.json"
         summary_file.write_text(

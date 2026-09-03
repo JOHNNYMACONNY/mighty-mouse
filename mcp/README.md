@@ -8,8 +8,8 @@ The MCP server exposes tools through the `mighty-mouse` server namespace:
 - `setup_workspace`: pin an exact local Ollama or host-supplied model identity and MCP execution profile without hand-writing config.
 - `recording_audit`: check that one exact host task receipt was recorded after it began.
 - `run`: adaptive routing and policy selection for a workspace task.
-- `agent_execute`: canonical coding execution with compute scaling support via `HostAdapter.solve`.
-- `swarm_execute`: execute Multi-Agent Swarm with canonical host provenance and isolated verification via `HostAdapter.solve_swarm`.
+- `agent_execute`: canonical coding execution with compute scaling support via `HostAdapter.solve` (recommended/default production coding topology: `MM_SINGLE_ALWAYS`).
+- `swarm_execute`: execute Multi-Agent Swarm with canonical host provenance and isolated verification via `HostAdapter.solve_swarm` (explicit opt-in compatibility interface).
 - `policy_status`: inspect the active Champion policy and promotion status.
 - `policy_preview`: preview candidate policy selection without mutation.
 - `policy_pin`: pin an explicit policy for the workspace.
@@ -82,6 +82,9 @@ those continue to require the separate, machine-gated research and evaluation
 workflow.
 
 ## Multi-Agent Swarm execution (`swarm_execute`)
+
+> **Production Topology Note (`MM_SINGLE_ALWAYS`)**:
+> `swarm_execute` is an explicit opt-in compatibility tool. Following Milestone 12 reliability qualification, canonical single-agent execution (`agent_execute` / `HostAdapter.solve`) is the recommended default production coding topology. `swarm_execute` is not the recommended default based on bounded empirical reliability evaluation on `gemma4:e4b` (this finding is bounded to the evaluated model and setup, not a universal model-independent claim).
 
 `swarm_execute` provides canonical Multi-Agent Swarm execution through MCP:
 

@@ -815,8 +815,7 @@ def _solve_inner(
     )
 
 
-
-if __name__ == "__main__":
+def _build_cli_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("config")
     parser.add_argument("task")
@@ -828,6 +827,11 @@ if __name__ == "__main__":
     parser.add_argument("--plan-file", help="Path to Stage 1 plan file or plan text input")
     parser.add_argument("--mode", choices=["single", "swarm"], default="single", help="Execution mode (single agent or multi-agent swarm)")
     parser.add_argument("--concurrency", type=int, choices=[1, 2], default=1, help="Concurrency slots for swarm (1 for sequential, 2 for dual-slot)")
+    return parser
+
+
+if __name__ == "__main__":
+    parser = _build_cli_parser()
     args = parser.parse_args()
 
     cfg_abs = os.path.abspath(args.config)

@@ -1834,6 +1834,9 @@ def test_infrastructure_invalid_trials_excluded_from_analyzable_denominators(
             raise OSError("Hardware crash")
 
     with patch(
+        "eval.reliability_matrix_execution.check_ollama_provenance",
+        return_value=prov_info,
+    ), patch(
         "eval.reliability_matrix.run_preflight",
         return_value={"preflight_passed": True, "blocking_reasons": []},
     ), patch(

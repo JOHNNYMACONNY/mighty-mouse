@@ -241,7 +241,11 @@
         "mcp_contract_version",
         "execution_plan_validation",
         "generation_calls",
-        "blocking_reasons"
+        "blocking_reasons",
+        "experiment_base_sha",
+        "execution_base_sha",
+        "harness_sha",
+        "execution_base_to_harness_changed_paths"
       ],
       "properties": {
         "status": {
@@ -296,6 +300,439 @@
           "items": {
             "type": "string"
           }
+        },
+        "experiment_base_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "execution_base_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "harness_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "execution_base_to_harness_changed_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "trial_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "experiment_id",
+        "trial_id",
+        "order_index",
+        "experiment_base_sha",
+        "execution_base_sha",
+        "harness_sha",
+        "candidate_id",
+        "arm",
+        "replicate",
+        "model_tag",
+        "model_family",
+        "model_class",
+        "model_digest",
+        "quantization",
+        "packaged_context",
+        "effective_context",
+        "tier",
+        "task_id",
+        "task_file",
+        "task_sha256",
+        "ollama_version",
+        "projected_config_sha256",
+        "ephemeral_adapter_config_sha256",
+        "execution_profile_id",
+        "tool_contract_digest",
+        "prompt_template_digest",
+        "runtime_kind",
+        "runtime_version",
+        "runtime_model_class",
+        "execution_base_to_harness_changed_paths",
+        "generation_call_count",
+        "output_paths",
+        "swarm_enabled",
+        "recovery_enabled",
+        "recovery_attempted",
+        "verifier_completed",
+        "passed",
+        "failure_category",
+        "verifier_payload",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "model_latency_seconds",
+        "wall_latency_seconds",
+        "provenance_complete",
+        "token_coverage_complete",
+        "infrastructure_error",
+        "trace_artifact_relpath",
+        "trace_artifact_sha256",
+        "raw_response_relpaths",
+        "raw_response_sha256s",
+        "timestamp"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "const": "1.0.0"
+        },
+        "experiment_id": {
+          "type": "string",
+          "const": "m13-cross-model-pilot-01"
+        },
+        "trial_id": {
+          "type": "string"
+        },
+        "order_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 11
+        },
+        "experiment_base_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "execution_base_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "harness_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "candidate_id": {
+          "type": "string",
+          "enum": [
+            "llama31_8b_q4km",
+            "qwen25_7b_q4km"
+          ]
+        },
+        "arm": {
+          "type": "string",
+          "enum": [
+            "control_once",
+            "mm_single"
+          ]
+        },
+        "replicate": {
+          "type": "integer",
+          "const": 1
+        },
+        "model_tag": {
+          "type": "string"
+        },
+        "model_family": {
+          "type": "string"
+        },
+        "model_class": {
+          "type": "string"
+        },
+        "model_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "quantization": {
+          "type": "string"
+        },
+        "packaged_context": {
+          "type": "integer"
+        },
+        "effective_context": {
+          "type": "integer",
+          "const": 32768
+        },
+        "tier": {
+          "type": "string"
+        },
+        "task_id": {
+          "type": "string"
+        },
+        "task_file": {
+          "type": "string"
+        },
+        "task_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "ollama_version": {
+          "type": "string"
+        },
+        "projected_config_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ephemeral_adapter_config_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution_profile_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool_contract_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt_template_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtime_kind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtime_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtime_model_class": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "execution_base_to_harness_changed_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "generation_call_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "swarm_enabled": {
+          "type": "boolean",
+          "const": false
+        },
+        "recovery_enabled": {
+          "type": "boolean",
+          "const": false
+        },
+        "recovery_attempted": {
+          "type": "boolean",
+          "const": false
+        },
+        "verifier_completed": {
+          "type": "boolean"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "failure_category": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "verifier_payload": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "prompt_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "completion_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "total_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "model_latency_seconds": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "wall_latency_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "provenance_complete": {
+          "type": "boolean"
+        },
+        "token_coverage_complete": {
+          "type": "boolean"
+        },
+        "infrastructure_error": {
+          "type": "boolean"
+        },
+        "trace_artifact_relpath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trace_artifact_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "raw_response_relpaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "raw_response_sha256s": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "timestamp": {
+          "type": "string"
+        }
+      }
+    },
+    "run_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "experiment_id",
+        "experiment_base_sha",
+        "execution_base_sha",
+        "harness_sha",
+        "execution_base_to_harness_changed_paths",
+        "planned_trial_count",
+        "executed_trial_count",
+        "status",
+        "stop_reason",
+        "generation_calls",
+        "total_tokens",
+        "total_analyzable",
+        "total_passed",
+        "total_infrastructure_excluded",
+        "aggregates_by_candidate",
+        "aggregates_by_arm",
+        "timestamp"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "const": "1.0.0"
+        },
+        "experiment_id": {
+          "type": "string",
+          "const": "m13-cross-model-pilot-01"
+        },
+        "experiment_base_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "execution_base_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "harness_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "execution_base_to_harness_changed_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "planned_trial_count": {
+          "type": "integer",
+          "const": 12
+        },
+        "executed_trial_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "dry_run",
+            "completed",
+            "aborted"
+          ]
+        },
+        "stop_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "generation_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "total_analyzable": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_infrastructure_excluded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "aggregates_by_candidate": {
+          "type": "object"
+        },
+        "aggregates_by_arm": {
+          "type": "object"
+        },
+        "timestamp": {
+          "type": "string"
         }
       }
     }

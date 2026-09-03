@@ -21,6 +21,7 @@ from mighty_mouse.host.adapter import HostAdapter, MCP_TOOL_CONTRACT_VERSION
 M13_SCHEMA_VERSION = "1.0.0"
 M13_EXPERIMENT_ID = "m13-cross-model-pilot-01"
 M13_EXPERIMENT_BASE_SHA = "e396d1960208673679d7aac8d2f9e6f5d10f2545"
+M13_EXECUTION_BASE_SHA = "751d5094ccb472ccdaf65fc967405913f0136e09"
 M13_PLAN_DESIGN = "m13-cross-model-pilot-v1"
 M13_ORDER_SEED = "m13-cross-model-pilot-v1"
 M13_EFFECTIVE_CONTEXT_LIMIT = 32768
@@ -37,6 +38,8 @@ M13_HARNESS_ALLOWED_PATHS = frozenset(
         "eval/cross_model_parity.py",
         "eval/cross_model_parity_contract.json",
         "eval/test_cross_model_parity.py",
+        "eval/cross_model_parity_execution.py",
+        "eval/test_cross_model_parity_execution.py",
     }
 )
 
@@ -267,7 +270,12 @@ def check_git_clean_except_prototype() -> None:
         raise ValueError(f"Working tree is not clean: '{line}'")
 
 
-def verify_base_to_harness_delta(base_sha: str, harness_sha: str) -> None:
+def verify_base_to_harness_delta(
+    base_sha: str = M13_EXECUTION_BASE_SHA,
+    harness_sha: Optional[str] = None,
+) -> List[str]:
+    if harness_sha is None:
+        harness_sha = get_current_git_sha()
     out = subprocess.check_output(
         ["git", "diff", "--name-only", f"{base_sha}..{harness_sha}"],
         text=True,
@@ -281,6 +289,7 @@ def verify_base_to_harness_delta(base_sha: str, harness_sha: str) -> None:
             f"Unauthorized file changes detected between base and harness: "
             f"{disallowed}"
         )
+    return changed_files
 
 
 def materialize_execution_plan(
@@ -488,7 +497,7 @@ def validate_execution_plan(
         )
     try:
         verify_base_to_harness_delta(
-            M13_EXPERIMENT_BASE_SHA, harness_sha
+            M13_EXECUTION_BASE_SHA, harness_sha
         )
     except Exception as e:
         errors.append(f"Base to harness delta error: {e}")
@@ -649,153 +658,172 @@ def run_preflight(
     config_path: Path = DEFAULT_CONFIG_PATH,
     contract_path: Path = DEFAULT_CONTRACT_PATH,
     lock_path: Path = LOCK_FILE_PATH,
+    lock_already_held: bool = False,
 ) -> Dict[str, Any]:
+    if lock_already_held:
+        return _run_preflight_body(config_path, contract_path)
     with SingleInstanceLock(lock_path):
-        blocking_reasons: List[str] = []
+        return _run_preflight_body(config_path, contract_path)
 
-        harness_sha = get_current_git_sha()
-        try:
-            check_git_clean_except_prototype()
-        except Exception as e:
-            blocking_reasons.append(f"Git clean check failed: {e}")
 
-        try:
-            verify_base_to_harness_delta(M13_EXPERIMENT_BASE_SHA, harness_sha)
-        except Exception as e:
-            blocking_reasons.append(f"Base to harness delta failed: {e}")
+def _run_preflight_body(
+    config_path: Path,
+    contract_path: Path,
+) -> Dict[str, Any]:
+    blocking_reasons: List[str] = []
 
-        ollama_ver = "unknown"
-        try:
-            req = urllib.request.Request("http://127.0.0.1:11434/api/version")
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                ollama_ver = data.get("version", "unknown")
-        except Exception as e:
-            blocking_reasons.append(
-                f"Failed to inspect Ollama API version: {e}"
-            )
+    harness_sha = get_current_git_sha()
+    try:
+        check_git_clean_except_prototype()
+    except Exception as e:
+        blocking_reasons.append(f"Git clean check failed: {e}")
 
-        cand_val: Dict[str, Any] = {}
-        for cid, cand in FROZEN_CANDIDATES.items():
-            try:
-                d1 = HostAdapter.resolve_ollama_model_digest(cand.model_tag)
-                d2 = HostAdapter.resolve_ollama_model_digest(cand.model_tag)
-                if d1 != d2:
-                    blocking_reasons.append(
-                        f"Unstable digest resolution for {cand.model_tag}"
-                    )
-                if d1 != cand.model_digest:
-                    blocking_reasons.append(
-                        f"Model digest mismatch for {cand.model_tag}: "
-                        f"resolved {d1} != expected {cand.model_digest}"
-                    )
-                cand_val[cid] = {
-                    "installed": True,
-                    "resolved_digest": d1,
-                    "matches_frozen": d1 == cand.model_digest,
-                }
-            except Exception as e:
-                blocking_reasons.append(
-                    f"Failed to validate candidate {cand.model_tag}: {e}"
-                )
-                cand_val[cid] = {"installed": False, "error": str(e)}
-
-        task_val: Dict[str, Any] = {}
-        for tid, task in FROZEN_ANCHOR_TASKS.items():
-            tp = Path(task.task_file)
-            if not tp.exists():
-                blocking_reasons.append(
-                    f"Anchor task file missing: {task.task_file}"
-                )
-                task_val[tid] = {"exists": False}
-            else:
-                actual_sha = hashlib.sha256(tp.read_bytes()).hexdigest()
-                matches = actual_sha == task.sha256
-                if not matches:
-                    blocking_reasons.append(
-                        f"Anchor task hash mismatch: {task.task_file}"
-                    )
-                task_val[tid] = {
-                    "exists": True,
-                    "sha256": actual_sha,
-                    "matches": matches,
-                }
-
-        config_val: Dict[str, Any] = {}
-        cfg_ok = False
-        try:
-            canon_bytes = config_path.read_bytes()
-            canon_sha = hashlib.sha256(canon_bytes).hexdigest()
-            config_val["canonical_sha256"] = canon_sha
-
-            for cid, cand in FROZEN_CANDIDATES.items():
-                _, proj_sha = project_candidate_config(
-                    cand.model_tag, config_path
-                )
-                config_val[cid] = {"projected_sha256": proj_sha}
-            cfg_ok = True
-        except Exception as e:
-            blocking_reasons.append(f"Config projection failure: {e}")
-
-        mcp_ver: Optional[str] = f"v{MCP_TOOL_CONTRACT_VERSION}"
-        if MCP_TOOL_CONTRACT_VERSION != 6:
-            blocking_reasons.append(
-                f"MCP contract version mismatch: expected v6, found {mcp_ver}"
-            )
-
-        mcp_count: Optional[int] = None
-        try:
-            from mighty_mouse_mcp.server import _get_mcp_tool_signatures
-            sigs = _get_mcp_tool_signatures()
-            mcp_count = len(sigs)
-            if mcp_count != 15:
-                blocking_reasons.append(
-                    f"MCP tool count mismatch: expected 15, found {mcp_count}"
-                )
-        except Exception as e:
-            blocking_reasons.append(
-                f"Failed to inspect MCP tool signatures: {e}"
-            )
-
-        plan_report: Dict[str, Any]
-        if not cfg_ok:
-            plan_err = (
-                "Plan materialization skipped due to config projection "
-                "failure"
-            )
-            plan_report = {"valid": False, "errors": [plan_err]}
-        else:
-            try:
-                plan = materialize_execution_plan(
-                    harness_sha=harness_sha, config_path=config_path
-                )
-                plan_report = validate_execution_plan(
-                    plan, contract_path=contract_path, current_head=harness_sha
-                )
-                if not plan_report["valid"]:
-                    blocking_reasons.extend(plan_report["errors"])
-            except Exception as e:
-                plan_err = f"Failed to materialize or validate plan: {e}"
-                blocking_reasons.append(plan_err)
-                plan_report = {"valid": False, "errors": [plan_err]}
-
-        report = {
-            "status": "PASSED" if not blocking_reasons else "FAILED",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "git_base_sha": M13_EXPERIMENT_BASE_SHA,
-            "git_harness_sha": harness_sha,
-            "ollama_version": ollama_ver,
-            "candidate_validation": cand_val,
-            "anchor_task_validation": task_val,
-            "config_projection_validation": config_val,
-            "mcp_tools_count": mcp_count,
-            "mcp_contract_version": mcp_ver,
-            "execution_plan_validation": plan_report,
-            "generation_calls": 0,
-            "blocking_reasons": blocking_reasons,
-        }
-
-        validate_payload_against_schema(
-            report, "preflight_report", contract_path
+    changed_paths: List[str] = []
+    try:
+        res = verify_base_to_harness_delta(
+            M13_EXECUTION_BASE_SHA, harness_sha
         )
-        return report
+        if isinstance(res, list):
+            changed_paths = res
+    except Exception as e:
+        blocking_reasons.append(f"Base to harness delta failed: {e}")
+
+    ollama_ver = "unknown"
+    try:
+        req = urllib.request.Request("http://127.0.0.1:11434/api/version")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            ollama_ver = data.get("version", "unknown")
+    except Exception as e:
+        blocking_reasons.append(
+            f"Failed to inspect Ollama API version: {e}"
+        )
+
+    cand_val: Dict[str, Any] = {}
+    for cid, cand in FROZEN_CANDIDATES.items():
+        try:
+            d1 = HostAdapter.resolve_ollama_model_digest(cand.model_tag)
+            d2 = HostAdapter.resolve_ollama_model_digest(cand.model_tag)
+            if d1 != d2:
+                blocking_reasons.append(
+                    f"Unstable digest resolution for {cand.model_tag}"
+                )
+            if d1 != cand.model_digest:
+                blocking_reasons.append(
+                    f"Model digest mismatch for {cand.model_tag}: "
+                    f"resolved {d1} != expected {cand.model_digest}"
+                )
+            cand_val[cid] = {
+                "installed": True,
+                "resolved_digest": d1,
+                "matches_frozen": d1 == cand.model_digest,
+            }
+        except Exception as e:
+            blocking_reasons.append(
+                f"Failed to validate candidate {cand.model_tag}: {e}"
+            )
+            cand_val[cid] = {"installed": False, "error": str(e)}
+
+    task_val: Dict[str, Any] = {}
+    for tid, task in FROZEN_ANCHOR_TASKS.items():
+        tp = Path(task.task_file)
+        if not tp.exists():
+            blocking_reasons.append(
+                f"Anchor task file missing: {task.task_file}"
+            )
+            task_val[tid] = {"exists": False}
+        else:
+            actual_sha = hashlib.sha256(tp.read_bytes()).hexdigest()
+            matches = actual_sha == task.sha256
+            if not matches:
+                blocking_reasons.append(
+                    f"Anchor task hash mismatch: {task.task_file}"
+                )
+            task_val[tid] = {
+                "exists": True,
+                "sha256": actual_sha,
+                "matches": matches,
+            }
+
+    config_val: Dict[str, Any] = {}
+    cfg_ok = False
+    try:
+        canon_bytes = config_path.read_bytes()
+        canon_sha = hashlib.sha256(canon_bytes).hexdigest()
+        config_val["canonical_sha256"] = canon_sha
+
+        for cid, cand in FROZEN_CANDIDATES.items():
+            _, proj_sha = project_candidate_config(
+                cand.model_tag, config_path
+            )
+            config_val[cid] = {"projected_sha256": proj_sha}
+        cfg_ok = True
+    except Exception as e:
+        blocking_reasons.append(f"Config projection failure: {e}")
+
+    mcp_ver: Optional[str] = f"v{MCP_TOOL_CONTRACT_VERSION}"
+    if MCP_TOOL_CONTRACT_VERSION != 6:
+        blocking_reasons.append(
+            f"MCP contract version mismatch: expected v6, found {mcp_ver}"
+        )
+
+    mcp_count: Optional[int] = None
+    try:
+        from mighty_mouse_mcp.server import _get_mcp_tool_signatures
+        sigs = _get_mcp_tool_signatures()
+        mcp_count = len(sigs)
+        if mcp_count != 15:
+            blocking_reasons.append(
+                f"MCP tool count mismatch: expected 15, found {mcp_count}"
+            )
+    except Exception as e:
+        blocking_reasons.append(
+            f"Failed to inspect MCP tool signatures: {e}"
+        )
+
+    plan_report: Dict[str, Any]
+    if not cfg_ok:
+        plan_err = (
+            "Plan materialization skipped due to config projection "
+            "failure"
+        )
+        plan_report = {"valid": False, "errors": [plan_err]}
+    else:
+        try:
+            plan = materialize_execution_plan(
+                harness_sha=harness_sha, config_path=config_path
+            )
+            plan_report = validate_execution_plan(
+                plan, contract_path=contract_path, current_head=harness_sha
+            )
+            if not plan_report["valid"]:
+                blocking_reasons.extend(plan_report["errors"])
+        except Exception as e:
+            plan_err = f"Failed to materialize or validate plan: {e}"
+            blocking_reasons.append(plan_err)
+            plan_report = {"valid": False, "errors": [plan_err]}
+
+    report = {
+        "status": "PASSED" if not blocking_reasons else "FAILED",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "git_base_sha": M13_EXPERIMENT_BASE_SHA,
+        "git_harness_sha": harness_sha,
+        "experiment_base_sha": M13_EXPERIMENT_BASE_SHA,
+        "execution_base_sha": M13_EXECUTION_BASE_SHA,
+        "harness_sha": harness_sha,
+        "execution_base_to_harness_changed_paths": changed_paths,
+        "ollama_version": ollama_ver,
+        "candidate_validation": cand_val,
+        "anchor_task_validation": task_val,
+        "config_projection_validation": config_val,
+        "mcp_tools_count": mcp_count,
+        "mcp_contract_version": mcp_ver,
+        "execution_plan_validation": plan_report,
+        "generation_calls": 0,
+        "blocking_reasons": blocking_reasons,
+    }
+
+    validate_payload_against_schema(
+        report, "preflight_report", contract_path
+    )
+    return report

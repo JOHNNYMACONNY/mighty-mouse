@@ -21,7 +21,9 @@ from eval.cross_model_parity import (
     FROZEN_CANDIDATES,
     M13_ALLOWED_ARMS,
     M13_CANONICAL_CONFIG_SHA256,
+    M13_EXECUTION_BASE_SHA,
     M13_EXPERIMENT_BASE_SHA,
+    M13_HARNESS_ALLOWED_PATHS,
     M13_ORDER_SEED,
     M13_SCHEMA_VERSION,
     compute_sort_hash,
@@ -384,6 +386,17 @@ def test_preflight_passes_without_model_generations() -> None:
                         assert report["generation_calls"] == 0
                         assert report["mcp_tools_count"] == 15
                         assert report["mcp_contract_version"] == "v6"
+                        assert (
+                            report["experiment_base_sha"]
+                            == M13_EXPERIMENT_BASE_SHA
+                        )
+                        assert (
+                            report["execution_base_sha"]
+                            == M13_EXECUTION_BASE_SHA
+                        )
+                        assert (
+                            "execution_base_to_harness_changed_paths" in report
+                        )
 
 
 def test_preflight_fails_on_digest_mismatch() -> None:
@@ -884,3 +897,34 @@ def test_validate_plan_rejects_altered_canonical_config_sha_constant() -> None:
 def test_canonical_config_file_hash_matches_frozen_constant() -> None:
     actual = hashlib.sha256(DEFAULT_CONFIG_PATH.read_bytes()).hexdigest()
     assert actual == M13_CANONICAL_CONFIG_SHA256
+
+
+def test_harness_allowlist_contains_exactly_five_m13_files() -> None:
+    expected = {
+        "eval/cross_model_parity.py",
+        "eval/cross_model_parity_contract.json",
+        "eval/test_cross_model_parity.py",
+        "eval/cross_model_parity_execution.py",
+        "eval/test_cross_model_parity_execution.py",
+    }
+    assert M13_HARNESS_ALLOWED_PATHS == expected
+
+
+def test_verify_base_to_harness_delta_defaults_to_execution_base() -> None:
+    with patch(
+        "subprocess.check_output",
+        return_value="eval/cross_model_parity.py\n",
+    ) as mock_co:
+        paths = verify_base_to_harness_delta(
+            harness_sha=M13_EXECUTION_BASE_SHA
+        )
+        assert paths == ["eval/cross_model_parity.py"]
+        mock_co.assert_called_once_with(
+            [
+                "git",
+                "diff",
+                "--name-only",
+                f"{M13_EXECUTION_BASE_SHA}..{M13_EXECUTION_BASE_SHA}",
+            ],
+            text=True,
+        )

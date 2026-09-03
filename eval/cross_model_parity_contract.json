@@ -1,0 +1,297 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "M13 Cross-Model Frontier Parity Contract Schema",
+  "version": "1.0.0",
+  "definitions": {
+    "execution_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "experiment_id",
+        "plan_design",
+        "experiment_base_sha",
+        "harness_sha",
+        "order_seed",
+        "effective_context_limit",
+        "canonical_config_path",
+        "canonical_config_sha256",
+        "candidates",
+        "anchor_tasks",
+        "arms",
+        "replicates",
+        "trial_count",
+        "trial_units",
+        "timestamp"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "const": "1.0.0"
+        },
+        "experiment_id": {
+          "type": "string"
+        },
+        "plan_design": {
+          "type": "string",
+          "const": "m13-cross-model-pilot-v1"
+        },
+        "experiment_base_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "harness_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "order_seed": {
+          "type": "string",
+          "const": "m13-cross-model-pilot-v1"
+        },
+        "effective_context_limit": {
+          "type": "integer",
+          "const": 32768
+        },
+        "canonical_config_path": {
+          "type": "string"
+        },
+        "canonical_config_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "candidates": {
+          "type": "object"
+        },
+        "anchor_tasks": {
+          "type": "object"
+        },
+        "arms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "control_once",
+              "mm_single"
+            ]
+          }
+        },
+        "replicates": {
+          "type": "integer",
+          "const": 1
+        },
+        "trial_count": {
+          "type": "integer",
+          "const": 12
+        },
+        "trial_units": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/definitions/plan_unit"
+          }
+        },
+        "timestamp": {
+          "type": "string"
+        }
+      }
+    },
+    "plan_unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "order_index",
+        "trial_id",
+        "candidate_id",
+        "model_tag",
+        "model_family",
+        "model_class",
+        "model_digest",
+        "quantization",
+        "packaged_context",
+        "effective_context",
+        "tier",
+        "task_id",
+        "task_file",
+        "task_sha256",
+        "arm",
+        "replicate",
+        "experiment_base_sha",
+        "harness_sha",
+        "sort_hash",
+        "projected_config_sha256"
+      ],
+      "properties": {
+        "order_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 11
+        },
+        "trial_id": {
+          "type": "string"
+        },
+        "candidate_id": {
+          "type": "string",
+          "enum": [
+            "llama31_8b_q4km",
+            "qwen25_7b_q4km"
+          ]
+        },
+        "model_tag": {
+          "type": "string"
+        },
+        "model_family": {
+          "type": "string",
+          "enum": [
+            "llama",
+            "qwen2"
+          ]
+        },
+        "model_class": {
+          "type": "string",
+          "enum": [
+            "llama3.1-8b-local",
+            "qwen2.5-7b-local"
+          ]
+        },
+        "model_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "quantization": {
+          "type": "string",
+          "const": "Q4_K_M"
+        },
+        "packaged_context": {
+          "type": "integer"
+        },
+        "effective_context": {
+          "type": "integer",
+          "const": 32768
+        },
+        "tier": {
+          "type": "string",
+          "enum": [
+            "tier_1",
+            "tier_5",
+            "tier_7"
+          ]
+        },
+        "task_id": {
+          "type": "string",
+          "enum": [
+            "task_003",
+            "task_047",
+            "task_1415"
+          ]
+        },
+        "task_file": {
+          "type": "string"
+        },
+        "task_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "arm": {
+          "type": "string",
+          "enum": [
+            "control_once",
+            "mm_single"
+          ]
+        },
+        "replicate": {
+          "type": "integer",
+          "const": 1
+        },
+        "experiment_base_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "harness_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "sort_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "projected_config_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "preflight_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "timestamp",
+        "git_base_sha",
+        "git_harness_sha",
+        "ollama_version",
+        "candidate_validation",
+        "anchor_task_validation",
+        "config_projection_validation",
+        "mcp_tools_count",
+        "mcp_contract_version",
+        "execution_plan_validation",
+        "generation_calls",
+        "blocking_reasons"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "PASSED",
+            "FAILED"
+          ]
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "git_base_sha": {
+          "type": "string"
+        },
+        "git_harness_sha": {
+          "type": "string"
+        },
+        "ollama_version": {
+          "type": "string"
+        },
+        "candidate_validation": {
+          "type": "object"
+        },
+        "anchor_task_validation": {
+          "type": "object"
+        },
+        "config_projection_validation": {
+          "type": "object"
+        },
+        "mcp_tools_count": {
+          "type": "integer",
+          "const": 15
+        },
+        "mcp_contract_version": {
+          "type": "string",
+          "const": "v6"
+        },
+        "execution_plan_validation": {
+          "type": "object"
+        },
+        "generation_calls": {
+          "type": "integer",
+          "const": 0
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

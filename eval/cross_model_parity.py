@@ -15,7 +15,7 @@ import yaml
 
 import jsonschema
 
-from eval.runner_lock import SingleInstanceLock
+from eval.runner_lock import LOCK_FILE_PATH, SingleInstanceLock
 from mighty_mouse.host.adapter import HostAdapter, MCP_TOOL_CONTRACT_VERSION
 
 M13_SCHEMA_VERSION = "1.0.0"
@@ -363,13 +363,85 @@ def materialize_execution_plan(
 def validate_execution_plan(
     plan: Dict[str, Any],
     contract_path: Path = DEFAULT_CONTRACT_PATH,
+    current_head: Optional[str] = None,
 ) -> Dict[str, Any]:
+    if current_head is None:
+        current_head = get_current_git_sha()
+
     errors: List[str] = []
 
     try:
-        validate_payload_against_schema(plan, "execution_plan", contract_path)
+        validate_payload_against_schema(
+            plan, "execution_plan", contract_path
+        )
     except Exception as e:
         errors.append(f"Schema validation error: {e}")
+
+    if plan.get("schema_version") != M13_SCHEMA_VERSION:
+        errors.append(
+            f"schema_version mismatch: expected {M13_SCHEMA_VERSION}, "
+            f"found {plan.get('schema_version')}"
+        )
+
+    if plan.get("plan_design") != M13_PLAN_DESIGN:
+        errors.append(
+            f"plan_design mismatch: expected {M13_PLAN_DESIGN}, "
+            f"found {plan.get('plan_design')}"
+        )
+
+    if plan.get("order_seed") != M13_ORDER_SEED:
+        errors.append(
+            f"order_seed mismatch: expected {M13_ORDER_SEED}, "
+            f"found {plan.get('order_seed')}"
+        )
+
+    if (
+        plan.get("effective_context_limit")
+        != M13_EFFECTIVE_CONTEXT_LIMIT
+    ):
+        errors.append(
+            f"effective_context_limit mismatch: expected "
+            f"{M13_EFFECTIVE_CONTEXT_LIMIT}, found "
+            f"{plan.get('effective_context_limit')}"
+        )
+
+    cfg_path_str = plan.get("canonical_config_path", "")
+    cfg_path = Path(cfg_path_str) if cfg_path_str else DEFAULT_CONFIG_PATH
+    if not cfg_path.exists():
+        errors.append(f"canonical_config_path missing: {cfg_path}")
+    else:
+        disk_sha = hashlib.sha256(cfg_path.read_bytes()).hexdigest()
+        if plan.get("canonical_config_sha256") != disk_sha:
+            errors.append(
+                f"canonical_config_sha256 mismatch: plan has "
+                f"{plan.get('canonical_config_sha256')}, disk has {disk_sha}"
+            )
+
+    exp_candidates = {
+        k: asdict(v) for k, v in FROZEN_CANDIDATES.items()
+    }
+    if plan.get("candidates") != exp_candidates:
+        errors.append("Top-level candidates do not match frozen definitions")
+
+    exp_tasks = {
+        k: asdict(v) for k, v in FROZEN_ANCHOR_TASKS.items()
+    }
+    if plan.get("anchor_tasks") != exp_tasks:
+        errors.append(
+            "Top-level anchor_tasks do not match frozen definitions"
+        )
+
+    if plan.get("arms") != list(M13_ALLOWED_ARMS):
+        errors.append(
+            f"arms mismatch: expected {list(M13_ALLOWED_ARMS)}, "
+            f"found {plan.get('arms')}"
+        )
+
+    if plan.get("replicates") != 1:
+        errors.append(
+            f"replicates mismatch: expected 1, "
+            f"found {plan.get('replicates')}"
+        )
 
     if plan.get("experiment_base_sha") != M13_EXPERIMENT_BASE_SHA:
         errors.append(
@@ -379,19 +451,37 @@ def validate_execution_plan(
         )
 
     harness_sha = plan.get("harness_sha", "")
+    if harness_sha != current_head:
+        errors.append(
+            f"harness_sha mismatch: plan has {harness_sha}, "
+            f"current HEAD is {current_head}"
+        )
     try:
-        verify_base_to_harness_delta(M13_EXPERIMENT_BASE_SHA, harness_sha)
+        verify_base_to_harness_delta(
+            M13_EXPERIMENT_BASE_SHA, harness_sha
+        )
     except Exception as e:
         errors.append(f"Base to harness delta error: {e}")
 
     units = plan.get("trial_units", [])
     if len(units) != 12 or plan.get("trial_count") != 12:
-        errors.append(f"trial_count must be exactly 12, found {len(units)}")
+        errors.append(
+            f"trial_count must be exactly 12, found {len(units)}"
+        )
 
     seen_order_indices = set()
     seen_trial_ids = set()
     seen_tuples = set()
     sort_hashes = []
+
+    projected_shas: Dict[str, Optional[str]] = {}
+    if cfg_path.exists():
+        for cid, cand in FROZEN_CANDIDATES.items():
+            try:
+                _, psha = project_candidate_config(cand.model_tag, cfg_path)
+                projected_shas[cid] = psha
+            except Exception:
+                projected_shas[cid] = None
 
     for idx, u in enumerate(units):
         ord_idx = u.get("order_index")
@@ -424,10 +514,7 @@ def validate_execution_plan(
         else:
             fc = FROZEN_CANDIDATES[cand_id]
             if u.get("model_tag") != fc.model_tag:
-                errors.append(
-                    f"model_tag mismatch for {cand_id}: {u.get('model_tag')} "
-                    f"!= {fc.model_tag}"
-                )
+                errors.append(f"model_tag mismatch for {cand_id}")
             if u.get("model_family") != fc.model_family:
                 errors.append(f"model_family mismatch for {cand_id}")
             if u.get("model_class") != fc.model_class:
@@ -436,15 +523,72 @@ def validate_execution_plan(
                 errors.append(f"model_digest mismatch for {cand_id}")
             if u.get("quantization") != fc.quantization:
                 errors.append(f"quantization mismatch for {cand_id}")
-            if u.get("effective_context") != M13_EFFECTIVE_CONTEXT_LIMIT:
-                errors.append(f"effective_context mismatch for {cand_id}")
+            if u.get("packaged_context") != fc.packaged_context:
+                errors.append(
+                    f"packaged_context mismatch for {cand_id}: "
+                    f"{u.get('packaged_context')} != {fc.packaged_context}"
+                )
+            if u.get("effective_context") != fc.effective_context:
+                errors.append(
+                    f"effective_context mismatch for {cand_id}: "
+                    f"{u.get('effective_context')} != {fc.effective_context}"
+                )
 
         if task_id not in FROZEN_ANCHOR_TASKS:
             errors.append(f"Unknown task_id: {task_id}")
         else:
             ft = FROZEN_ANCHOR_TASKS[task_id]
+            if u.get("tier") != ft.tier:
+                errors.append(
+                    f"tier mismatch for {task_id}: {u.get('tier')} "
+                    f"!= {ft.tier}"
+                )
+            if u.get("task_file") != ft.task_file:
+                errors.append(
+                    f"task_file mismatch for {task_id}: "
+                    f"{u.get('task_file')} != {ft.task_file}"
+                )
             if u.get("task_sha256") != ft.sha256:
                 errors.append(f"task_sha256 mismatch for {task_id}")
+
+        if u.get("experiment_base_sha") != M13_EXPERIMENT_BASE_SHA:
+            errors.append(
+                f"experiment_base_sha mismatch in unit {idx}: "
+                f"{u.get('experiment_base_sha')} != "
+                f"{M13_EXPERIMENT_BASE_SHA}"
+            )
+
+        if u.get("harness_sha") != harness_sha:
+            errors.append(
+                f"harness_sha mismatch in unit {idx}: "
+                f"{u.get('harness_sha')} != {harness_sha}"
+            )
+
+        if cand_id in FROZEN_CANDIDATES and task_id in FROZEN_ANCHOR_TASKS:
+            exp_tid = (
+                f"m13_{cand_id}_{FROZEN_ANCHOR_TASKS[task_id].tier}_"
+                f"{task_id}_{arm}_rep{rep}"
+            )
+            if tid != exp_tid:
+                errors.append(
+                    f"trial_id mismatch in unit {idx}: expected {exp_tid}, "
+                    f"found {tid}"
+                )
+
+        if arm == "mm_single":
+            exp_sha = projected_shas.get(cand_id)
+            if exp_sha and u.get("projected_config_sha256") != exp_sha:
+                errors.append(
+                    f"projected_config_sha256 mismatch in unit {idx}: "
+                    f"expected {exp_sha}, "
+                    f"found {u.get('projected_config_sha256')}"
+                )
+        else:
+            if u.get("projected_config_sha256") is not None:
+                errors.append(
+                    f"control_once unit {idx} must have null "
+                    f"projected_config_sha256"
+                )
 
         expected_sh = compute_sort_hash(
             M13_EXPERIMENT_BASE_SHA,
@@ -460,7 +604,8 @@ def validate_execution_plan(
 
     if sort_hashes != sorted(sort_hashes):
         errors.append(
-            "Trial units are not ordered according to deterministic sort_hash"
+            "Trial units are not ordered according to "
+            "deterministic sort_hash"
         )
 
     return {
@@ -472,8 +617,9 @@ def validate_execution_plan(
 def run_preflight(
     config_path: Path = DEFAULT_CONFIG_PATH,
     contract_path: Path = DEFAULT_CONTRACT_PATH,
+    lock_path: Path = LOCK_FILE_PATH,
 ) -> Dict[str, Any]:
-    with SingleInstanceLock(Path("logs/m13_preflight.lock")):
+    with SingleInstanceLock(lock_path):
         blocking_reasons: List[str] = []
 
         harness_sha = get_current_git_sha()
@@ -545,6 +691,7 @@ def run_preflight(
                 }
 
         config_val: Dict[str, Any] = {}
+        cfg_ok = False
         try:
             canon_bytes = config_path.read_bytes()
             canon_sha = hashlib.sha256(canon_bytes).hexdigest()
@@ -555,39 +702,58 @@ def run_preflight(
                     cand.model_tag, config_path
                 )
                 config_val[cid] = {"projected_sha256": proj_sha}
+            cfg_ok = True
         except Exception as e:
             blocking_reasons.append(f"Config projection failure: {e}")
 
+        mcp_ver: Optional[str] = f"v{MCP_TOOL_CONTRACT_VERSION}"
         if MCP_TOOL_CONTRACT_VERSION != 6:
             blocking_reasons.append(
-                f"MCP contract version mismatch: expected 6, found "
-                f"{MCP_TOOL_CONTRACT_VERSION}"
+                f"MCP contract version mismatch: expected v6, found {mcp_ver}"
             )
 
         server_path = Path("mcp/src/mighty_mouse_mcp/server.py")
+        mcp_count: Optional[int] = None
         if not server_path.exists():
             blocking_reasons.append(
                 "MCP server file missing: mcp/src/mighty_mouse_mcp/server.py"
             )
         else:
-            server_content = server_path.read_text(encoding="utf-8")
-            mcp_tools = re.findall(
-                r'@mcp\.tool\(name="([^"]+)"\)', server_content
-            )
-            mcp_count = len(mcp_tools)
-            if mcp_count != 15:
-                blocking_reasons.append(
-                    f"MCP tool count mismatch: expected 15, found {mcp_count}"
+            try:
+                server_content = server_path.read_text(encoding="utf-8")
+                mcp_tools = re.findall(
+                    r'@mcp\.tool\(name="([^"]+)"\)', server_content
                 )
+                mcp_count = len(mcp_tools)
+                if mcp_count != 15:
+                    blocking_reasons.append(
+                        f"MCP tool count mismatch: expected 15, "
+                        f"found {mcp_count}"
+                    )
+            except Exception as e:
+                blocking_reasons.append(f"Failed to inspect MCP server: {e}")
 
-        plan = materialize_execution_plan(
-            harness_sha=harness_sha, config_path=config_path
-        )
-        plan_report = validate_execution_plan(
-            plan, contract_path=contract_path
-        )
-        if not plan_report["valid"]:
-            blocking_reasons.extend(plan_report["errors"])
+        plan_report: Dict[str, Any]
+        if not cfg_ok:
+            plan_err = (
+                "Plan materialization skipped due to config projection "
+                "failure"
+            )
+            plan_report = {"valid": False, "errors": [plan_err]}
+        else:
+            try:
+                plan = materialize_execution_plan(
+                    harness_sha=harness_sha, config_path=config_path
+                )
+                plan_report = validate_execution_plan(
+                    plan, contract_path=contract_path, current_head=harness_sha
+                )
+                if not plan_report["valid"]:
+                    blocking_reasons.extend(plan_report["errors"])
+            except Exception as e:
+                plan_err = f"Failed to materialize or validate plan: {e}"
+                blocking_reasons.append(plan_err)
+                plan_report = {"valid": False, "errors": [plan_err]}
 
         report = {
             "status": "PASSED" if not blocking_reasons else "FAILED",
@@ -598,8 +764,8 @@ def run_preflight(
             "candidate_validation": cand_val,
             "anchor_task_validation": task_val,
             "config_projection_validation": config_val,
-            "mcp_tools_count": 15,
-            "mcp_contract_version": "v6",
+            "mcp_tools_count": mcp_count,
+            "mcp_contract_version": mcp_ver,
             "execution_plan_validation": plan_report,
             "generation_calls": 0,
             "blocking_reasons": blocking_reasons,

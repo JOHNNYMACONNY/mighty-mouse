@@ -271,12 +271,16 @@
           "type": "object"
         },
         "mcp_tools_count": {
-          "type": "integer",
-          "const": 15
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "mcp_contract_version": {
-          "type": "string",
-          "const": "v6"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "execution_plan_validation": {
           "type": "object"

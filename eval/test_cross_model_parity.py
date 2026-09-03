@@ -7,6 +7,7 @@ import hashlib
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
+from eval.runner_lock import LOCK_FILE_PATH
 import yaml
 
 import jsonschema
@@ -214,7 +215,9 @@ def test_deterministic_materialization_stability() -> None:
 def test_validate_execution_plan_valid() -> None:
     plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
     with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
-        report = validate_execution_plan(plan)
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
         assert report["valid"] is True
         assert len(report["errors"]) == 0
 
@@ -482,3 +485,250 @@ def test_check_git_clean_except_prototype() -> None:
         )
         with pytest.raises(ValueError, match="Working tree is not clean"):
             check_git_clean_except_prototype()
+
+
+def test_preflight_uses_canonical_shared_lock() -> None:
+    with patch("eval.cross_model_parity.SingleInstanceLock") as mock_lock:
+        mock_ctx = MagicMock()
+        mock_lock.return_value.__enter__.return_value = mock_ctx
+        with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+            with patch(
+                "eval.cross_model_parity.get_current_git_sha",
+                return_value=M13_EXPERIMENT_BASE_SHA,
+            ):
+                with patch(
+                    "eval.cross_model_parity.check_git_clean_except_prototype"
+                ):
+                    with patch(
+                        "urllib.request.urlopen",
+                        side_effect=RuntimeError("offline"),
+                    ):
+                        run_preflight()
+        mock_lock.assert_called_once_with(LOCK_FILE_PATH)
+
+
+def test_validate_execution_plan_rejects_stale_harness_sha() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(plan, current_head="1" * 40)
+        assert report["valid"] is False
+        assert any("harness_sha" in e for e in report["errors"])
+
+
+def test_validate_plan_rejects_altered_top_level_candidates() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    plan["candidates"]["llama31_8b_q4km"]["parameter_scale"] = "99B"
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is False
+        assert any("candidates" in e.lower() for e in report["errors"])
+
+
+def test_validate_plan_rejects_altered_top_level_tasks() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    plan["anchor_tasks"]["task_003"]["tier"] = "tier_99"
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is False
+        assert any("anchor_tasks" in e.lower() for e in report["errors"])
+
+
+def test_validate_plan_rejects_altered_canonical_config_sha() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    plan["canonical_config_sha256"] = "f" * 64
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is False
+        assert any(
+            "canonical_config_sha256" in e.lower() for e in report["errors"]
+        )
+
+
+def test_validate_execution_plan_rejects_wrong_packaged_context() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    plan["trial_units"][0]["packaged_context"] = 99999
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is False
+        assert any("packaged_context" in e.lower() for e in report["errors"])
+
+
+def test_validate_execution_plan_rejects_swapped_tier() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    plan["trial_units"][0]["tier"] = "tier_99"
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is False
+        assert any("tier" in e.lower() for e in report["errors"])
+
+
+def test_validate_execution_plan_rejects_wrong_task_file() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    plan["trial_units"][0]["task_file"] = "tasks/benchmark/wrong_task.json"
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is False
+        assert any("task_file" in e.lower() for e in report["errors"])
+
+
+def test_validate_execution_plan_rejects_wrong_projected_config_sha() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    for u in plan["trial_units"]:
+        if u["arm"] == "mm_single":
+            u["projected_config_sha256"] = "f" * 64
+            break
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is False
+        assert any(
+            "projected_config_sha256" in e.lower() for e in report["errors"]
+        )
+
+
+def test_validate_plan_rejects_non_null_control_projected_sha() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    for u in plan["trial_units"]:
+        if u["arm"] == "control_once":
+            u["projected_config_sha256"] = "f" * 64
+            break
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is False
+        assert any(
+            "projected_config_sha256" in e.lower() for e in report["errors"]
+        )
+
+
+def test_validate_execution_plan_rejects_arbitrary_trial_id() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    plan["trial_units"][0]["trial_id"] = "arbitrary_custom_id_123"
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is False
+        assert any("trial_id" in e.lower() for e in report["errors"])
+
+
+def test_preflight_returns_schema_valid_failed_report_on_tampered_config(
+    tmp_path: Path,
+) -> None:
+    bad_cfg = tmp_path / "bad_config.yaml"
+    bad_cfg.write_text("provider: openai\nmodel: gpt-4\n", encoding="utf-8")
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        with patch(
+            "eval.cross_model_parity.get_current_git_sha",
+            return_value=M13_EXPERIMENT_BASE_SHA,
+        ):
+            with patch(
+                "eval.cross_model_parity.check_git_clean_except_prototype"
+            ):
+                report = run_preflight(config_path=bad_cfg)
+                assert report["status"] == "FAILED"
+                assert report["generation_calls"] == 0
+                assert any(
+                    "config" in b.lower() for b in report["blocking_reasons"]
+                )
+                validate_payload_against_schema(report, "preflight_report")
+
+
+def test_preflight_fails_on_mcp_tool_count_mismatch() -> None:
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        with patch(
+            "eval.cross_model_parity.get_current_git_sha",
+            return_value=M13_EXPERIMENT_BASE_SHA,
+        ):
+            with patch(
+                "eval.cross_model_parity.check_git_clean_except_prototype"
+            ):
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = b'{"version": "0.33.2"}'
+                mock_resp.__enter__.return_value = mock_resp
+
+                def mock_digest(tag: str) -> str:
+                    if "llama" in tag:
+                        return FROZEN_CANDIDATES[
+                            "llama31_8b_q4km"
+                        ].model_digest
+                    return FROZEN_CANDIDATES["qwen25_7b_q4km"].model_digest
+
+                resolve_fn = (
+                    "eval.cross_model_parity.HostAdapter."
+                    "resolve_ollama_model_digest"
+                )
+                with patch("urllib.request.urlopen", return_value=mock_resp):
+                    with patch(resolve_fn, side_effect=mock_digest):
+                        tool_py = '@mcp.tool(name="tool1")\n'
+                        with patch(
+                            "pathlib.Path.read_text",
+                            return_value=tool_py,
+                        ):
+                            report = run_preflight()
+                            assert report["status"] == "FAILED"
+                            assert report["mcp_tools_count"] == 1
+                            assert any(
+                                "mcp tool count mismatch" in b.lower()
+                                for b in report["blocking_reasons"]
+                            )
+                            validate_payload_against_schema(
+                                report, "preflight_report"
+                            )
+
+
+def test_preflight_fails_on_mcp_contract_version_mismatch() -> None:
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        with patch(
+            "eval.cross_model_parity.get_current_git_sha",
+            return_value=M13_EXPERIMENT_BASE_SHA,
+        ):
+            with patch(
+                "eval.cross_model_parity.check_git_clean_except_prototype"
+            ):
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = b'{"version": "0.33.2"}'
+                mock_resp.__enter__.return_value = mock_resp
+
+                def mock_digest(tag: str) -> str:
+                    if "llama" in tag:
+                        return FROZEN_CANDIDATES[
+                            "llama31_8b_q4km"
+                        ].model_digest
+                    return FROZEN_CANDIDATES["qwen25_7b_q4km"].model_digest
+
+                resolve_fn = (
+                    "eval.cross_model_parity.HostAdapter."
+                    "resolve_ollama_model_digest"
+                )
+                with patch("urllib.request.urlopen", return_value=mock_resp):
+                    with patch(resolve_fn, side_effect=mock_digest):
+                        ver_target = (
+                            "eval.cross_model_parity."
+                            "MCP_TOOL_CONTRACT_VERSION"
+                        )
+                        with patch(ver_target, 99):
+                            report = run_preflight()
+                            assert report["status"] == "FAILED"
+                            assert report["mcp_contract_version"] == "v99"
+                            assert any(
+                                "mcp contract version mismatch" in b.lower()
+                                for b in report["blocking_reasons"]
+                            )
+                            validate_payload_against_schema(
+                                report, "preflight_report"
+                            )

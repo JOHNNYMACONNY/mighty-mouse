@@ -720,6 +720,7 @@ def _solve_inner(
             workspace_root=workspace_root,
             allowed_delete_paths=tuple(allowed_delete_paths),
             allowed_write_paths=allowed_write_paths,
+            suppress_checklist_sidecar=bool(recovery_mode),
         )
 
         def response_application_adapter(response_text, _context):
@@ -813,6 +814,9 @@ def _solve_inner(
             "compute_scaling": scaling_telemetry,
         },
     )
+    if recovery_mode:
+        return output_paths
+    return None
 
 
 def _build_cli_parser() -> argparse.ArgumentParser:

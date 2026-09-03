@@ -202,3 +202,83 @@ def test_host_hook_recovery_execution_mode_is_single_agent_only():
             execution_mode="swarm",  # type: ignore[arg-type]
             output_paths=("foo.py",),
         )
+
+
+def test_normal_solve_and_host_adapter_solve_return_none(tmp_path: Path):
+    """Verify solve and HostAdapter.solve preserve the -> None contract."""
+    from mighty_mouse.orchestrator.mighty_mouse_agent import (
+        solve,
+        _solve_with_runtime_context,
+    )
+    from mighty_mouse.host.adapter import (
+        HostAdapter,
+        AdapterRuntimeContext,
+        ExecutionProfile,
+        ModelIdentity,
+    )
+
+    cfg = tmp_path / "cfg.yaml"
+    cfg.write_text(
+        "model: test\nprovider: sim\nallow_simulation: true\n",
+        encoding="utf-8",
+    )
+    task = tmp_path / "task.json"
+    task.write_text(
+        json.dumps({"id": "t1", "expected_files": ["a.py"]}),
+        encoding="utf-8",
+    )
+
+    with patch(
+        "mighty_mouse.orchestrator.gemini_client."
+        "GeminiClient.generate_content",
+        return_value="```python:a.py\ncode\n```",
+    ):
+        # 1. Normal solve() must return None
+        res_solve = solve(str(cfg), str(task), workspace=str(tmp_path))
+        assert res_solve is None, (
+            f"solve() must return None, got {res_solve}"
+        )
+
+        # 2. HostAdapter.solve() must return None
+        adapter = HostAdapter()
+        dummy_profile = ExecutionProfile(
+            profile_id="prof-1",
+            runtime_kind="antigravity",
+            runtime_version="1.0.0",
+            effective_context_limit=32000,
+            tool_contract_digest="sha256:abc",
+            prompt_template_digest="sha256:def",
+            sampling_settings={},
+            resource_limits={},
+            capabilities=frozenset({"mcp"}),
+        )
+        dummy_ctx = AdapterRuntimeContext(
+            state_dir=tmp_path / ".mighty-mouse",
+            repository="test/repo",
+            model_class="gemma-27b",
+            model_identity=ModelIdentity(artifact_digest="sha256:111"),
+            execution_profile=dummy_profile,
+            model_source="host",
+        )
+        with patch.object(
+            adapter, "resolve_adapter_context", return_value=dummy_ctx
+        ):
+            res_adapter = adapter.solve(
+                str(tmp_path),
+                str(cfg),
+                str(task),
+                tool_signatures=("run",),
+            )
+            assert res_adapter is None, (
+                f"HostAdapter.solve() must return None, got {res_adapter}"
+            )
+
+        # 3. Recovery mode must return output paths
+        res_recovery = _solve_with_runtime_context(
+            str(cfg),
+            str(task),
+            workspace=str(tmp_path),
+            allowed_write_paths=("a.py",),
+            recovery_mode=True,
+        )
+        assert res_recovery == ["a.py"]

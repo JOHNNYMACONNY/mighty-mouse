@@ -612,3 +612,63 @@ def test_recovery_execution_performs_strictly_one_provider_generation(
         assert attempt.completed is True
         assert attempt.attempts == 1
         assert attempt.output_paths == ()
+
+
+def test_recovery_execution_succeeds_with_incidental_checklist_sidecar(
+    tmp_path: Path,
+) -> None:
+    """Ticket 09: Recovery applies target even if model outputs checklist."""
+    cfg_file = tmp_path / "model_config.yaml"
+    cfg_file.write_text(
+        yaml.safe_dump(
+            {
+                "model": "test-model",
+                "temperature": 0.0,
+                "provider": "sim",
+                "allow_simulation": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    task_file = tmp_path / "task.json"
+    task_file.write_text(
+        json.dumps({"id": "task-1", "expected_files": ["src/main.py"]}),
+        encoding="utf-8",
+    )
+
+    resolved = _make_resolved_event(
+        workspace=str(tmp_path), target_paths=("src/main.py",)
+    )
+    decision = HookRecoveryDecision(
+        eligible=True,
+        gate_reason="eligible",
+        summary="eligible",
+        execution_mode="agent",
+    )
+    request = RecoveryExecutionRequest(
+        resolved_event=resolved,
+        decision=decision,
+        p_cfg_path=str(cfg_file),
+        task_input_path=str(task_file),
+    )
+
+    recovery_response = """# Mighty Mouse Checklist
+- [ ] Investigate failure
+- [ ] Apply fix to main.py
+
+```python:src/main.py
+def fixed():
+    return True
+```"""
+
+    with patch(
+        "mighty_mouse.orchestrator.gemini_client."
+        "GeminiClient.generate_content",
+        return_value=recovery_response,
+    ):
+        attempt = execute_recovery_attempt(request)
+        assert attempt.attempted is True
+        assert attempt.completed is True
+        assert attempt.output_paths == ("src/main.py",)
+        assert (tmp_path / "src" / "main.py").exists()
+        assert not (tmp_path / "CHECKLIST.md").exists()

@@ -439,6 +439,37 @@ def _solve_inner(
         "Responses without at least one valid fenced block will be REJECTED.\n\n"
     )
 
+    if recovery_mode:
+        if allowed_write_paths:
+            targets_line = (
+                "   - Authorized target files: "
+                f"{list(allowed_write_paths)}\n"
+            )
+        else:
+            targets_line = (
+                "   - Only create/modify files in the authorized recovery "
+                "target set.\n"
+            )
+
+        FORMAT_REMINDER = (
+            "\n⚠️ MANDATORY OUTPUT FORMAT (RECOVERY MODE) ⚠️\n"
+            "1. CREATE/MODIFY: You MUST output every file you create or "
+            "modify using this exact format:\n"
+            "```python:path/to/file.py\n"
+            "# your code here\n"
+            "```\n"
+            f"{targets_line}"
+            "   - Output at least one valid authorized write block.\n"
+            "2. ZERO DELETIONS AUTHORIZED (RECOVERY MODE OVERRIDE):\n"
+            "   - Deletions are NEVER authorized during recovery mode.\n"
+            "   - Ignore any task-level 'deletable_files' or deletion "
+            "instructions for this recovery attempt.\n"
+            "   - NEVER output a `delete:` fenced block.\n"
+            "   - Any delete block will cause immediate recovery failure.\n\n"
+            "Responses without at least one valid fenced write block "
+            "will be REJECTED.\n\n"
+        )
+
     DISALLOWED_PATTERNS = (
         "\n<disallowed_patterns>\n"
         "- Do NOT create unused helper functions, stub files, or unnecessary abstractions.\n"
@@ -476,6 +507,14 @@ def _solve_inner(
 
     if feedback_str:
         user_prompt += f"\n\n<execution_feedback>\nPREVIOUS ATTEMPT FAILED. FEEDBACK:\n{feedback_str}\n</execution_feedback>\n"
+    if recovery_mode:
+        user_prompt += (
+            "\n<recovery_mode_override>\n"
+            "RECOVERY MODE: Deletions are NEVER authorized. "
+            "Do NOT output any delete: blocks. "
+            "Ignore any task-level deletable_files or deletion instructions.\n"
+            "</recovery_mode_override>\n"
+        )
     user_prompt += DISALLOWED_PATTERNS
 
     client = GeminiClient(config=p_cfg)

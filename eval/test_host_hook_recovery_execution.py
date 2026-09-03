@@ -672,3 +672,206 @@ def fixed():
         assert attempt.output_paths == ("src/main.py",)
         assert (tmp_path / "src" / "main.py").exists()
         assert not (tmp_path / "CHECKLIST.md").exists()
+
+
+def test_recovery_prompt_contains_zero_deletion_override_and_write_targets(
+    tmp_path: Path,
+) -> None:
+    """Ticket 11: Recovery prompt overrides deletions and lists targets."""
+    cfg_file = tmp_path / "model_config.yaml"
+    cfg_file.write_text(
+        yaml.safe_dump(
+            {
+                "model": "test-model",
+                "temperature": 0.0,
+                "provider": "sim",
+                "allow_simulation": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    task_file = tmp_path / "task.json"
+    task_file.write_text(
+        json.dumps({
+            "id": "task-deletable",
+            "expected_files": ["src/main.py"],
+            "deletable_files": ["obsolete.py"],
+        }),
+        encoding="utf-8",
+    )
+
+    resolved = _make_resolved_event(
+        workspace=str(tmp_path), target_paths=("src/main.py",)
+    )
+    decision = HookRecoveryDecision(
+        eligible=True,
+        gate_reason="eligible",
+        summary="eligible",
+        execution_mode="agent",
+    )
+    request = RecoveryExecutionRequest(
+        resolved_event=resolved,
+        decision=decision,
+        p_cfg_path=str(cfg_file),
+        task_input_path=str(task_file),
+    )
+
+    with patch(
+        "mighty_mouse.orchestrator.gemini_client."
+        "GeminiClient.generate_content",
+        return_value="```python:src/main.py\n# ok\n```",
+    ) as mock_gen:
+        attempt = execute_recovery_attempt(
+            request, feedback_str="Verifier failed test: syntax_error"
+        )
+        assert attempt.attempted is True
+        assert attempt.completed is True
+        assert mock_gen.call_count == 1
+        _, user_prompt = mock_gen.call_args[0]
+
+        # 1. Recovery mode override assertions
+        assert "RECOVERY MODE" in user_prompt
+        assert (
+            "Deletions are NEVER authorized" in user_prompt or
+            "deletions are never authorized" in user_prompt.lower()
+        )
+        assert (
+            "Ignore any task-level 'deletable_files'" in user_prompt or
+            "ignore any task-level" in user_prompt.lower()
+        )
+        assert (
+            "NEVER output a `delete:`" in user_prompt or
+            "never output a delete:" in user_prompt.lower()
+        )
+        assert "src/main.py" in user_prompt
+        # Standard deletion instruction must NOT be present
+        assert (
+            "2. DELETE: To delete/purge/remove a file, use a fenced block"
+            not in user_prompt
+        )
+
+        # 2. Feedback ordering: verifier feedback cannot supersede
+        # zero-deletion override in recovery
+        feedback_idx = user_prompt.find("<execution_feedback>")
+        assert feedback_idx != -1
+        override_idx = user_prompt.find("<recovery_mode_override>")
+        assert override_idx != -1
+        assert override_idx > feedback_idx
+
+
+def test_ordinary_mode_preserves_task_authorized_deletions(
+    tmp_path: Path,
+) -> None:
+    """Ticket 11: Ordinary mode retains standard deletion instructions."""
+    from mighty_mouse.orchestrator.mighty_mouse_agent import (
+        _solve_with_runtime_context,
+    )
+
+    cfg_file = tmp_path / "model_config.yaml"
+    cfg_file.write_text(
+        yaml.safe_dump(
+            {
+                "model": "test-model",
+                "temperature": 0.0,
+                "provider": "sim",
+                "allow_simulation": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    task_file = tmp_path / "task.json"
+    task_file.write_text(
+        json.dumps({
+            "id": "task-deletable",
+            "expected_files": ["src/main.py"],
+            "deletable_files": ["obsolete.py"],
+        }),
+        encoding="utf-8",
+    )
+
+    with patch(
+        "mighty_mouse.orchestrator.gemini_client."
+        "GeminiClient.generate_content",
+        return_value="```python:src/main.py\n# ok\n```",
+    ) as mock_gen:
+        _solve_with_runtime_context(
+            str(cfg_file),
+            str(task_file),
+            workspace=str(tmp_path),
+            recovery_mode=False,
+            disable_hygiene=True,
+        )
+        assert mock_gen.call_count == 1
+        _, user_prompt = mock_gen.call_args[0]
+
+        # Standard deletion instructions must be present in ordinary mode
+        assert (
+            "2. DELETE: To delete/purge/remove a file, use a fenced block"
+            in user_prompt
+        )
+        assert "RECOVERY MODE" not in user_prompt
+        assert "<recovery_mode_override>" not in user_prompt
+
+
+def test_recovery_execution_fails_closed_on_unauthorized_delete_block(
+    tmp_path: Path,
+) -> None:
+    """Ticket 11: Boundary rejects delete block fail-closed in recovery."""
+    cfg_file = tmp_path / "model_config.yaml"
+    cfg_file.write_text(
+        yaml.safe_dump(
+            {
+                "model": "test-model",
+                "temperature": 0.0,
+                "provider": "sim",
+                "allow_simulation": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    task_file = tmp_path / "task.json"
+    task_file.write_text(
+        json.dumps({
+            "id": "task-1",
+            "expected_files": ["src/main.py"],
+            "deletable_files": ["obsolete.py"],
+        }),
+        encoding="utf-8",
+    )
+    obsolete = tmp_path / "obsolete.py"
+    obsolete.write_text("# do not delete", encoding="utf-8")
+
+    resolved = _make_resolved_event(
+        workspace=str(tmp_path), target_paths=("src/main.py",)
+    )
+    decision = HookRecoveryDecision(
+        eligible=True,
+        gate_reason="eligible",
+        summary="eligible",
+        execution_mode="agent",
+    )
+    request = RecoveryExecutionRequest(
+        resolved_event=resolved,
+        decision=decision,
+        p_cfg_path=str(cfg_file),
+        task_input_path=str(task_file),
+    )
+
+    bad_response = """```python:src/main.py
+def ok():
+    return True
+```
+```delete:obsolete.py
+
+```"""
+
+    with patch(
+        "mighty_mouse.orchestrator.gemini_client."
+        "GeminiClient.generate_content",
+        return_value=bad_response,
+    ):
+        attempt = execute_recovery_attempt(request)
+        assert attempt.attempted is True
+        assert attempt.completed is False
+        assert attempt.output_paths == ()
+        assert obsolete.exists()

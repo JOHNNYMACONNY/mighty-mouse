@@ -815,7 +815,6 @@ def _solve_inner(
     )
 
 
-
 def _build_cli_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("config")

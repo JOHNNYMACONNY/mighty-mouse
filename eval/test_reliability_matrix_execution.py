@@ -21,6 +21,7 @@ from eval.reliability_matrix import (
     compute_sha256_bytes,
     resolve_harness_sha,
     run_preflight,
+    select_deterministic_p2_tasks,
     validate_payload_against_schema,
     verify_baseline_harness_delta,
 )
@@ -31,11 +32,15 @@ from eval.reliability_matrix_execution import (
     BARE_PROMPT_TEMPLATE,
     CaptureOllamaUsage,
     P1_TIERS,
+    P2_ARMS,
+    P2_PLAN_DESIGN,
+    P2_TIERS,
     classify_failure,
     deterministic_arm_order,
     execute_matrix_plan,
     execute_trial_unit,
     materialize_p1_plan,
+    materialize_p2_plan,
     prepare_fresh_trial_workspace,
     validate_execution_plan,
 )
@@ -2320,3 +2325,173 @@ def test_canonical_p1_order_and_zero_generation_count() -> None:
     capture = CaptureOllamaUsage()
     assert capture.generation_calls == 0
     assert len(ARMS) == 5
+
+
+def test_p2_plan_cardinality_and_seven_concrete_tiers() -> None:
+    """P2 plan produces 28 trial units across 7 tiers, 2 tasks, 2 arms."""
+    plan = materialize_p2_plan(check_git_tracking=True)
+    assert plan["plan_design"] == P2_PLAN_DESIGN
+    assert len(plan["trial_units"]) == 28
+    assert plan["tiers"] == list(P2_TIERS)
+    assert len(plan["tiers"]) == 7
+    assert "tier_2" not in plan["tiers"]
+    assert plan["replicates"] == 1
+
+    arms = sorted({u["arm"] for u in plan["trial_units"]})
+    assert arms == sorted(P2_ARMS)
+
+    for i, u in enumerate(plan["trial_units"]):
+        assert u["order_index"] == i
+        assert u["trial_order_index"] == i
+        assert u["task_slot"] in (1, 2)
+        assert u["replicate"] == 1
+
+
+def test_p2_two_distinct_tasks_per_tier_and_p1_continuity() -> None:
+    """Each concrete tier selects 2 distinct tasks; slot 1 keeps P1 task."""
+    cfg = json.loads(
+        Path("eval/evaluation_config.json").read_text(encoding="utf-8")
+    )
+    tiers_cfg = cfg["tiers"]
+
+    for tier in P2_TIERS:
+        tasks = tiers_cfg[tier]
+        slot1, slot2 = select_deterministic_p2_tasks(
+            EXPERIMENT_BASE_SHA, tier, tasks
+        )
+        assert slot1 != slot2, f"Tier {tier} selected duplicate tasks"
+
+        # Deterministic reproducibility
+        s1_again, s2_again = select_deterministic_p2_tasks(
+            EXPERIMENT_BASE_SHA, tier, tasks
+        )
+        assert (slot1, slot2) == (s1_again, s2_again)
+
+    # Verify P1 continuity on shared tiers
+    s1_t1, _ = select_deterministic_p2_tasks(
+        EXPERIMENT_BASE_SHA, "tier_1", tiers_cfg["tier_1"]
+    )
+    assert s1_t1 == "task_003_legacy_link_circuitbreaker.json"
+
+    s1_t5, _ = select_deterministic_p2_tasks(
+        EXPERIMENT_BASE_SHA, "tier_5", tiers_cfg["tier_5"]
+    )
+    assert s1_t5 == "task_047_stream_stack_enricher.json"
+
+    s1_t7, _ = select_deterministic_p2_tasks(
+        EXPERIMENT_BASE_SHA, "tier_7", tiers_cfg["tier_7"]
+    )
+    assert s1_t7 == "task_1415_file_proxy_retry.json"
+
+
+def test_p2_rejects_rollup_tier() -> None:
+    """P2 materialization fails closed if given rollup tier like tier_2."""
+    with pytest.raises(ValueError, match="rollup tier"):
+        materialize_p2_plan(tiers=["tier_1", "tier_2"])
+
+
+def test_p2_rejects_unsupported_arms() -> None:
+    """P2 materialization rejects arms outside P2_ARMS."""
+    with pytest.raises(ValueError, match="strictly rejects unsupported arms"):
+        materialize_p2_plan(arms=["control_once", "mm_single", "mm_swarm"])
+
+
+def test_p2_rejects_non_baseline_tracked_task(tmp_path: Path) -> None:
+    """P2 fails closed if task selected is not tracked in baseline Git."""
+    dummy_cfg = {
+        "tiers": {
+            "tier_1": [
+                "task_9999_untracked.json",
+                "task_001_legacy_registry_ratelimiter.json",
+            ]
+        }
+    }
+    cfg_file = tmp_path / "evaluation_config.json"
+    cfg_file.write_text(json.dumps(dummy_cfg), encoding="utf-8")
+
+    with pytest.raises((ValueError, FileNotFoundError)):
+        materialize_p2_plan(
+            config_path=cfg_file,
+            tiers=["tier_1"],
+            check_git_tracking=True,
+        )
+
+
+def test_p2_duplicate_prevention_and_stable_ordering() -> None:
+    """P2 rejects duplicate trial units or invalid order indices."""
+    plan = materialize_p2_plan(check_git_tracking=True)
+    validate_execution_plan(plan)
+
+    # Check duplicate trial ID
+    corrupt = copy.deepcopy(plan)
+    corrupt["trial_units"][1]["trial_id"] = corrupt["trial_units"][0][
+        "trial_id"
+    ]
+    with pytest.raises(ValueError, match="Duplicate trial_id"):
+        validate_execution_plan(corrupt)
+
+    # Check duplicate unit tuple
+    corrupt2 = copy.deepcopy(plan)
+    corrupt2["trial_units"][1]["arm"] = corrupt2["trial_units"][0]["arm"]
+    with pytest.raises(ValueError, match="Duplicate unit tuple"):
+        validate_execution_plan(corrupt2)
+
+
+def test_p2_zero_generation_materialization() -> None:
+    """P2 materialization and validation executes zero model generations."""
+    capture = CaptureOllamaUsage()
+    assert capture.generation_calls == 0
+
+    plan = materialize_p2_plan(check_git_tracking=True)
+    validate_execution_plan(plan)
+
+    assert capture.generation_calls == 0
+
+
+def test_raw_response_path_anchored_across_cwd_mutation(
+    tmp_path: Path,
+) -> None:
+    """CaptureOllamaUsage raw responses land in canonical output tree."""
+    out_dir = tmp_path / "eval" / "results" / "m12" / "test-run"
+    ws_dir = tmp_path / "workspaces" / "trial_01"
+    ws_dir.mkdir(parents=True, exist_ok=True)
+
+    capture = CaptureOllamaUsage(output_dir=out_dir, trial_id="trial_01")
+    old_cwd = os.getcwd()
+    try:
+        os.chdir(ws_dir)
+        capture.record_generation(
+            phase="primary",
+            raw_response_text="Test response payload",
+            prompt_tokens=10,
+            completion_tokens=20,
+        )
+    finally:
+        os.chdir(old_cwd)
+
+    # Assert artifact exists in canonical output tree
+    expected_file = (
+        out_dir / "raw_responses" / "trial_01" / "call_001_primary.txt"
+    )
+    assert expected_file.is_file()
+    assert (
+        expected_file.read_text(encoding="utf-8") == "Test response payload"
+    )
+
+    # Assert workspace contains zero raw_responses
+    ws_raw = (
+        ws_dir / "eval" / "results" / "m12" / "test-run" / "raw_responses"
+    )
+    assert not ws_raw.exists()
+    assert not (ws_dir / "raw_responses").exists()
+
+
+def test_p1_materialization_and_semantics_strictly_unchanged() -> None:
+    """P1 materialization output remains unchanged with 15 units, 3 tiers."""
+    p1 = materialize_p1_plan()
+    validate_execution_plan(p1)
+    assert len(p1["trial_units"]) == 15
+    assert p1["tiers"] == list(P1_TIERS)
+    assert "plan_design" not in p1 or p1.get("plan_design") is None
+    for u in p1["trial_units"]:
+        assert "task_slot" not in u

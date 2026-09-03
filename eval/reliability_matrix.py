@@ -211,9 +211,17 @@ def get_baseline_tracked_tasks(
 
     Fails closed if git command fails.
     """
+    root_resolved = Path(repo_root).resolve()
+    if tasks_dir.is_absolute():
+        try:
+            git_path = str(tasks_dir.resolve().relative_to(root_resolved))
+        except ValueError:
+            git_path = str(tasks_dir)
+    else:
+        git_path = str(tasks_dir)
     res = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", base_sha, str(tasks_dir)],
-        cwd=repo_root,
+        ["git", "ls-tree", "-r", "--name-only", base_sha, git_path],
+        cwd=root_resolved,
         capture_output=True,
         text=True,
         check=False,
@@ -233,21 +241,34 @@ def evaluate_tier_corpus(
     tasks_dir: Path = DEFAULT_TASKS_DIR,
     base_sha: str | None = None,
     check_git_tracking: bool = True,
+    repo_root: Path = Path("."),
 ) -> list[dict[str, Any]]:
     """Dynamically audit configured tiers, disk files, and git tracking."""
-    if not config_path.is_file():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
-    cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    root_resolved = Path(repo_root).resolve()
+    cfg_path = (
+        config_path
+        if config_path.is_absolute()
+        else (root_resolved / config_path)
+    )
+    if not cfg_path.is_file():
+        raise FileNotFoundError(f"Config file not found: {cfg_path}")
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     tiers_cfg = cfg.get("tiers", {})
 
-    sha = base_sha or resolve_base_sha()
+    sha = base_sha or resolve_base_sha(repo_root=root_resolved)
     tracked_tasks: set[str] | None = None
     git_lookup_error: str | None = None
     if check_git_tracking and sha:
         try:
-            tracked_tasks = get_baseline_tracked_tasks(sha, tasks_dir)
+            tracked_tasks = get_baseline_tracked_tasks(
+                sha, tasks_dir, root_resolved
+            )
         except Exception as exc:
             git_lookup_error = str(exc)
+
+    resolved_tasks_dir = (
+        tasks_dir if tasks_dir.is_absolute() else (root_resolved / tasks_dir)
+    )
 
     results: list[dict[str, Any]] = []
 
@@ -295,7 +316,7 @@ def evaluate_tier_corpus(
 
         missing = []
         for t in tasks:
-            exists_on_disk = (tasks_dir / t).is_file()
+            exists_on_disk = (resolved_tasks_dir / t).is_file()
             in_baseline = (
                 tracked_tasks is None or t in tracked_tasks
             )
@@ -379,6 +400,7 @@ def verify_runtime_context_readiness(
     workspace: Path | None = None,
     state_dir: Path | None = None,
     tool_signatures: dict[str, Any] | None = None,
+    repo_root: Path = Path("."),
 ) -> tuple[bool, str | None]:
     """Zero-generation readiness check on canonical adapter context."""
     try:
@@ -393,8 +415,15 @@ def verify_runtime_context_readiness(
             if tool_signatures is not None
             else _get_mcp_tool_signatures()
         )
-        target_ws = workspace or Path(".")
-        target_state = state_dir or (target_ws / ".mighty-mouse")
+        root_path = Path(repo_root).resolve()
+        target_ws = workspace or root_path
+        target_state = state_dir or (root_path / ".mighty-mouse")
+        canonical_model_config = root_path / "configs/mighty_mouse_v1.yaml"
+        if not canonical_model_config.is_file():
+            return (
+                False,
+                f"Canonical model config missing: {canonical_model_config}",
+            )
         cfg_file = target_state / "mcp-adapter.json"
         if not cfg_file.is_file():
             return (
@@ -525,22 +554,42 @@ def run_preflight(
     check_git_tracking: bool = True,
     required_tiers: Sequence[str] | None = None,
     lock_instance: SingleInstanceLock | None = None,
+    repo_root: Path = Path("."),
 ) -> dict[str, Any]:
     """Execute zero-generation dry-run checks under SingleInstanceLock."""
-    out_path = output_dir or Path(f"eval/results/m12/{experiment_id}")
+    resolved_root = Path(repo_root).resolve()
+    out_path = output_dir or (
+        resolved_root / f"eval/results/m12/{experiment_id}"
+    )
 
     def _execute_checks() -> dict[str, Any]:
-        target_harness = harness_sha or resolve_harness_sha()
+        target_harness = harness_sha or resolve_harness_sha(
+            repo_root=resolved_root
+        )
         target_base = base_sha or EXPERIMENT_BASE_SHA
 
-        is_clean, unclean_items = check_git_clean()
-        config_hash = compute_sha256_file(config_path)
+        is_clean, unclean_items = check_git_clean(resolved_root)
+        cfg_file = (
+            config_path
+            if config_path.is_absolute()
+            else (resolved_root / config_path)
+        )
+        config_hash = compute_sha256_file(cfg_file)
 
-        schema = load_contract_schema(contract_path)
+        contract_file = (
+            contract_path
+            if contract_path.is_absolute()
+            else (resolved_root / contract_path)
+        )
+        schema = load_contract_schema(contract_file)
         schema_valid = isinstance(schema, dict) and "definitions" in schema
 
         tiers = evaluate_tier_corpus(
-            config_path, tasks_dir, target_base, check_git_tracking
+            config_path=cfg_file,
+            tasks_dir=tasks_dir,
+            base_sha=target_base,
+            check_git_tracking=check_git_tracking,
+            repo_root=resolved_root,
         )
         server_info = check_ollama_provenance(ollama_host, ollama_model)
 
@@ -577,7 +626,7 @@ def run_preflight(
         changed_paths: list[str] = []
         try:
             delta_ok, changed_or_unapproved = verify_baseline_harness_delta(
-                target_base, target_harness
+                target_base, target_harness, repo_root=resolved_root
             )
             if not delta_ok:
                 blocking_reasons.append(
@@ -594,7 +643,9 @@ def run_preflight(
             and server_info.get("model_digest") not in ("unknown", "", None)
         ):
             ready_ok, ready_err = verify_runtime_context_readiness(
-                server_info["model_digest"], ollama_model
+                server_info["model_digest"],
+                ollama_model,
+                repo_root=resolved_root,
             )
             if not ready_ok:
                 blocking_reasons.append(
@@ -670,7 +721,7 @@ def run_preflight(
         }
 
         validate_payload_against_schema(
-            report, "preflight_report", contract_path
+            report, "preflight_report", contract_file
         )
 
         report_file = out_path / "preflight_report.json"
@@ -681,7 +732,12 @@ def run_preflight(
     if lock_instance is not None:
         return _execute_checks()
 
-    lock = SingleInstanceLock(lock_path) if lock_path else SingleInstanceLock()
+    resolved_lock_path = (
+        lock_path
+        if lock_path is not None
+        else (resolved_root / "logs/eval_runner.lock")
+    )
+    lock = SingleInstanceLock(resolved_lock_path)
     with lock:
         return _execute_checks()
 

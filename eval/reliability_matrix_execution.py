@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
+import re
 import threading
 import time
 from typing import Any, Sequence
@@ -37,6 +38,10 @@ from eval.reliability_matrix import (
     select_deterministic_task,
     validate_payload_against_schema,
     verify_baseline_harness_delta,
+)
+from eval.run_bare_baseline import (
+    PROMPT_TEMPLATE as BARE_PROMPT_TEMPLATE,
+    build_prompt as build_bare_prompt,
 )
 from eval.runner_lock import SingleInstanceLock
 from mighty_mouse.host.adapter import (
@@ -69,37 +74,33 @@ ARM_ORDER_SEED_PREFIX = "m12-arm-order-v1"
 P1_TIERS = ("tier_1", "tier_5", "tier_7")
 CANONICAL_MODEL_CONFIG_PATH = Path("configs/mighty_mouse_v1.yaml")
 
-BARE_PROMPT_TEMPLATE = """You are completing a coding task.
-
-Title: {title}
-Task: {description}
-Constraints: {constraints}
-Required files: {expected_files}
-
-Write the complete implementation. Return each required file as one fenced
-block whose opening fence is exactly ```language:path. Do not omit the path.
-"""
-
-
-def build_bare_prompt(task: dict[str, Any]) -> str:
-    return BARE_PROMPT_TEMPLATE.format(
-        title=task.get("title", task.get("id", "task")),
-        description=task.get("description", ""),
-        constraints=json.dumps(task.get("constraints", {}), sort_keys=True),
-        expected_files=", ".join(task.get("expected_files", [])),
-    )
-
 
 class CaptureOllamaUsage:
     """Thread-safe manager wrapping OllamaClient.generate_content."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        output_dir: Path | None = None,
+        trial_id: str | None = None,
+    ) -> None:
         self._lock = threading.Lock()
         self.events: list[dict[str, Any]] = []
         self.generation_calls: int = 0
         self.token_coverage_complete: bool = True
         self.active_phase: str = "primary"
         self._original_generate: Any = None
+        self.output_dir: Path | None = output_dir
+        self.trial_id: str | None = trial_id
+
+    def configure_trial(
+        self,
+        output_dir: Path | None,
+        trial_id: str | None,
+    ) -> None:
+        with self._lock:
+            self.output_dir = output_dir
+            self.trial_id = trial_id
 
     def set_phase(self, phase: str) -> None:
         with self._lock:
@@ -119,9 +120,11 @@ class CaptureOllamaUsage:
         latency_seconds: float = 0.0,
         thread_id: int | None = None,
         thread_name: str | None = None,
+        raw_response_text: str | None = None,
     ) -> None:
         with self._lock:
             self.generation_calls += 1
+            call_phase = phase or self.active_phase
             if prompt_tokens is None or completion_tokens is None:
                 self.token_coverage_complete = False
 
@@ -138,9 +141,25 @@ class CaptureOllamaUsage:
             else:
                 t_val = None
 
+            relpath: str | None = None
+            sha256_val: str | None = None
+            if raw_response_text is not None:
+                raw_bytes = raw_response_text.encode("utf-8")
+                sha256_val = hashlib.sha256(raw_bytes).hexdigest()
+                if self.output_dir is not None and self.trial_id is not None:
+                    raw_dir = (
+                        self.output_dir / "raw_responses" / self.trial_id
+                    )
+                    raw_dir.mkdir(parents=True, exist_ok=True)
+                    fname = (
+                        f"call_{self.generation_calls:03d}_{call_phase}.txt"
+                    )
+                    (raw_dir / fname).write_bytes(raw_bytes)
+                    relpath = f"raw_responses/{self.trial_id}/{fname}"
+
             event = {
                 "call_index": self.generation_calls,
-                "phase": phase or self.active_phase,
+                "phase": call_phase,
                 "model": model,
                 "provider": provider,
                 "temperature": temperature,
@@ -157,8 +176,23 @@ class CaptureOllamaUsage:
                     thread_name if thread_name is not None
                     else threading.current_thread().name
                 ),
+                "raw_response_relpath": relpath,
+                "raw_response_sha256": sha256_val,
             }
             self.events.append(event)
+
+    @property
+    def raw_response_artifacts(self) -> list[dict[str, Any]]:
+        """Return canonical list of raw response artifact descriptors."""
+        return [
+            {
+                "call_index": e["call_index"],
+                "phase": e["phase"],
+                "relpath": e.get("raw_response_relpath"),
+                "sha256": e.get("raw_response_sha256"),
+            }
+            for e in self.events
+        ]
 
     def __enter__(self) -> CaptureOllamaUsage:
         try:
@@ -193,6 +227,7 @@ class CaptureOllamaUsage:
                     latency_seconds=float(meta.get("latency_seconds", dt)),
                     thread_id=threading.get_ident(),
                     thread_name=threading.current_thread().name,
+                    raw_response_text=res,
                 )
                 return res
             except Exception:
@@ -210,6 +245,7 @@ class CaptureOllamaUsage:
                     latency_seconds=dt,
                     thread_id=threading.get_ident(),
                     thread_name=threading.current_thread().name,
+                    raw_response_text=None,
                 )
                 raise
 
@@ -450,23 +486,221 @@ def classify_failure(
 def prepare_fresh_trial_workspace(
     workspace: Path,
     isolation_workspace: Path | None = None,
+    workspace_root: Path | None = None,
 ) -> None:
     """Enforce fresh trial workspaces; fail closed if pre-existing."""
-    if workspace.exists():
-        raise FileExistsError(
-            f"Trial workspace already exists at '{workspace}'. "
-            "Fail closed to preserve existing experimental evidence."
-        )
-    workspace.mkdir(parents=True, exist_ok=False)
-
-    if isolation_workspace is not None:
-        if isolation_workspace.exists():
-            raise FileExistsError(
-                f"Isolation workspace already exists at "
-                f"'{isolation_workspace}'. Fail closed to preserve "
-                "existing experimental evidence."
+    if workspace_root is not None:
+        root_res = Path(workspace_root).resolve()
+        ws_res = Path(workspace).resolve()
+        try:
+            ws_res.relative_to(root_res)
+        except ValueError:
+            raise ValueError(
+                f"Workspace path '{workspace}' escapes workspace_root "
+                f"'{workspace_root}'"
             )
+        if ws_res == root_res:
+            raise ValueError(
+                f"Workspace path cannot be workspace_root: '{workspace}'"
+            )
+
+        if isolation_workspace is not None:
+            iso_res = Path(isolation_workspace).resolve()
+            try:
+                iso_res.relative_to(root_res)
+            except ValueError:
+                raise ValueError(
+                    f"Isolation workspace path '{isolation_workspace}' "
+                    f"escapes workspace_root '{workspace_root}'"
+                )
+            if iso_res == root_res:
+                raise ValueError(
+                    "Isolation workspace cannot be workspace_root: "
+                    f"'{isolation_workspace}'"
+                )
+
+    ws_exists = workspace.exists()
+    iso_exists = (
+        isolation_workspace.exists()
+        if isolation_workspace is not None
+        else False
+    )
+    if ws_exists or iso_exists:
+        if ws_exists and iso_exists:
+            msg = (
+                f"Both trial workspace '{workspace}' and isolation workspace "
+                f"'{isolation_workspace}' already exist."
+            )
+        elif ws_exists:
+            msg = f"Trial workspace already exists at '{workspace}'."
+        else:
+            msg = (
+                f"Isolation workspace exists at '{isolation_workspace}'."
+            )
+        raise FileExistsError(
+            f"{msg} Fail closed to preserve existing experimental evidence."
+        )
+
+    workspace.mkdir(parents=True, exist_ok=False)
+    if isolation_workspace is not None:
         isolation_workspace.mkdir(parents=True, exist_ok=False)
+
+
+def validate_execution_plan(
+    plan: dict[str, Any],
+    *,
+    contract_path: Path = DEFAULT_CONTRACT_PATH,
+    config_path: Path = DEFAULT_CONFIG_PATH,
+    tasks_dir: Path = DEFAULT_TASKS_DIR,
+    repo_root: Path = Path("."),
+) -> None:
+    """Strict execution plan validation and invariant attestation."""
+    validate_payload_against_schema(plan, "execution_plan", contract_path)
+
+    base_sha = plan.get("base_sha")
+    exp_base_sha = plan.get("experiment_base_sha")
+    if (
+        base_sha != EXPERIMENT_BASE_SHA
+        or exp_base_sha != EXPERIMENT_BASE_SHA
+    ):
+        raise ValueError(
+            f"Execution plan base SHAs must equal '{EXPERIMENT_BASE_SHA}', "
+            f"got base_sha='{base_sha}', experiment_base_sha='{exp_base_sha}'"
+        )
+
+    resolved_root = Path(repo_root).resolve()
+    current_harness = resolve_harness_sha(repo_root=resolved_root)
+    if plan.get("harness_sha") != current_harness:
+        plan_h = plan.get("harness_sha")
+        raise ValueError(
+            f"Execution plan harness_sha '{plan_h}' does not match "
+            f"current harness HEAD '{current_harness}'"
+        )
+
+    if plan.get("arm_order_seed") != ARM_ORDER_SEED_PREFIX:
+        plan_seed = plan.get("arm_order_seed")
+        raise ValueError(
+            f"Execution plan arm_order_seed must be "
+            f"'{ARM_ORDER_SEED_PREFIX}', got '{plan_seed}'"
+        )
+
+    trial_units = plan.get("trial_units")
+    if not isinstance(trial_units, list) or len(trial_units) == 0:
+        raise ValueError("Execution plan trial_units must be a non-empty list")
+
+    cfg_file = (
+        config_path
+        if config_path.is_absolute()
+        else (resolved_root / config_path)
+    )
+    if not cfg_file.is_file():
+        raise FileNotFoundError(f"Evaluation config missing: {cfg_file}")
+    tiers_cfg = json.loads(cfg_file.read_text(encoding="utf-8")).get(
+        "tiers", {}
+    )
+
+    resolved_tasks_dir = (
+        tasks_dir
+        if tasks_dir.is_absolute()
+        else (resolved_root / tasks_dir)
+    )
+
+    seen_trial_ids: set[str] = set()
+    seen_tuples: set[tuple[str, str, str, int]] = set()
+    group_map: dict[tuple[str, int], list[dict[str, Any]]] = {}
+
+    for i, unit in enumerate(trial_units):
+        ord_idx = unit.get("order_index")
+        t_ord_idx = unit.get("trial_order_index")
+        if ord_idx != i or t_ord_idx != i:
+            raise ValueError(
+                f"Unit {i} has invalid order index: order_index={ord_idx}, "
+                f"trial_order_index={t_ord_idx}, expected {i}"
+            )
+
+        if (
+            unit.get("experiment_base_sha") != plan["experiment_base_sha"]
+            or unit.get("harness_sha") != plan["harness_sha"]
+        ):
+            raise ValueError(f"Unit {i} SHAs mismatch plan SHAs")
+
+        tid = str(unit.get("trial_id", ""))
+        if (
+            not tid
+            or not re.match(r"^[a-zA-Z0-9_\-]+$", tid)
+            or Path(tid).name != tid
+            or tid.startswith(".")
+        ):
+            raise ValueError(f"Unit {i} has unsafe trial_id '{tid}'")
+        if tid in seen_trial_ids:
+            raise ValueError(f"Duplicate trial_id '{tid}' in unit {i}")
+        seen_trial_ids.add(tid)
+
+        tier = str(unit.get("tier", ""))
+        task_id = str(unit.get("task_id", ""))
+        arm = str(unit.get("arm", ""))
+        replicate = int(unit.get("replicate", 0))
+        unit_tup = (tier, task_id, arm, replicate)
+        if unit_tup in seen_tuples:
+            raise ValueError(f"Duplicate unit tuple {unit_tup} in unit {i}")
+        seen_tuples.add(unit_tup)
+
+        task_file = str(unit.get("task_file", ""))
+        if (
+            not task_file
+            or Path(task_file).name != task_file
+            or ".." in task_file
+            or task_file.startswith("/")
+        ):
+            raise ValueError(
+                f"Unit {i} has unsafe task_file basename '{task_file}'"
+            )
+
+        if tier not in tiers_cfg or not isinstance(tiers_cfg[tier], list):
+            raise ValueError(
+                f"Unit {i} tier '{tier}' invalid in {cfg_file}"
+            )
+        if task_file not in tiers_cfg[tier]:
+            raise ValueError(
+                f"Unit {i} task_file '{task_file}' not in tier '{tier}' list"
+            )
+
+        det_selected = select_deterministic_task(
+            EXPERIMENT_BASE_SHA, tier, tiers_cfg[tier]
+        )
+        if task_file != det_selected:
+            raise ValueError(
+                f"Unit {i} task_file '{task_file}' does not match "
+                f"deterministic selection '{det_selected}' for tier '{tier}'"
+            )
+
+        t_path = resolved_tasks_dir / task_file
+        if not t_path.is_file():
+            raise FileNotFoundError(
+                f"Unit {i} task file not found on disk: {t_path}"
+            )
+        task_data = json.loads(t_path.read_text(encoding="utf-8"))
+        expected_task_id = str(task_data.get("id", Path(task_file).stem))
+        if task_id != expected_task_id:
+            raise ValueError(
+                f"Unit {i} task_id '{task_id}' does not match task file id "
+                f"'{expected_task_id}'"
+            )
+
+        group_key = (tier, replicate)
+        group_map.setdefault(group_key, []).append(unit)
+
+    for (tier, replicate), group in group_map.items():
+        group_task_id = group[0]["task_id"]
+        expected_arm_order = deterministic_arm_order(
+            EXPERIMENT_BASE_SHA, group_task_id, replicate, list(ARMS.keys())
+        )
+        actual_arms = [u["arm"] for u in group]
+        if actual_arms != expected_arm_order:
+            raise ValueError(
+                f"Tier '{tier}' rep {replicate} arms {actual_arms} do not "
+                f"match canonical deterministic order {expected_arm_order}"
+            )
 
 
 def resolve_canonical_adapter_context(
@@ -537,12 +771,18 @@ def execute_trial_unit(
     ollama_model: str = DEFAULT_MODEL,
     tool_signatures: dict[str, Any] | None = None,
     provenance_info: dict[str, Any] | None = None,
+    expected_digest: str | None = None,
     timeout_sec: int = 120,
     usage_capture: CaptureOllamaUsage | None = None,
     repo_root: Path = Path("."),
 ) -> dict[str, Any]:
     """Execute a single trial unit across one of the five arms."""
-    target_harness = harness_sha or resolve_harness_sha()
+    repo_root = Path(repo_root).resolve()
+    target_harness = (
+        harness_sha
+        or plan_unit.get("harness_sha")
+        or resolve_harness_sha(repo_root=repo_root)
+    )
     sigs = (
         tool_signatures
         if tool_signatures is not None
@@ -554,7 +794,11 @@ def execute_trial_unit(
 
     arm_def = ARMS[arm]
     task_file_name = plan_unit["task_file"]
-    task_json_path = tasks_dir / task_file_name
+    task_json_path = (
+        tasks_dir / task_file_name
+        if tasks_dir.is_absolute()
+        else repo_root / tasks_dir / task_file_name
+    )
     if not task_json_path.is_file():
         raise FileNotFoundError(f"Task file not found: {task_json_path}")
 
@@ -564,7 +808,7 @@ def execute_trial_unit(
 
     # Baseline-to-harness delta check as an execution gate
     delta_ok, changed_or_unapproved = verify_baseline_harness_delta(
-        base_sha, target_harness
+        base_sha, target_harness, repo_root=repo_root
     )
     if not delta_ok:
         raise RuntimeError(
@@ -583,6 +827,11 @@ def execute_trial_unit(
             "Fail closed before generation."
         )
     model_digest = server_info["model_digest"]
+    if expected_digest is not None and model_digest != expected_digest:
+        raise RuntimeError(
+            f"Ollama model digest '{model_digest}' does not match expected "
+            f"digest '{expected_digest}'. Fail closed before generation."
+        )
 
     trial_id = plan_unit["trial_id"]
     trial_workspace = workspace_root / trial_id
@@ -592,9 +841,9 @@ def execute_trial_unit(
     prepare_fresh_trial_workspace(
         trial_workspace,
         iso_workspace if arm in ("mm_swarm", "mm_swarm_recovery") else None,
+        workspace_root=workspace_root,
     )
 
-    repo_root = Path(repo_root).resolve()
     canonical_config_path = repo_root / "configs/mighty_mouse_v1.yaml"
     if not canonical_config_path.is_file():
         raise FileNotFoundError(
@@ -633,9 +882,11 @@ def execute_trial_unit(
     terminal_failure_cat: str | None = None
 
     active_capture = usage_capture or CaptureOllamaUsage()
+    active_capture.configure_trial(output_dir, trial_id)
     ctx_mgr = active_capture if usage_capture is None else None
 
     wall_start = time.monotonic()
+    rec_exception: Exception | None = None
     try:
         if ctx_mgr is not None:
             ctx_mgr.__enter__()
@@ -660,6 +911,7 @@ def execute_trial_unit(
                     latency_seconds=float(
                         meta.get("latency_seconds", time.monotonic() - t0)
                     ),
+                    raw_response_text=raw_response,
                 )
             except Exception as exc:
                 primary_exception = exc
@@ -671,6 +923,7 @@ def execute_trial_unit(
                     completion_tokens=None,
                     total_tokens=None,
                     latency_seconds=time.monotonic() - t0,
+                    raw_response_text=None,
                 )
 
             if primary_exception is None and raw_response is not None:
@@ -752,12 +1005,30 @@ def execute_trial_unit(
                 first_verif = verify_task(
                     task_config, workspace=str(trial_workspace)
                 )
-                first_verifier_completed = True
+                if (
+                    not isinstance(first_verif, dict)
+                    or first_verif.get("status") not in ("success", "fail")
+                ):
+                    first_verifier_completed = False
+                    raw_st = (
+                        first_verif.get("status")
+                        if isinstance(first_verif, dict)
+                        else type(first_verif)
+                    )
+                    first_verifier_exception = RuntimeError(
+                        f"Malformed first verifier status: {raw_st}"
+                    )
+                else:
+                    first_verifier_completed = True
             except Exception as exc:
                 first_verifier_completed = False
                 first_verifier_exception = exc
 
-        if first_verifier_exception is not None:
+        first_err = (
+            first_verifier_exception is not None
+            or not first_verifier_completed
+        )
+        if first_err:
             first_passed = False
             first_failure_cat = "verifier_error"
         elif primary_exception is not None:
@@ -767,15 +1038,15 @@ def execute_trial_unit(
             first_failure_cat = classify_failure(
                 first_verif, exception=primary_exception, stage=execution_stage
             )
-        elif (
-            first_verif is not None
-            and first_verif.get("status") == "success"
-        ):
+        elif first_verif.get("status") == "success":
             first_passed = True
             first_failure_cat = None
-        else:
+        elif first_verif.get("status") == "fail":
             first_passed = False
             first_failure_cat = classify_failure(first_verif)
+        else:
+            first_passed = False
+            first_failure_cat = "verifier_error"
 
         terminal_passed = first_passed
         terminal_verif = first_verif
@@ -787,14 +1058,15 @@ def execute_trial_unit(
         # Recovery is permitted ONLY if:
         # - arm has recovery_enabled
         # - primary execution completed without uncaught primary exception
-        # - verifier ran and completed without crashing
-        # - first verification explicitly returned failure
+        # - first verifier ran and completed without crashing
+        # - first verification explicitly returned status == "fail"
         if (
             arm_def.recovery_enabled
-            and not first_passed
             and primary_exception is None
             and first_verifier_completed
             and first_verifier_exception is None
+            and isinstance(first_verif, dict)
+            and first_verif.get("status") == "fail"
         ):
             assert resolved_ctx is not None
             expected_files = tuple(task_config.get("expected_files", []))
@@ -840,27 +1112,52 @@ def execute_trial_unit(
                     p_cfg_path=str(canonical_config_path),
                     task_input_path=str(task_json_path.resolve()),
                 )
-                attempt = execute_recovery_attempt(
-                    rec_request,
-                    feedback_str=verif_summary.summary,
-                )
-                recovery_attempted = attempt.attempted
-                recovery_completed = attempt.completed
+                attempt = None
+                try:
+                    attempt = execute_recovery_attempt(
+                        rec_request,
+                        feedback_str=verif_summary.summary,
+                    )
+                    recovery_attempted = attempt.attempted
+                    recovery_completed = attempt.completed
+                except Exception as exc:
+                    rec_exception = exc
+                    recovery_attempted = True
+                    recovery_completed = False
+                    logger.error("Recovery execution exception: %s", exc)
 
-                if recovery_completed:
+                if recovery_completed and attempt is not None:
                     try:
                         terminal_verif = verify_task(
                             task_config, workspace=str(trial_workspace)
                         )
-                        terminal_verifier_completed = True
-                        if terminal_verif.get("status") == "success":
-                            terminal_passed = True
-                            terminal_failure_cat = None
-                        else:
+                        is_valid_term = (
+                            isinstance(terminal_verif, dict)
+                            and terminal_verif.get("status")
+                            in ("success", "fail")
+                        )
+                        if not is_valid_term:
                             terminal_passed = False
-                            terminal_failure_cat = classify_failure(
-                                terminal_verif, is_recovery=True
+                            terminal_failure_cat = "verifier_error"
+                            terminal_verifier_completed = False
+                            t_raw_st = (
+                                terminal_verif.get("status")
+                                if isinstance(terminal_verif, dict)
+                                else type(terminal_verif)
                             )
+                            re_verif_exception = RuntimeError(
+                                f"Malformed re-verifier status: {t_raw_st}"
+                            )
+                        else:
+                            terminal_verifier_completed = True
+                            if terminal_verif.get("status") == "success":
+                                terminal_passed = True
+                                terminal_failure_cat = None
+                            else:
+                                terminal_passed = False
+                                terminal_failure_cat = classify_failure(
+                                    terminal_verif, is_recovery=True
+                                )
                     except Exception as exc:
                         terminal_passed = False
                         terminal_failure_cat = "verifier_error"
@@ -916,6 +1213,9 @@ def execute_trial_unit(
         "terminal_verification": terminal_verif,
         "primary_exception": (
             str(primary_exception) if primary_exception else None
+        ),
+        "recovery_exception": (
+            str(rec_exception) if rec_exception else None
         ),
     }
     trace_relpath: str | None = None
@@ -1052,6 +1352,7 @@ def execute_trial_unit(
             "infrastructure_error": infra_error,
             "trace_artifact_relpath": trace_relpath,
             "trace_artifact_sha256": trace_sha256,
+            "raw_response_artifacts": active_capture.raw_response_artifacts,
         },
     }
 
@@ -1087,11 +1388,24 @@ def execute_matrix_plan(
     """Execute all units in an execution plan under SingleInstanceLock."""
     from eval.reliability_matrix import run_preflight
 
+    repo_root = Path(repo_root).resolve()
+
+    # Attest and validate loaded execution plan before any side effects
+    validate_execution_plan(
+        plan,
+        contract_path=contract_path,
+        config_path=config_path,
+        tasks_dir=tasks_dir,
+        repo_root=repo_root,
+    )
+
     target_base = plan.get(
         "experiment_base_sha", plan.get("base_sha", EXPERIMENT_BASE_SHA)
     )
-    target_harness = plan.get("harness_sha") or resolve_harness_sha()
-    asserted_harness = resolve_harness_sha()
+    target_harness = plan.get("harness_sha") or resolve_harness_sha(
+        repo_root=repo_root
+    )
+    asserted_harness = resolve_harness_sha(repo_root=repo_root)
 
     if target_base != EXPERIMENT_BASE_SHA:
         raise ValueError(
@@ -1105,7 +1419,7 @@ def execute_matrix_plan(
         )
 
     delta_ok, changed_or_unapproved = verify_baseline_harness_delta(
-        target_base, target_harness
+        target_base, target_harness, repo_root=repo_root
     )
     if not delta_ok:
         raise RuntimeError(
@@ -1114,29 +1428,14 @@ def execute_matrix_plan(
         )
     changed_paths = changed_or_unapproved
 
-    lock = SingleInstanceLock(lock_path) if lock_path else SingleInstanceLock()
+    lock_file = (
+        lock_path
+        if lock_path is not None
+        else (repo_root / "logs/eval_runner.lock")
+    )
+    lock = SingleInstanceLock(lock_file)
     with lock:
         output_dir.mkdir(parents=True, exist_ok=True)
-        if not dry_run:
-            preflight_report = run_preflight(
-                experiment_id=plan["experiment_id"],
-                base_sha=target_base,
-                harness_sha=target_harness,
-                output_dir=output_dir,
-                contract_path=contract_path,
-                config_path=config_path,
-                tasks_dir=tasks_dir,
-                ollama_host=ollama_host,
-                ollama_model=ollama_model,
-                required_tiers=plan.get("tiers", list(P1_TIERS)),
-                lock_instance=lock,
-            )
-            if not preflight_report.get("preflight_passed"):
-                reasons = preflight_report.get("blocking_reasons", [])
-                raise RuntimeError(
-                    f"Scoped preflight failed before execution: {reasons}"
-                )
-
         if dry_run:
             # dry_run=True guarantees ZERO execution and ZERO generation
             summary = {
@@ -1158,6 +1457,8 @@ def execute_matrix_plan(
                     "total_infrastructure_excluded": 0,
                     "total_tokens": None,
                 },
+                "status": "dry_run",
+                "stop_reason": None,
                 "dry_run": True,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
@@ -1170,9 +1471,53 @@ def execute_matrix_plan(
             )
             return summary
 
-        provenance = check_ollama_provenance(ollama_host, ollama_model)
+        preflight_report = run_preflight(
+            experiment_id=plan["experiment_id"],
+            base_sha=target_base,
+            harness_sha=target_harness,
+            output_dir=output_dir,
+            contract_path=contract_path,
+            config_path=config_path,
+            tasks_dir=tasks_dir,
+            ollama_host=ollama_host,
+            ollama_model=ollama_model,
+            required_tiers=plan.get("tiers", list(P1_TIERS)),
+            lock_instance=lock,
+            repo_root=repo_root,
+        )
+        if not preflight_report.get("preflight_passed"):
+            reasons = preflight_report.get("blocking_reasons", [])
+            raise RuntimeError(
+                f"Scoped preflight failed before execution: {reasons}"
+            )
+
+        # Authoritative frozen provenance from scoped preflight
+        frozen_digest = preflight_report["ollama_server"].get("model_digest")
+        if not frozen_digest or frozen_digest == "unknown":
+            raise RuntimeError(
+                "Preflight model digest missing or unknown; failing closed."
+            )
+        frozen_provenance = preflight_report["ollama_server"]
+
         trial_records: list[dict[str, Any]] = []
+        stop_reason: str | None = None
+        status = "completed"
+
         for unit in plan.get("trial_units", []):
+            # Check model provenance before each trial
+            live_prov = check_ollama_provenance(ollama_host, ollama_model)
+            if (
+                not live_prov.get("available")
+                or live_prov.get("model_digest") != frozen_digest
+            ):
+                live_dig = live_prov.get("model_digest")
+                stop_reason = (
+                    f"Model digest changed from frozen '{frozen_digest}' "
+                    f"to '{live_dig}'. Aborting."
+                )
+                status = "aborted"
+                break
+
             rec = execute_trial_unit(
                 unit,
                 experiment_id=plan["experiment_id"],
@@ -1185,10 +1530,51 @@ def execute_matrix_plan(
                 ollama_host=ollama_host,
                 ollama_model=ollama_model,
                 tool_signatures=tool_signatures,
-                provenance_info=provenance,
+                provenance_info=frozen_provenance,
+                expected_digest=frozen_digest,
                 repo_root=repo_root,
             )
             trial_records.append(rec)
+
+            # Evaluate established stop conditions
+            rec_tid = rec["identity"]["trial_id"]
+            if (
+                rec.get("validity", {}).get("infrastructure_error") is not None
+                or rec.get("verification", {}).get("first_failure_category")
+                in ("verifier_error", "infrastructure_error")
+                or rec.get("verification", {}).get("terminal_failure_category")
+                in ("verifier_error", "infrastructure_error")
+            ):
+                infra_msg = (
+                    rec.get("validity", {}).get("infrastructure_error")
+                    or rec.get("verification", {}).get(
+                        "terminal_failure_category"
+                    )
+                    or rec.get("verification", {}).get(
+                        "first_failure_category"
+                    )
+                )
+                stop_reason = (
+                    f"Infrastructure error in trial {rec_tid}: {infra_msg}"
+                )
+            elif not rec.get("validity", {}).get("provenance_complete"):
+                stop_reason = (
+                    f"Provenance incomplete in trial {rec_tid}"
+                )
+            elif not rec.get("validity", {}).get(
+                "terminal_verifier_completed"
+            ):
+                stop_reason = (
+                    f"Terminal verifier incomplete in trial {rec_tid}"
+                )
+            elif not rec.get("validity", {}).get("token_coverage_complete"):
+                stop_reason = (
+                    f"Token coverage incomplete in trial {rec_tid}"
+                )
+
+            if stop_reason is not None:
+                status = "aborted"
+                break
 
         arm_counts: dict[str, dict[str, int]] = {}
         for rec in trial_records:
@@ -1204,9 +1590,9 @@ def execute_matrix_plan(
             is_infra_error = (
                 rec.get("validity", {}).get("infrastructure_error") is not None
                 or rec.get("verification", {}).get("first_failure_category")
-                == "verifier_error"
+                in ("verifier_error", "infrastructure_error")
                 or rec.get("verification", {}).get("terminal_failure_category")
-                == "verifier_error"
+                in ("verifier_error", "infrastructure_error")
             )
             if is_infra_error:
                 arm_counts[arm_name]["infrastructure_excluded"] += 1
@@ -1222,7 +1608,7 @@ def execute_matrix_plan(
         )
 
         all_tokens = [r["cost"]["total_tokens"] for r in trial_records]
-        if any(t is None for t in all_tokens):
+        if any(t is None for t in all_tokens) or not trial_records:
             run_total_tokens: int | None = None
         else:
             run_total_tokens = sum(all_tokens)  # type: ignore[arg-type]
@@ -1244,6 +1630,8 @@ def execute_matrix_plan(
                 "total_infrastructure_excluded": total_infra_excluded,
                 "total_tokens": run_total_tokens,
             },
+            "status": status,
+            "stop_reason": stop_reason,
             "dry_run": False,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }

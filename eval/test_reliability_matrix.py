@@ -72,6 +72,7 @@ def test_trial_record_schema_validation() -> None:
             "execution_profile_id": "default",
             "tool_contract_digest": "d" * 64,
             "runtime_version": "0.4.0",
+            "runtime_kind": None,
             "experiment_base_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
             "harness_sha": "97d3dd5f3d663aa76d241f33ae606fd1c7668e94",
             "baseline_to_harness_changed_paths": [],
@@ -112,6 +113,7 @@ def test_trial_record_schema_validation() -> None:
             "infrastructure_error": None,
             "trace_artifact_relpath": "traces/trial-001.json",
             "trace_artifact_sha256": "e" * 64,
+            "raw_response_artifacts": [],
         },
     }
     validate_payload_against_schema(valid_record, "trial_record")
@@ -311,7 +313,7 @@ def test_baseline_git_tracking_blocks_untracked_tasks(
     cfg_file.write_text(json.dumps(cfg_data), encoding="utf-8")
 
     def mock_tracked(
-        _sha: str, _dir: Path, _root: Path = Path(".")
+        _sha: str, _dir: Path, *args: Any, **kwargs: Any
     ) -> set[str]:
         return {"tracked.json"}
 
@@ -618,7 +620,7 @@ def test_dirty_worktree_causes_overall_preflight_failure(
 
     monkeypatch.setattr(
         "eval.reliability_matrix.check_git_clean",
-        lambda _root=Path("."): (False, ["?? unapproved_file.py"]),
+        lambda *a, **kw: (False, ["?? unapproved_file.py"]),
     )
 
     digest_val = (
@@ -668,11 +670,11 @@ def test_clean_mocked_preflight_passes(
     )
     monkeypatch.setattr(
         "eval.reliability_matrix.check_git_clean",
-        lambda _root=Path("."): (True, []),
+        lambda *a, **kw: (True, []),
     )
     monkeypatch.setattr(
         "eval.reliability_matrix.evaluate_tier_corpus",
-        lambda cfg, tdir, sha, check: [
+        lambda *a, **kw: [
             {
                 "name": "tier_1",
                 "is_rollup": False,

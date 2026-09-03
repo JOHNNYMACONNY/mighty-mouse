@@ -208,6 +208,8 @@
           "required": [
             "provenance_complete",
             "token_coverage_complete",
+            "first_verifier_completed",
+            "terminal_verifier_completed",
             "verifier_completed",
             "infrastructure_error",
             "trace_artifact_relpath",
@@ -216,6 +218,8 @@
           "properties": {
             "provenance_complete": { "type": "boolean" },
             "token_coverage_complete": { "type": "boolean" },
+            "first_verifier_completed": { "type": "boolean" },
+            "terminal_verifier_completed": { "type": "boolean" },
             "verifier_completed": { "type": "boolean" },
             "infrastructure_error": { "type": ["string", "null"] },
             "trace_artifact_relpath": { "type": ["string", "null"] },

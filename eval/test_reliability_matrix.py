@@ -106,6 +106,8 @@ def test_trial_record_schema_validation() -> None:
         "validity": {
             "provenance_complete": True,
             "token_coverage_complete": True,
+            "first_verifier_completed": True,
+            "terminal_verifier_completed": True,
             "verifier_completed": True,
             "infrastructure_error": None,
             "trace_artifact_relpath": "traces/trial-001.json",

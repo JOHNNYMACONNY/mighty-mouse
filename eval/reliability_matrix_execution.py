@@ -13,7 +13,6 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-import shutil
 import threading
 import time
 from typing import Any, Sequence
@@ -400,6 +399,7 @@ def classify_failure(
     verify_result: dict[str, Any] | None,
     *,
     exception: Exception | None = None,
+    stage: str | None = None,
     is_recovery: bool = False,
 ) -> str | None:
     """Classify verification or execution outcome into closed vocabulary."""
@@ -407,8 +407,28 @@ def classify_failure(
         exc_str = str(exception).lower()
         if isinstance(exception, TimeoutError) or "timeout" in exc_str:
             return "timeout"
-        if "generate" in exc_str or "ollama" in exc_str:
+        if (
+            stage == "generation"
+            or "generate" in exc_str
+            or "ollama" in exc_str
+        ):
             return "generation_error"
+        if (
+            stage == "schema"
+            or "schema" in exc_str
+            or "ambiguous" in exc_str
+            or "no valid file" in exc_str
+            or "xml leakage" in exc_str
+            or "oversized" in exc_str
+        ):
+            return "response_schema_error"
+        if (
+            stage == "application"
+            or "write not permitted" in exc_str
+            or "deletion not permitted" in exc_str
+            or "traversal" in exc_str
+        ):
+            return "application_error"
         return "application_error"
 
     if verify_result is None:
@@ -431,14 +451,21 @@ def prepare_fresh_trial_workspace(
     workspace: Path,
     isolation_workspace: Path | None = None,
 ) -> None:
-    """Enforce provably fresh, isolated, empty trial workspaces."""
+    """Enforce fresh trial workspaces; fail closed if pre-existing."""
     if workspace.exists():
-        shutil.rmtree(workspace)
+        raise FileExistsError(
+            f"Trial workspace already exists at '{workspace}'. "
+            "Fail closed to preserve existing experimental evidence."
+        )
     workspace.mkdir(parents=True, exist_ok=False)
 
     if isolation_workspace is not None:
         if isolation_workspace.exists():
-            shutil.rmtree(isolation_workspace)
+            raise FileExistsError(
+                f"Isolation workspace already exists at "
+                f"'{isolation_workspace}'. Fail closed to preserve "
+                "existing experimental evidence."
+            )
         isolation_workspace.mkdir(parents=True, exist_ok=False)
 
 
@@ -549,7 +576,13 @@ def execute_trial_unit(
     server_info = provenance_info or check_ollama_provenance(
         ollama_host, ollama_model
     )
-    model_digest = server_info.get("model_digest") or ("sha256:" + "0" * 64)
+    if not server_info.get("available") or not server_info.get("model_digest"):
+        raise RuntimeError(
+            "Ollama provenance unavailable or missing model digest for "
+            f"'{ollama_model}' at {ollama_host}. "
+            "Fail closed before generation."
+        )
+    model_digest = server_info["model_digest"]
 
     trial_id = plan_unit["trial_id"]
     trial_workspace = workspace_root / trial_id
@@ -561,25 +594,36 @@ def execute_trial_unit(
         iso_workspace if arm in ("mm_swarm", "mm_swarm_recovery") else None,
     )
 
-    canonical_config_path = CANONICAL_MODEL_CONFIG_PATH
+    repo_root = Path(repo_root).resolve()
+    canonical_config_path = repo_root / "configs/mighty_mouse_v1.yaml"
+    if not canonical_config_path.is_file():
+        raise FileNotFoundError(
+            f"Canonical model config missing at {canonical_config_path}. "
+            "Fail closed before generation."
+        )
     canonical_state_dir = repo_root / ".mighty-mouse"
+    if (
+        arm != "control_once"
+        and not (canonical_state_dir / "mcp-adapter.json").is_file()
+    ):
+        raise FileNotFoundError(
+            "Canonical adapter state missing at "
+            f"{canonical_state_dir / 'mcp-adapter.json'}. "
+            "Fail closed before generation."
+        )
 
     resolved_ctx: AdapterRuntimeContext | None = None
     if arm != "control_once":
-        exp_digest = (
-            model_digest
-            if model_digest != ("sha256:" + "0" * 64)
-            else None
-        )
         resolved_ctx = resolve_canonical_adapter_context(
             repo_root=repo_root,
             expected_model=ollama_model,
-            expected_digest=exp_digest,
+            expected_digest=model_digest,
             tool_signatures=sigs,
         )
 
     adapter = HostAdapter()
     primary_exception: Exception | None = None
+    execution_stage: str | None = None
     first_verif: dict[str, Any] | None = None
     terminal_verif: dict[str, Any] | None = None
     recovery_eligible = False
@@ -601,6 +645,7 @@ def execute_trial_unit(
         # 1. Primary Execution
         if arm == "control_once":
             t0 = time.monotonic()
+            raw_response: str | None = None
             try:
                 prompt = build_bare_prompt(task_config)
                 raw_response, meta = request_control_generation(
@@ -616,16 +661,9 @@ def execute_trial_unit(
                         meta.get("latency_seconds", time.monotonic() - t0)
                     ),
                 )
-                apply_response(
-                    ResponseApplicationRequest(
-                        raw_response=raw_response,
-                        policy=ResponseApplicationPolicy(
-                            workspace_root=str(trial_workspace),
-                        ),
-                    )
-                )
             except Exception as exc:
                 primary_exception = exc
+                execution_stage = "generation"
                 active_capture.record_generation(
                     phase="primary",
                     model=ollama_model,
@@ -635,17 +673,53 @@ def execute_trial_unit(
                     latency_seconds=time.monotonic() - t0,
                 )
 
+            if primary_exception is None and raw_response is not None:
+                try:
+                    applied_files = apply_response(
+                        ResponseApplicationRequest(
+                            raw_response=raw_response,
+                            policy=ResponseApplicationPolicy(
+                                workspace_root=str(trial_workspace),
+                            ),
+                        )
+                    )
+                    if not applied_files:
+                        execution_stage = "schema"
+                        raise ValueError(
+                            "No valid file blocks identified in model "
+                            "response."
+                        )
+                except Exception as exc:
+                    primary_exception = exc
+                    exc_str = str(exc).lower()
+                    if (
+                        "no valid file" in exc_str
+                        or "ambiguous" in exc_str
+                        or "xml leakage" in exc_str
+                        or "oversized" in exc_str
+                    ):
+                        execution_stage = "schema"
+                    else:
+                        execution_stage = "application"
+
         elif arm in ("mm_single", "mm_single_recovery"):
             try:
                 adapter.solve(
                     workspace=str(trial_workspace),
-                    p_cfg_path=str(canonical_config_path.resolve()),
+                    p_cfg_path=str(canonical_config_path),
                     task_input=str(task_json_path.resolve()),
-                    state_dir=str(canonical_state_dir.resolve()),
+                    state_dir=str(canonical_state_dir),
                     tool_signatures=sigs,
                 )
             except Exception as exc:
                 primary_exception = exc
+                exc_str = str(exc).lower()
+                if "generate" in exc_str or "ollama" in exc_str:
+                    execution_stage = "generation"
+                elif "schema" in exc_str or "parse" in exc_str:
+                    execution_stage = "schema"
+                else:
+                    execution_stage = "application"
 
         elif arm in ("mm_swarm", "mm_swarm_recovery"):
             try:
@@ -653,7 +727,7 @@ def execute_trial_unit(
                     workspace=str(trial_workspace),
                     task_input=json.dumps(task_config),
                     verification_workspace=str(iso_workspace),
-                    state_dir=str(canonical_state_dir.resolve()),
+                    state_dir=str(canonical_state_dir),
                     concurrency=SWARM_CONCURRENCY,
                     tool_signatures=sigs,
                     task_config=task_config,
@@ -661,30 +735,37 @@ def execute_trial_unit(
                 )
             except Exception as exc:
                 primary_exception = exc
+                exc_str = str(exc).lower()
+                if "generate" in exc_str or "ollama" in exc_str:
+                    execution_stage = "generation"
+                elif "schema" in exc_str or "parse" in exc_str:
+                    execution_stage = "schema"
+                else:
+                    execution_stage = "application"
 
         # 2. Authoritative First Verification
-        verifier_completed = False
-        verifier_exception: Exception | None = None
+        first_verif = None
+        first_verifier_completed = False
+        first_verifier_exception: Exception | None = None
         if trial_workspace.is_dir():
             try:
                 first_verif = verify_task(
                     task_config, workspace=str(trial_workspace)
                 )
-                verifier_completed = True
+                first_verifier_completed = True
             except Exception as exc:
-                verifier_exception = exc
-                first_verif = {
-                    "status": "fail",
-                    "reason": f"Verifier crash: {exc}",
-                }
+                first_verifier_completed = False
+                first_verifier_exception = exc
 
-        if verifier_exception is not None:
+        if first_verifier_exception is not None:
             first_passed = False
             first_failure_cat = "verifier_error"
-        elif primary_exception is not None and not verifier_completed:
+        elif primary_exception is not None:
+            # Primary execution failed; trial cannot pass even if
+            # verifier happens to be permissive
             first_passed = False
             first_failure_cat = classify_failure(
-                first_verif, exception=primary_exception
+                first_verif, exception=primary_exception, stage=execution_stage
             )
         elif (
             first_verif is not None
@@ -694,13 +775,13 @@ def execute_trial_unit(
             first_failure_cat = None
         else:
             first_passed = False
-            first_failure_cat = classify_failure(
-                first_verif, exception=primary_exception
-            )
+            first_failure_cat = classify_failure(first_verif)
 
         terminal_passed = first_passed
         terminal_verif = first_verif
         terminal_failure_cat = first_failure_cat
+        terminal_verifier_completed = first_verifier_completed
+        re_verif_exception: Exception | None = None
 
         # 3. Recovery Handling
         # Recovery is permitted ONLY if:
@@ -712,8 +793,8 @@ def execute_trial_unit(
             arm_def.recovery_enabled
             and not first_passed
             and primary_exception is None
-            and verifier_completed
-            and verifier_exception is None
+            and first_verifier_completed
+            and first_verifier_exception is None
         ):
             assert resolved_ctx is not None
             expected_files = tuple(task_config.get("expected_files", []))
@@ -737,7 +818,7 @@ def execute_trial_unit(
             verif_summary = HookVerificationSummary(
                 occurred=True,
                 passed=False,
-                summary=first_verif.get(
+                summary=(first_verif or {}).get(
                     "reason", "Primary verification failed"
                 ),
             )
@@ -756,7 +837,7 @@ def execute_trial_unit(
                 rec_request = RecoveryExecutionRequest(
                     resolved_event=resolved_event,
                     decision=decision,
-                    p_cfg_path=str(canonical_config_path.resolve()),
+                    p_cfg_path=str(canonical_config_path),
                     task_input_path=str(task_json_path.resolve()),
                 )
                 attempt = execute_recovery_attempt(
@@ -766,26 +847,29 @@ def execute_trial_unit(
                 recovery_attempted = attempt.attempted
                 recovery_completed = attempt.completed
 
-                try:
-                    terminal_verif = verify_task(
-                        task_config, workspace=str(trial_workspace)
-                    )
-                except Exception as exc:
-                    terminal_verif = {
-                        "status": "fail",
-                        "reason": f"Reverifier crash: {exc}",
-                    }
-
-                terminal_passed = (
-                    terminal_verif is not None
-                    and terminal_verif.get("status") == "success"
-                )
-                if terminal_passed:
-                    terminal_failure_cat = None
+                if recovery_completed:
+                    try:
+                        terminal_verif = verify_task(
+                            task_config, workspace=str(trial_workspace)
+                        )
+                        terminal_verifier_completed = True
+                        if terminal_verif.get("status") == "success":
+                            terminal_passed = True
+                            terminal_failure_cat = None
+                        else:
+                            terminal_passed = False
+                            terminal_failure_cat = classify_failure(
+                                terminal_verif, is_recovery=True
+                            )
+                    except Exception as exc:
+                        terminal_passed = False
+                        terminal_failure_cat = "verifier_error"
+                        terminal_verifier_completed = False
+                        re_verif_exception = exc
+                        terminal_verif = None
                 else:
-                    terminal_failure_cat = classify_failure(
-                        terminal_verif, is_recovery=True
-                    )
+                    terminal_passed = False
+                    terminal_failure_cat = "recovery_failed"
 
     finally:
         wall_latency = round(time.monotonic() - wall_start, 4)
@@ -895,6 +979,12 @@ def execute_trial_unit(
             "baseline_to_harness_changed_paths": changed_paths,
         }
 
+    infra_error: str | None = None
+    if first_failure_cat == "verifier_error":
+        infra_error = f"First verifier crash: {first_verifier_exception}"
+    elif terminal_failure_cat == "verifier_error":
+        infra_error = f"Re-verifier crash: {re_verif_exception}"
+
     trial_record: dict[str, Any] = {
         "identity": {
             "schema_version": SCHEMA_VERSION,
@@ -956,16 +1046,10 @@ def execute_trial_unit(
                 active_capture.token_coverage_complete
                 and (tot_tok is not None)
             ),
-            "verifier_completed": verifier_completed,
-            "infrastructure_error": (
-                str(verifier_exception)
-                if verifier_exception is not None
-                else (
-                    str(primary_exception)
-                    if primary_exception is not None
-                    else None
-                )
-            ),
+            "first_verifier_completed": first_verifier_completed,
+            "terminal_verifier_completed": terminal_verifier_completed,
+            "verifier_completed": terminal_verifier_completed,
+            "infrastructure_error": infra_error,
             "trace_artifact_relpath": trace_relpath,
             "trace_artifact_sha256": trace_sha256,
         },
@@ -998,7 +1082,6 @@ def execute_matrix_plan(
     lock_path: Path | None = None,
     dry_run: bool = False,
     tool_signatures: dict[str, Any] | None = None,
-    skip_preflight: bool = False,
     repo_root: Path = Path("."),
 ) -> dict[str, Any]:
     """Execute all units in an execution plan under SingleInstanceLock."""
@@ -1034,7 +1117,7 @@ def execute_matrix_plan(
     lock = SingleInstanceLock(lock_path) if lock_path else SingleInstanceLock()
     with lock:
         output_dir.mkdir(parents=True, exist_ok=True)
-        if not skip_preflight:
+        if not dry_run:
             preflight_report = run_preflight(
                 experiment_id=plan["experiment_id"],
                 base_sha=target_base,
@@ -1069,7 +1152,10 @@ def execute_matrix_plan(
                 ),
                 "metrics": {
                     "arms": {},
+                    "total_trials": 0,
+                    "total_analyzable": 0,
                     "total_passed": 0,
+                    "total_infrastructure_excluded": 0,
                     "total_tokens": None,
                 },
                 "dry_run": True,
@@ -1108,10 +1194,32 @@ def execute_matrix_plan(
         for rec in trial_records:
             arm_name = rec["identity"]["arm"]
             if arm_name not in arm_counts:
-                arm_counts[arm_name] = {"total": 0, "passed": 0}
+                arm_counts[arm_name] = {
+                    "total": 0,
+                    "analyzable": 0,
+                    "passed": 0,
+                    "infrastructure_excluded": 0,
+                }
             arm_counts[arm_name]["total"] += 1
-            if rec["verification"]["terminal_passed"]:
-                arm_counts[arm_name]["passed"] += 1
+            is_infra_error = (
+                rec.get("validity", {}).get("infrastructure_error") is not None
+                or rec.get("verification", {}).get("first_failure_category")
+                == "verifier_error"
+                or rec.get("verification", {}).get("terminal_failure_category")
+                == "verifier_error"
+            )
+            if is_infra_error:
+                arm_counts[arm_name]["infrastructure_excluded"] += 1
+            else:
+                arm_counts[arm_name]["analyzable"] += 1
+                if rec["verification"]["terminal_passed"]:
+                    arm_counts[arm_name]["passed"] += 1
+
+        total_analyzable = sum(ac["analyzable"] for ac in arm_counts.values())
+        total_passed = sum(ac["passed"] for ac in arm_counts.values())
+        total_infra_excluded = sum(
+            ac["infrastructure_excluded"] for ac in arm_counts.values()
+        )
 
         all_tokens = [r["cost"]["total_tokens"] for r in trial_records]
         if any(t is None for t in all_tokens):
@@ -1130,10 +1238,10 @@ def execute_matrix_plan(
             "arms": list(arm_counts.keys()),
             "metrics": {
                 "arms": arm_counts,
-                "total_passed": sum(
-                    1 for r in trial_records
-                    if r["verification"]["terminal_passed"]
-                ),
+                "total_trials": len(trial_records),
+                "total_analyzable": total_analyzable,
+                "total_passed": total_passed,
+                "total_infrastructure_excluded": total_infra_excluded,
                 "total_tokens": run_total_tokens,
             },
             "dry_run": False,

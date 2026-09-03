@@ -11,7 +11,6 @@ Enforces Ticket 08 decision: MM_SINGLE_ALWAYS
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -22,48 +21,24 @@ from mighty_mouse.host.adapter import HostAdapter
 from mighty_mouse.host.recovery_execution import (
     RecoveryExecutionAttempt,
 )
+from mighty_mouse.orchestrator.mighty_mouse_agent import _build_cli_parser
 import mighty_mouse_mcp.server as server
 
 
 def test_cli_default_mode_is_single():
-    """Verify CLI execution in mighty_mouse_agent defaults to single mode."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("config")
-    parser.add_argument("task")
-    parser.add_argument("--feedback", help="Feedback from previous run")
-    parser.add_argument("--workspace", help="Path to isolated workspace")
-    parser.add_argument(
-        "--skills", help="Comma-separated list of skill IDs to enable"
-    )
-    parser.add_argument(
-        "--temperature", type=float, help="LLM sampling temperature override"
-    )
-    parser.add_argument(
-        "--stage",
-        choices=["planner", "coder", "unified"],
-        default="unified",
-        help="Execution stage mode",
-    )
-    parser.add_argument(
-        "--plan-file", help="Path to Stage 1 plan file or plan text input"
-    )
-    parser.add_argument(
-        "--mode",
-        choices=["single", "swarm"],
-        default="single",
-        help="Execution mode (single agent or multi-agent swarm)",
-    )
-    parser.add_argument(
-        "--concurrency",
-        type=int,
-        choices=[1, 2],
-        default=1,
-        help="Concurrency slots for swarm (1 for sequential, 2 for dual-slot)",
-    )
-
+    """Verify production CLI parser defaults to single mode."""
+    parser = _build_cli_parser()
     args = parser.parse_args(["dummy_cfg.yaml", "dummy_task.json"])
-    assert args.mode == "single", "Default CLI mode must be 'single'"
+    assert args.mode == "single", (
+        "Production CLI default mode must be 'single'"
+    )
     assert args.concurrency == 1
+
+    swarm_args = parser.parse_args(
+        ["dummy_cfg.yaml", "dummy_task.json", "--mode", "swarm"]
+    )
+    assert swarm_args.mode == "swarm"
+    assert swarm_args.concurrency == 1
 
 
 def test_agent_execute_dispatches_to_host_adapter_solve(tmp_path: Path):

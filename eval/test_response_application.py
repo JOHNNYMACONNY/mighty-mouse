@@ -466,3 +466,118 @@ main_code
     assert res == ["src/main.py"]
     assert (tmp_path / "src" / "main.py").exists()
     assert (tmp_path / "src" / "main.py").read_text() == "main_code"
+
+
+def test_incidental_checklist_reproduction_without_suppression(tmp_path):
+    """Normal strict mode rejects incidental checklist fail-closed."""
+    raw = """# Mighty Mouse Checklist
+- [ ] Task item 1
+
+```python:src/main.py
+def recovered():
+    return True
+```"""
+    req = _request(
+        raw,
+        tmp_path,
+        allowed_write_paths=("src/main.py",),
+    )
+    with pytest.raises(
+        ValueError,
+        match="Write not permitted for non-allowlisted path: CHECKLIST.md",
+    ):
+        plan_response(req)
+
+    with pytest.raises(
+        ValueError,
+        match="Write not permitted for non-allowlisted path: CHECKLIST.md",
+    ):
+        apply_response(req)
+
+
+def test_suppress_checklist_sidecar_applies_authorized_target(tmp_path):
+    """When suppress_checklist_sidecar=True, incidental checklist ignored."""
+    raw = """# Mighty Mouse Checklist
+- [ ] Task item 1
+
+```python:src/main.py
+def recovered():
+    return True
+```"""
+    req = _request(
+        raw,
+        tmp_path,
+        allowed_write_paths=("src/main.py",),
+        suppress_checklist_sidecar=True,
+    )
+    plan = plan_response(req)
+    assert plan.output_paths == ("src/main.py",)
+    assert len(plan.operations) == 1
+    assert plan.operations[0].path == "src/main.py"
+
+    applied = apply_response(req)
+    assert applied == ["src/main.py"]
+    assert (tmp_path / "src" / "main.py").exists()
+    assert not (tmp_path / "CHECKLIST.md").exists()
+
+
+def test_suppress_checklist_sidecar_still_rejects_unauthorized_code_files(
+    tmp_path,
+):
+    """Suppression of checklist sidecar never weakens target allowlist."""
+    raw = """# Mighty Mouse Checklist
+- [ ] Task item 1
+
+```python:src/main.py
+def recovered():
+    return True
+```
+```python:src/unauthorized.py
+def leak():
+    return False
+```"""
+    req = _request(
+        raw,
+        tmp_path,
+        allowed_write_paths=("src/main.py",),
+        suppress_checklist_sidecar=True,
+    )
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Write not permitted for non-allowlisted path: src/unauthorized.py"
+        ),
+    ):
+        plan_response(req)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Write not permitted for non-allowlisted path: src/unauthorized.py"
+        ),
+    ):
+        apply_response(req)
+
+
+def test_explicitly_allowlisted_checklist_unaffected_outside_suppression(
+    tmp_path,
+):
+    """When CHECKLIST.md is allowlisted without suppression, it is written."""
+    raw = """# Mighty Mouse Checklist
+- [ ] Explicitly allowed item
+
+```python:src/main.py
+def valid():
+    return True
+```"""
+    req = _request(
+        raw,
+        tmp_path,
+        allowed_write_paths=("CHECKLIST.md", "src/main.py"),
+        suppress_checklist_sidecar=False,
+    )
+    applied = apply_response(req)
+    assert applied == ["src/main.py"]
+    assert (tmp_path / "CHECKLIST.md").exists()
+    assert "Explicitly allowed item" in (tmp_path / "CHECKLIST.md").read_text()
+    assert (tmp_path / "src" / "main.py").exists()

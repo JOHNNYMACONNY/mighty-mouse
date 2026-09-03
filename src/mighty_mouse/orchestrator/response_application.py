@@ -25,6 +25,7 @@ class ResponseApplicationPolicy:
     max_file_bytes: int = 100_000
     system_mode: bool = False
     strict_code_hygiene: bool = False
+    suppress_checklist_sidecar: bool = False
 
 
 @dataclass(frozen=True)
@@ -150,35 +151,37 @@ def plan_response(request: ResponseApplicationRequest) -> ResponsePlan:
 
     operations: list[PlannedOperation] = []
 
-    checklist_match = re.search(
-        r"# Mighty Mouse Checklist.*?(?=```|$)",
-        raw_text,
-        re.DOTALL | re.IGNORECASE,
-    )
-    if checklist_match:
-        norm_checklist = posixpath.normpath("CHECKLIST.md")
-        if (
-            allowed_write_paths is None
-            or norm_checklist in allowed_write_paths
-            or "CHECKLIST.md" in allowed_write_paths
-        ):
-            checklist_content = checklist_match.group(0).strip() + "\n"
-            path, checklist_path = _resolve_target_path(
-                "CHECKLIST.md",
-                workspace_root,
-            )
-            operations.append(
-                PlannedOperation(
-                    kind="write",
-                    path=path,
-                    target_path=checklist_path,
-                    content=checklist_content,
+    if not policy.suppress_checklist_sidecar:
+        checklist_match = re.search(
+            r"# Mighty Mouse Checklist.*?(?=```|$)",
+            raw_text,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if checklist_match:
+            norm_checklist = posixpath.normpath("CHECKLIST.md")
+            if (
+                allowed_write_paths is None
+                or norm_checklist in allowed_write_paths
+                or "CHECKLIST.md" in allowed_write_paths
+            ):
+                checklist_content = checklist_match.group(0).strip() + "\n"
+                path, checklist_path = _resolve_target_path(
+                    "CHECKLIST.md",
+                    workspace_root,
                 )
-            )
-        elif allowed_write_paths is not None:
-            raise ValueError(
-                "Write not permitted for non-allowlisted path: CHECKLIST.md"
-            )
+                operations.append(
+                    PlannedOperation(
+                        kind="write",
+                        path=path,
+                        target_path=checklist_path,
+                        content=checklist_content,
+                    )
+                )
+            elif allowed_write_paths is not None:
+                raise ValueError(
+                    "Write not permitted for non-allowlisted path: "
+                    "CHECKLIST.md"
+                )
 
     file_blocks = re.finditer(
         r"```(?P<lang>\w+)?"
@@ -323,31 +326,33 @@ def _apply_response_text(
         else None
     )
 
-    checklist_match = re.search(
-        r"# Mighty Mouse Checklist.*?(?=```|$)",
-        raw_text,
-        re.DOTALL | re.IGNORECASE,
-    )
-    if checklist_match:
-        norm_checklist = posixpath.normpath("CHECKLIST.md")
-        if (
-            allowed_write_paths is None
-            or norm_checklist in allowed_write_paths
-            or "CHECKLIST.md" in allowed_write_paths
-        ):
-            checklist_content = checklist_match.group(0).strip()
-            _, checklist_path = _resolve_target_path(
-                "CHECKLIST.md",
-                workspace_root,
-            )
-            with open(checklist_path, "w") as checklist_file:
-                checklist_file.write(checklist_content)
-                checklist_file.write("\n")
-            print("[parser] Wrote CHECKLIST.md", file=sys.stderr)
-        elif allowed_write_paths is not None:
-            raise ValueError(
-                "Write not permitted for non-allowlisted path: CHECKLIST.md"
-            )
+    if not policy.suppress_checklist_sidecar:
+        checklist_match = re.search(
+            r"# Mighty Mouse Checklist.*?(?=```|$)",
+            raw_text,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if checklist_match:
+            norm_checklist = posixpath.normpath("CHECKLIST.md")
+            if (
+                allowed_write_paths is None
+                or norm_checklist in allowed_write_paths
+                or "CHECKLIST.md" in allowed_write_paths
+            ):
+                checklist_content = checklist_match.group(0).strip()
+                _, checklist_path = _resolve_target_path(
+                    "CHECKLIST.md",
+                    workspace_root,
+                )
+                with open(checklist_path, "w") as checklist_file:
+                    checklist_file.write(checklist_content)
+                    checklist_file.write("\n")
+                print("[parser] Wrote CHECKLIST.md", file=sys.stderr)
+            elif allowed_write_paths is not None:
+                raise ValueError(
+                    "Write not permitted for non-allowlisted path: "
+                    "CHECKLIST.md"
+                )
 
     file_blocks = re.finditer(
         r"```(?P<lang>\w+)?"

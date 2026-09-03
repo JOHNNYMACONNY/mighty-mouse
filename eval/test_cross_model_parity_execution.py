@@ -170,7 +170,9 @@ def test_preflight_lock_already_held_does_not_double_acquire() -> None:
                     mock_lock.assert_not_called()
 
 
-def test_dry_run_performs_zero_generations() -> None:
+def test_dry_run_performs_zero_generations(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
     plan = materialize_execution_plan()
     with patch(
         "eval.cross_model_parity_execution.request_control_generation"
@@ -193,6 +195,7 @@ def test_dry_run_performs_zero_generations() -> None:
                         summary = execute_cross_model_plan(
                             plan,
                             dry_run=True,
+                            local_adapter_context=mock_local_context,
                         )
                         assert summary["status"] == "dry_run"
                         assert summary["generation_calls"] == 0
@@ -384,7 +387,9 @@ def test_verifier_crash_becomes_infrastructure_error(
 # --- 5. Full Plan Execution (Mocked) ---
 
 
-def test_mocked_plan_runs_all_12_units_in_exact_order() -> None:
+def test_mocked_plan_runs_all_12_units_in_exact_order(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
     plan = materialize_execution_plan()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -475,6 +480,7 @@ def test_mocked_plan_runs_all_12_units_in_exact_order() -> None:
                             plan,
                             output_dir=out_dir,
                             workspace_root=work_root,
+                            local_adapter_context=mock_local_context,
                         )
                         assert summary["status"] == "completed"
                         assert summary["executed_trial_count"] == 12
@@ -521,7 +527,9 @@ def test_stale_harness_sha_rejected_in_plan_validation() -> None:
     assert any("harness_sha mismatch" in err for err in res["errors"])
 
 
-def test_executor_acquires_canonical_shared_lock() -> None:
+def test_executor_acquires_canonical_shared_lock(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
     plan = materialize_execution_plan()
     with patch(
         "eval.cross_model_parity_execution.SingleInstanceLock"
@@ -536,7 +544,11 @@ def test_executor_acquires_canonical_shared_lock() -> None:
                     "verify_base_to_harness_delta",
                     return_value=[],
                 ):
-                    execute_cross_model_plan(plan, dry_run=True)
+                    execute_cross_model_plan(
+                        plan,
+                        dry_run=True,
+                        local_adapter_context=mock_local_context,
+                    )
                     mock_lock.assert_called_once_with(LOCK_FILE_PATH)
 
 
@@ -684,7 +696,9 @@ def test_fresh_workspace_collision_fails_closed(
             )
 
 
-def test_ordinary_failure_does_not_abort_subsequent_trials() -> None:
+def test_ordinary_failure_does_not_abort_subsequent_trials(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
     plan = materialize_execution_plan()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -780,6 +794,7 @@ def test_ordinary_failure_does_not_abort_subsequent_trials() -> None:
                             plan,
                             output_dir=out_dir,
                             workspace_root=work_root,
+                            local_adapter_context=mock_local_context,
                         )
                         assert summary["status"] == "completed"
                         assert summary["executed_trial_count"] == 12
@@ -788,7 +803,9 @@ def test_ordinary_failure_does_not_abort_subsequent_trials() -> None:
                         assert len(executed_order) == 12
 
 
-def test_provenance_drift_aborts_run() -> None:
+def test_provenance_drift_aborts_run(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
     plan = materialize_execution_plan()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -834,6 +851,7 @@ def test_provenance_drift_aborts_run() -> None:
                             plan,
                             output_dir=out_dir,
                             workspace_root=work_root,
+                            local_adapter_context=mock_local_context,
                         )
                         assert summary["status"] == "aborted"
                         assert (

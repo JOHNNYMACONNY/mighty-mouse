@@ -11,10 +11,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import time
 from typing import Any, Dict, List, Optional, Tuple
+import urllib.request
 import yaml
 
 from eval.cross_model_parity import (
@@ -43,6 +45,7 @@ from eval.reliability_matrix_execution import (
     prepare_fresh_trial_workspace,
     request_control_generation,
 )
+from eval.run_bare_baseline import build_prompt as build_bare_prompt
 from eval.runner_lock import SingleInstanceLock
 from mighty_mouse.host.adapter import (
     ADAPTER_CONFIG_FILENAME,
@@ -63,6 +66,26 @@ _apply_response = getattr(_ra, "apply_response")
 CONTROLLED_MODEL_CLASSES = frozenset(
     {"local-small", "local-medium", "local-large", "unknown"}
 )
+
+
+def _atomic_write_json(
+    target_path: Path, data: Dict[str, Any], allow_overwrite: bool = False
+) -> None:
+    """Crash-safe same-filesystem atomic write rejecting accidental overwrite.
+    """
+    if not allow_overwrite and target_path.exists():
+        raise FileExistsError(f"Target file already exists: {target_path}")
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = target_path.with_name(
+        f"{target_path.name}.tmp.{os.getpid()}_{time.monotonic_ns()}"
+    )
+    try:
+        content = json.dumps(data, indent=2, sort_keys=True) + "\n"
+        temp_path.write_text(content, encoding="utf-8")
+        temp_path.replace(target_path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
 
 
 def prepare_candidate_runtime(
@@ -98,6 +121,35 @@ def prepare_candidate_runtime(
             f"Projected config SHA mismatch: {actual_proj_sha} != {proj_sha}"
         )
 
+    cfg_parent = config_path.parent
+    sys_prompt_name = proj_cfg.get("system_prompt_path", "system_prompt.txt")
+    canon_sys_path = cfg_parent / sys_prompt_name
+    if canon_sys_path.is_file():
+        target_sys_path = support_dir / sys_prompt_name
+        target_sys_path.parent.mkdir(parents=True, exist_ok=True)
+        sys_bytes = canon_sys_path.read_bytes()
+        target_sys_path.write_bytes(sys_bytes)
+        if (
+            hashlib.sha256(target_sys_path.read_bytes()).hexdigest()
+            != hashlib.sha256(sys_bytes).hexdigest()
+        ):
+            raise ValueError(
+                f"System prompt copy corrupted: {sys_prompt_name}"
+            )
+
+    for seg_rel in proj_cfg.get("prompt_segments", []):
+        canon_seg_path = cfg_parent / seg_rel
+        if canon_seg_path.is_file():
+            target_seg_path = support_dir / seg_rel
+            target_seg_path.parent.mkdir(parents=True, exist_ok=True)
+            seg_bytes = canon_seg_path.read_bytes()
+            target_seg_path.write_bytes(seg_bytes)
+            if (
+                hashlib.sha256(target_seg_path.read_bytes()).hexdigest()
+                != hashlib.sha256(seg_bytes).hexdigest()
+            ):
+                raise ValueError(f"Prompt segment copy corrupted: {seg_rel}")
+
     tool_signatures = _get_mcp_tool_signatures()
     adapter_cfg = HostAdapter.build_adapter_config(
         repository=local_adapter_context.repository,
@@ -114,11 +166,16 @@ def prepare_candidate_runtime(
     )
 
     adapter_cfg_path = support_dir / ADAPTER_CONFIG_FILENAME
-    serialized_adapter = json.dumps(adapter_cfg, indent=2, sort_keys=True)
-    adapter_cfg_path.write_text(serialized_adapter + "\n", encoding="utf-8")
-    adapter_sha = hashlib.sha256(
-        serialized_adapter.encode("utf-8")
-    ).hexdigest()
+    adapter_bytes = (
+        json.dumps(adapter_cfg, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    adapter_cfg_path.write_bytes(adapter_bytes)
+    adapter_sha = hashlib.sha256(adapter_bytes).hexdigest()
+    if (
+        hashlib.sha256(adapter_cfg_path.read_bytes()).hexdigest()
+        != adapter_sha
+    ):
+        raise ValueError("Adapter config disk SHA mismatch")
 
     HostAdapter.validate_adapter_config(
         adapter_cfg,
@@ -171,6 +228,7 @@ def execute_trial_unit(
     config_path: Path = DEFAULT_CONFIG_PATH,
     contract_path: Path = DEFAULT_CONTRACT_PATH,
     harness_sha: Optional[str] = None,
+    ollama_version: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Execute one cross-model trial unit with verification."""
     if isinstance(unit, dict):
@@ -178,6 +236,19 @@ def execute_trial_unit(
 
     if harness_sha is None:
         harness_sha = get_current_git_sha()
+
+    if ollama_version is None:
+        try:
+            req = urllib.request.Request(f"{ollama_host}/api/version")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                ollama_version = data.get("version")
+        except Exception:
+            ollama_version = None
+    if not ollama_version:
+        raise RuntimeError(
+            "Ollama version is unavailable before trial execution"
+        )
 
     cand = FROZEN_CANDIDATES.get(unit.candidate_id)
     if cand is None:
@@ -259,14 +330,9 @@ def execute_trial_unit(
 
     t_wall_start = time.monotonic()
     primary_exception: Optional[Exception] = None
-    applied_files: List[str] = []
 
     if unit.arm == "control_once":
-        instructions = task_json.get("instructions", "")
-        prompt = (
-            f"Solve the following coding task:\n\n{instructions}\n\n"
-            f"Provide full code in valid diff or file blocks."
-        )
+        prompt = build_bare_prompt(task_json)
         t_gen_start = time.monotonic()
         try:
             raw_text, meta = request_control_generation(
@@ -288,7 +354,7 @@ def execute_trial_unit(
                 latency_seconds=t_gen_dur,
                 raw_response_text=raw_text,
             )
-            applied = _apply_response(
+            _apply_response(
                 ResponseApplicationRequest(
                     raw_response=raw_text,
                     policy=ResponseApplicationPolicy(
@@ -296,8 +362,21 @@ def execute_trial_unit(
                     ),
                 )
             )
-            applied_files = [str(f) for f in applied]
         except Exception as exc:
+            t_gen_dur = time.monotonic() - t_gen_start
+            capture.generation_calls += 1
+            capture.events.append({
+                "phase": "control",
+                "model": cand.model_tag,
+                "provider": "ollama",
+                "prompt_tokens": None,
+                "completion_tokens": None,
+                "total_tokens": None,
+                "latency_seconds": t_gen_dur,
+                "raw_response_relpath": None,
+                "raw_response_sha256": None,
+                "error": str(exc),
+            })
             primary_exception = exc
 
     elif unit.arm == "mm_single":
@@ -317,6 +396,12 @@ def execute_trial_unit(
             except Exception as exc:
                 primary_exception = exc
 
+    output_files = sorted(
+        str(p.relative_to(trial_ws))
+        for p in trial_ws.rglob("*")
+        if p.is_file() and not p.name.startswith(".")
+    )
+
     verifier_completed = False
     passed = False
     failure_category: Optional[str] = None
@@ -324,44 +409,61 @@ def execute_trial_unit(
     infra_error = False
 
     if primary_exception is not None:
-        failure_category = classify_failure(None, exception=primary_exception)
-        if failure_category in ("generation_error", "timeout"):
+        exc_str = str(primary_exception).lower()
+        if (
+            isinstance(primary_exception, TimeoutError)
+            or "timed out" in exc_str
+        ):
+            failure_category = "timeout"
+            infra_error = True
+        else:
+            failure_category = "generation_error"
             infra_error = True
     else:
         try:
             v_res = verify_task(task_json, workspace=str(trial_ws))
-            verifier_completed = True
-            if isinstance(v_res, dict):
+            if (
+                isinstance(v_res, dict)
+                and v_res.get("status") in ("success", "fail")
+            ):
+                verifier_completed = True
                 verifier_payload = v_res
                 passed = v_res.get("status") == "success"
                 if not passed:
                     failure_category = classify_failure(v_res)
             else:
                 infra_error = True
+                verifier_completed = False
                 failure_category = "verifier_error"
+                verifier_payload = (
+                    v_res
+                    if isinstance(v_res, dict)
+                    else {"error": "Invalid verifier output"}
+                )
         except Exception as exc:
             infra_error = True
+            verifier_completed = False
             failure_category = "verifier_error"
             verifier_payload = {"error": str(exc)}
 
     wall_lat = round(time.monotonic() - t_wall_start, 4)
 
-    prompt_toks = (
-        sum(
-            e["prompt_tokens"]
+    token_cov = (
+        bool(capture.events)
+        and all(
+            e.get("prompt_tokens") is not None
+            and e.get("completion_tokens") is not None
             for e in capture.events
-            if e.get("prompt_tokens") is not None
         )
-        if capture.events
+    )
+    prompt_toks = (
+        sum(e["prompt_tokens"] for e in capture.events)
+        if token_cov
         else None
     )
     comp_toks = (
-        sum(
-            e["completion_tokens"]
-            for e in capture.events
-            if e.get("completion_tokens") is not None
-        )
-        if capture.events
+        sum(e["completion_tokens"] for e in capture.events)
+        if token_cov
         else None
     )
     tot_toks = (
@@ -386,6 +488,34 @@ def execute_trial_unit(
         if e.get("raw_response_sha256")
     ]
 
+    prov_complete = (
+        M13_EXPERIMENT_BASE_SHA == unit.experiment_base_sha
+        and getattr(
+            unit, "execution_base_sha", M13_EXECUTION_BASE_SHA
+        ) == M13_EXECUTION_BASE_SHA
+        and bool(harness_sha)
+        and bool(unit.candidate_id)
+        and bool(unit.model_tag)
+        and bool(unit.model_digest)
+        and bool(ollama_version)
+        and bool(unit.task_id)
+        and bool(unit.task_sha256)
+        and (
+            unit.arm == "control_once"
+            or (
+                unit.arm == "mm_single"
+                and bool(proj_sha)
+                and bool(adapt_sha)
+                and bool(exec_profile_id)
+                and bool(tool_contract_digest)
+                and bool(prompt_template_digest)
+                and bool(runtime_kind)
+                and bool(runtime_version)
+                and bool(local_adapter_context.model_class)
+            )
+        )
+    )
+
     record: Dict[str, Any] = {
         "schema_version": "1.0.0",
         "experiment_id": M13_EXPERIMENT_ID,
@@ -408,7 +538,7 @@ def execute_trial_unit(
         "task_id": unit.task_id,
         "task_file": unit.task_file,
         "task_sha256": unit.task_sha256,
-        "ollama_version": "0.33.2",
+        "ollama_version": ollama_version,
         "projected_config_sha256": proj_sha,
         "ephemeral_adapter_config_sha256": adapt_sha,
         "execution_profile_id": exec_profile_id,
@@ -423,7 +553,7 @@ def execute_trial_unit(
         ),
         "execution_base_to_harness_changed_paths": changed_paths,
         "generation_call_count": capture.generation_calls,
-        "output_paths": applied_files,
+        "output_paths": output_files,
         "swarm_enabled": False,
         "recovery_enabled": False,
         "recovery_attempted": False,
@@ -436,8 +566,8 @@ def execute_trial_unit(
         "total_tokens": tot_toks,
         "model_latency_seconds": mod_lat,
         "wall_latency_seconds": wall_lat,
-        "provenance_complete": True,
-        "token_coverage_complete": capture.token_coverage_complete,
+        "provenance_complete": prov_complete,
+        "token_coverage_complete": token_cov,
         "infrastructure_error": infra_error,
         "trace_artifact_relpath": None,
         "trace_artifact_sha256": None,
@@ -472,10 +602,14 @@ def execute_cross_model_plan(
             harness_sha=harness_sha, config_path=config_path
         )
 
-    if not dry_run and output_dir is not None:
-        if output_dir.exists():
+    if not dry_run:
+        if output_dir is not None and output_dir.exists():
             raise FileExistsError(
                 f"Live output directory already exists: {output_dir}"
+            )
+        if workspace_root is not None and workspace_root.exists():
+            raise FileExistsError(
+                f"Live workspace root already exists: {workspace_root}"
             )
 
     changed_paths = verify_base_to_harness_delta(
@@ -503,35 +637,25 @@ def execute_cross_model_plan(
                 f"{preflight['blocking_reasons']}"
             )
 
+        observed_ollama_ver = preflight.get("ollama_version")
+        if not observed_ollama_ver or observed_ollama_ver == "unknown":
+            raise RuntimeError(
+                "Preflight check did not observe a valid Ollama version"
+            )
+
         sigs = _get_mcp_tool_signatures()
         if local_adapter_context is not None:
             local_ctx = local_adapter_context
-        elif (Path(".mighty-mouse") / ADAPTER_CONFIG_FILENAME).is_file():
-            local_ctx = HostAdapter.resolve_adapter_context(
-                ".", state_dir=".mighty-mouse", tool_signatures=sigs,
-                contract_version=MCP_TOOL_CONTRACT_VERSION
-            )
         else:
-            fb_tmp = tempfile.mkdtemp()
-            fb_state = Path(fb_tmp) / ".mighty-mouse"
-            fb_state.mkdir(parents=True, exist_ok=True)
-            cfg = HostAdapter.build_adapter_config(
-                repository="JOHNNYMACONNY/mighty-mouse",
-                model_digest="sha256:" + "0" * 64,
-                model_class="local-small",
-                effective_context_limit=8192,
-                runtime_kind="antigravity",
-                runtime_version="1.0.0",
-                ollama_model=None,
-                tool_signatures=sigs,
-                contract_version=MCP_TOOL_CONTRACT_VERSION,
-            )
-            (fb_state / ADAPTER_CONFIG_FILENAME).write_text(
-                json.dumps(cfg), encoding="utf-8"
-            )
+            canonical_adapter = Path(".mighty-mouse") / ADAPTER_CONFIG_FILENAME
+            if not canonical_adapter.is_file():
+                raise FileNotFoundError(
+                    f"Canonical MCP adapter identity is not configured: "
+                    f"{canonical_adapter}; run setup_workspace"
+                )
             local_ctx = HostAdapter.resolve_adapter_context(
-                fb_tmp,
-                state_dir=str(fb_state),
+                ".",
+                state_dir=".mighty-mouse",
                 tool_signatures=sigs,
                 contract_version=MCP_TOOL_CONTRACT_VERSION,
             )
@@ -550,8 +674,10 @@ def execute_cross_model_plan(
                 dry_support = Path(dry_tmp)
                 for cand in FROZEN_CANDIDATES.values():
                     prepare_candidate_runtime(
-                        cand, local_ctx, dry_support / cand.candidate_id,
-                        config_path=config_path
+                        cand,
+                        local_ctx,
+                        dry_support / cand.candidate_id,
+                        config_path=config_path,
                     )
 
             dry_summary: Dict[str, Any] = {
@@ -599,8 +725,10 @@ def execute_cross_model_plan(
             )
             if output_dir is not None:
                 output_dir.mkdir(parents=True, exist_ok=True)
-                (output_dir / "run_summary.json").write_text(
-                    json.dumps(dry_summary, indent=2) + "\n", encoding="utf-8"
+                _atomic_write_json(
+                    output_dir / "run_summary.json",
+                    dry_summary,
+                    allow_overwrite=True,
                 )
             return dry_summary
 
@@ -642,6 +770,7 @@ def execute_cross_model_plan(
                     config_path=config_path,
                     contract_path=contract_path,
                     harness_sha=harness_sha,
+                    ollama_version=observed_ollama_ver,
                 )
             except Exception as exc:
                 stop_reason = (
@@ -653,14 +782,19 @@ def execute_cross_model_plan(
 
             trial_records.append(record)
             t_path = trials_dir / f"{unit.trial_id}.json"
-            t_path.write_text(
-                json.dumps(record, indent=2) + "\n", encoding="utf-8"
-            )
+            _atomic_write_json(t_path, record, allow_overwrite=False)
 
             if record.get("infrastructure_error"):
                 stop_reason = (
                     f"Infrastructure error encountered in trial "
                     f"{unit.trial_id}: {record.get('failure_category')}"
+                )
+                status = "aborted"
+                break
+
+            if not record.get("provenance_complete"):
+                stop_reason = (
+                    f"Provenance incomplete in trial {unit.trial_id}"
                 )
                 status = "aborted"
                 break
@@ -673,18 +807,15 @@ def execute_cross_model_plan(
                 break
 
         total_gens = sum(r["generation_call_count"] for r in trial_records)
-        token_vals = [
-            r["total_tokens"]
-            for r in trial_records
-            if r["total_tokens"] is not None
-        ]
-        sum_tokens = (
-            sum(token_vals) if len(token_vals) == len(trial_records) else None
-        )
 
         cand_aggs: Dict[str, Any] = {}
         for cid in FROZEN_CANDIDATES:
             c_recs = [r for r in trial_records if r["candidate_id"] == cid]
+            c_all_cov = bool(c_recs) and all(
+                r.get("token_coverage_complete")
+                and r.get("total_tokens") is not None
+                for r in c_recs
+            )
             cand_aggs[cid] = {
                 "executed": len(c_recs),
                 "passed": sum(1 for r in c_recs if r["passed"]),
@@ -697,14 +828,21 @@ def execute_cross_model_plan(
                 "generation_calls": sum(
                     r["generation_call_count"] for r in c_recs
                 ),
-                "total_tokens": sum(
-                    r["total_tokens"] or 0 for r in c_recs
+                "total_tokens": (
+                    sum(r["total_tokens"] for r in c_recs)
+                    if c_all_cov
+                    else (0 if not c_recs else None)
                 ),
             }
 
         arm_aggs: Dict[str, Any] = {}
         for arm in ("control_once", "mm_single"):
             a_recs = [r for r in trial_records if r["arm"] == arm]
+            a_all_cov = bool(a_recs) and all(
+                r.get("token_coverage_complete")
+                and r.get("total_tokens") is not None
+                for r in a_recs
+            )
             arm_aggs[arm] = {
                 "executed": len(a_recs),
                 "passed": sum(1 for r in a_recs if r["passed"]),
@@ -717,10 +855,23 @@ def execute_cross_model_plan(
                 "generation_calls": sum(
                     r["generation_call_count"] for r in a_recs
                 ),
-                "total_tokens": sum(
-                    r["total_tokens"] or 0 for r in a_recs
+                "total_tokens": (
+                    sum(r["total_tokens"] for r in a_recs)
+                    if a_all_cov
+                    else (0 if not a_recs else None)
                 ),
             }
+
+        all_cov = bool(trial_records) and all(
+            r.get("token_coverage_complete")
+            and r.get("total_tokens") is not None
+            for r in trial_records
+        )
+        sum_tokens = (
+            sum(r["total_tokens"] for r in trial_records)
+            if all_cov
+            else (0 if not trial_records else None)
+        )
 
         summary: Dict[str, Any] = {
             "schema_version": "1.0.0",
@@ -750,7 +901,7 @@ def execute_cross_model_plan(
         validate_payload_against_schema(
             summary, "run_summary", contract_path
         )
-        (output_dir / "run_summary.json").write_text(
-            json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+        _atomic_write_json(
+            output_dir / "run_summary.json", summary, allow_overwrite=False
         )
         return summary

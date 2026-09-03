@@ -8,11 +8,13 @@ schema conformance, and dry-run zero-generation guarantees.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 import tempfile
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
+import urllib.error
 import pytest
 
 from eval.cross_model_parity import (
@@ -93,7 +95,10 @@ def mock_ollama_daemon_for_tests():
             "resolve_ollama_model_digest"
         )
         with patch(target_fn, side_effect=mock_digest):
-            yield
+            with patch(
+                "eval.cross_model_parity.check_git_clean_except_prototype"
+            ):
+                yield
 
 
 # --- 1. Provenance separation ---
@@ -976,3 +981,451 @@ def test_ephemeral_adapters_inherit_canonical_controlled_runtime_model_class(
             assert data["model_class"] in {
                 "local-small", "local-medium", "local-large", "unknown"
             }
+
+
+# --- 8. Ticket 04 Code Review Repairs ---
+
+
+def test_control_prompt_canonical_bare_builder_task_003() -> None:
+    from eval.cross_model_parity import FROZEN_ANCHOR_TASKS
+    from eval.run_bare_baseline import build_prompt as build_bare_prompt
+
+    for task_id, task_meta in FROZEN_ANCHOR_TASKS.items():
+        task_path = Path(task_meta.task_file)
+        task_json = json.loads(task_path.read_text(encoding="utf-8"))
+        prompt = build_bare_prompt(task_json)
+
+        assert prompt == build_bare_prompt(task_json)
+        assert "Title: " in prompt
+        assert "Task: " in prompt
+        assert "Constraints: " in prompt
+        assert "Required files: " in prompt
+        assert task_json["description"] in prompt
+        for expected_file in task_json.get("expected_files", []):
+            assert expected_file in prompt
+
+    # Specifically prove task 003 is not emitted as an unspecified/empty task
+    task_003_path = Path(FROZEN_ANCHOR_TASKS["task_003"].task_file)
+    task_003_json = json.loads(task_003_path.read_text(encoding="utf-8"))
+    assert "instructions" not in task_003_json
+    prompt_003 = build_bare_prompt(task_003_json)
+    assert len(prompt_003) > 100
+    assert task_003_json["description"] in prompt_003
+
+
+def test_mm_single_projected_runtime_has_canonical_prompt_assets(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    import yaml
+    cand = FROZEN_CANDIDATES["llama31_8b_q4km"]
+    with tempfile.TemporaryDirectory() as tmp:
+        support_dir = Path(tmp)
+        p_cfg_path, p_sha, a_cfg_path, a_sha = prepare_candidate_runtime(
+            cand, mock_local_context, support_dir
+        )
+
+        canon_dir = DEFAULT_CONFIG_PATH.parent
+        # Verify system_prompt.txt
+        sys_target = support_dir / "system_prompt.txt"
+        assert sys_target.is_file()
+        canon_sys = canon_dir / "system_prompt.txt"
+        assert sys_target.read_bytes() == canon_sys.read_bytes()
+
+        # Verify all prompt segments
+        proj_data = yaml.safe_load(p_cfg_path.read_text(encoding="utf-8"))
+        for seg in proj_data.get("prompt_segments", []):
+            seg_target = support_dir / seg
+            assert seg_target.is_file()
+            canon_seg = canon_dir / seg
+            assert seg_target.read_bytes() == canon_seg.read_bytes()
+
+        # Verify disk adapter config hash exactly equals returned hash
+        disk_sha = hashlib.sha256(a_cfg_path.read_bytes()).hexdigest()
+        assert disk_sha == a_sha
+
+
+def test_missing_canonical_adapter_state_fails_closed() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        plan = materialize_execution_plan()
+        out_dir = Path(tmp) / "out"
+        ws_root = Path(tmp) / "ws"
+
+        # When local_adapter_context is None and canonical state is absent
+        with patch.object(Path, "is_file", return_value=False):
+            with pytest.raises(
+                FileNotFoundError,
+                match="Canonical MCP adapter identity is not configured",
+            ):
+                execute_cross_model_plan(
+                    plan,
+                    output_dir=out_dir,
+                    workspace_root=ws_root,
+                    local_adapter_context=None,
+                )
+
+
+def test_control_transport_error_recorded_as_generation_infrastructure_failure(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    control_unit = next(
+        u for u in plan["trial_units"] if u["arm"] == "control_once"
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        sup_root = Path(tmp) / "sup"
+        out_dir = Path(tmp) / "out"
+
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            side_effect=urllib.error.URLError("Connection refused"),
+        ):
+            rec = execute_trial_unit(
+                control_unit,
+                workspace_root=ws_root,
+                support_root=sup_root,
+                output_dir=out_dir,
+                local_adapter_context=mock_local_context,
+                ollama_version="0.33.2",
+            )
+
+        assert rec["generation_call_count"] == 1
+        assert rec["failure_category"] == "generation_error"
+        assert rec["infrastructure_error"] is True
+        assert rec["token_coverage_complete"] is False
+        assert rec["prompt_tokens"] is None
+        assert rec["completion_tokens"] is None
+        assert rec["total_tokens"] is None
+
+        # Test timeout classification
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            side_effect=TimeoutError("Request timed out"),
+        ):
+            rec_timeout = execute_trial_unit(
+                control_unit,
+                workspace_root=ws_root / "t2",
+                support_root=sup_root / "t2",
+                output_dir=out_dir / "t2",
+                local_adapter_context=mock_local_context,
+                ollama_version="0.33.2",
+            )
+
+        assert rec_timeout["generation_call_count"] == 1
+        assert rec_timeout["failure_category"] == "timeout"
+        assert rec_timeout["infrastructure_error"] is True
+
+
+def test_adapter_file_hash_matches_disk_byte_for_byte(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    cand = FROZEN_CANDIDATES["qwen25_7b_q4km"]
+    with tempfile.TemporaryDirectory() as tmp:
+        support_dir = Path(tmp)
+        _, _, a_path, a_sha = prepare_candidate_runtime(
+            cand, mock_local_context, support_dir
+        )
+        assert hashlib.sha256(a_path.read_bytes()).hexdigest() == a_sha
+
+
+def test_observed_ollama_version_propagates_dynamically(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    unit = plan["trial_units"][0]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        sup_root = Path(tmp) / "sup"
+        out_dir = Path(tmp) / "out"
+
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            return_value=(
+                "```python:hello.py\nprint('hi')\n```",
+                {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                },
+            ),
+        ):
+            with patch(
+                "eval.cross_model_parity_execution.verify_task",
+                return_value={"status": "success"},
+            ):
+                rec = execute_trial_unit(
+                    unit,
+                    workspace_root=ws_root,
+                    support_root=sup_root,
+                    output_dir=out_dir,
+                    local_adapter_context=mock_local_context,
+                    ollama_version="0.34.0",
+                )
+
+        assert rec["ollama_version"] == "0.34.0"
+
+
+def test_output_paths_populated_for_both_arms(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    control_unit = next(
+        u for u in plan["trial_units"] if u["arm"] == "control_once"
+    )
+    mm_unit = next(u for u in plan["trial_units"] if u["arm"] == "mm_single")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        sup_root = Path(tmp) / "sup"
+        out_dir = Path(tmp) / "out"
+
+        # Control arm
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            return_value=(
+                "```python:created_file.py\nprint('hello')\n```",
+                {
+                    "prompt_tokens": 5,
+                    "completion_tokens": 5,
+                    "total_tokens": 10,
+                },
+            ),
+        ):
+            with patch(
+                "eval.cross_model_parity_execution.verify_task",
+                return_value={"status": "success"},
+            ):
+                c_rec = execute_trial_unit(
+                    control_unit,
+                    workspace_root=ws_root / "c",
+                    support_root=sup_root / "c",
+                    output_dir=out_dir / "c",
+                    local_adapter_context=mock_local_context,
+                    ollama_version="0.33.2",
+                )
+        assert "created_file.py" in c_rec["output_paths"]
+
+        # MM arm
+        def fake_solve(*args, **kwargs):
+            ws = kwargs.get("workspace")
+            if ws:
+                target = Path(ws) / "mm_created_file.py"
+                target.write_text("print('mm')", encoding="utf-8")
+
+        with patch(
+            "mighty_mouse.host.adapter.HostAdapter.solve",
+            side_effect=fake_solve,
+        ):
+            with patch(
+                "eval.cross_model_parity_execution.verify_task",
+                return_value={"status": "success"},
+            ):
+                mm_rec = execute_trial_unit(
+                    mm_unit,
+                    workspace_root=ws_root / "mm",
+                    support_root=sup_root / "mm",
+                    output_dir=out_dir / "mm",
+                    local_adapter_context=mock_local_context,
+                    ollama_version="0.33.2",
+                )
+        assert "mm_created_file.py" in mm_rec["output_paths"]
+
+
+def test_malformed_verifier_status_fails_closed_as_verifier_error(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    unit = plan["trial_units"][0]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        sup_root = Path(tmp) / "sup"
+        out_dir = Path(tmp) / "out"
+
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            return_value=(
+                "```python:dummy.py\npass\n```",
+                {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            ),
+        ):
+            with patch(
+                "eval.cross_model_parity_execution.verify_task",
+                return_value={"status": "bogus_status"},
+            ):
+                rec = execute_trial_unit(
+                    unit,
+                    workspace_root=ws_root,
+                    support_root=sup_root,
+                    output_dir=out_dir,
+                    local_adapter_context=mock_local_context,
+                    ollama_version="0.33.2",
+                )
+
+        assert rec["verifier_completed"] is False
+        assert rec["failure_category"] == "verifier_error"
+        assert rec["infrastructure_error"] is True
+
+
+def test_provenance_incomplete_aborts_run(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        out_dir = Path(tmp) / "out"
+
+        with patch(
+            "eval.cross_model_parity_execution.execute_trial_unit",
+            return_value={
+                "schema_version": "1.0.0",
+                "experiment_id": M13_EXPERIMENT_ID,
+                "trial_id": plan["trial_units"][0]["trial_id"],
+                "generation_call_count": 1,
+                "total_tokens": 10,
+                "token_coverage_complete": True,
+                "infrastructure_error": False,
+                "passed": True,
+                "failure_category": None,
+                "candidate_id": "llama31_8b_q4km",
+                "arm": "control_once",
+                "provenance_complete": False,
+            },
+        ):
+            summary = execute_cross_model_plan(
+                plan,
+                output_dir=out_dir,
+                workspace_root=ws_root,
+                local_adapter_context=mock_local_context,
+            )
+
+        assert summary["status"] == "aborted"
+        assert "Provenance incomplete" in summary["stop_reason"]
+
+
+def test_atomic_write_and_collision_protection(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    from eval.cross_model_parity_execution import _atomic_write_json
+
+    with tempfile.TemporaryDirectory() as tmp:
+        file_path = Path(tmp) / "test.json"
+        _atomic_write_json(file_path, {"a": 1})
+        assert json.loads(file_path.read_text(encoding="utf-8")) == {"a": 1}
+
+        with pytest.raises(
+            FileExistsError, match="Target file already exists"
+        ):
+            _atomic_write_json(file_path, {"a": 2}, allow_overwrite=False)
+
+    plan = materialize_execution_plan()
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        out_dir = Path(tmp) / "out"
+
+        first_unit_id = plan["trial_units"][0]["trial_id"]
+
+        def fake_exec(unit, *args, **kwargs):
+            conflict_file = out_dir / "trials" / f"{first_unit_id}.json"
+            conflict_file.write_text("{}", encoding="utf-8")
+            return {
+                "schema_version": "1.0.0",
+                "experiment_id": M13_EXPERIMENT_ID,
+                "trial_id": first_unit_id,
+                "generation_call_count": 1,
+                "total_tokens": 10,
+                "token_coverage_complete": True,
+                "infrastructure_error": False,
+                "passed": True,
+                "failure_category": None,
+                "candidate_id": "llama31_8b_q4km",
+                "arm": "control_once",
+                "provenance_complete": True,
+            }
+
+        with patch(
+            "eval.cross_model_parity_execution.execute_trial_unit",
+            side_effect=fake_exec,
+        ):
+            with pytest.raises(
+                FileExistsError, match="Target file already exists"
+            ):
+                execute_cross_model_plan(
+                    plan,
+                    output_dir=out_dir,
+                    workspace_root=ws_root,
+                    local_adapter_context=mock_local_context,
+                )
+
+
+def test_live_workspace_root_collision_fails_closed(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "existing_ws"
+        ws_root.mkdir(parents=True, exist_ok=True)
+        out_dir = Path(tmp) / "out"
+
+        with pytest.raises(
+            FileExistsError, match="Live workspace root already exists"
+        ):
+            execute_cross_model_plan(
+                plan,
+                output_dir=out_dir,
+                workspace_root=ws_root,
+                local_adapter_context=mock_local_context,
+                dry_run=False,
+            )
+
+
+def test_truthful_token_aggregation_when_coverage_incomplete(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        out_dir = Path(tmp) / "out"
+
+        call_idx = 0
+
+        def fake_exec(unit, *args, **kwargs):
+            nonlocal call_idx
+            call_idx += 1
+            is_first = call_idx == 1
+            return {
+                "schema_version": "1.0.0",
+                "experiment_id": M13_EXPERIMENT_ID,
+                "trial_id": unit.trial_id,
+                "generation_call_count": 1,
+                "total_tokens": 100 if not is_first else None,
+                "token_coverage_complete": not is_first,
+                "infrastructure_error": is_first,
+                "passed": not is_first,
+                "failure_category": "generation_error" if is_first else None,
+                "candidate_id": unit.candidate_id,
+                "arm": unit.arm,
+                "provenance_complete": True,
+            }
+
+        with patch(
+            "eval.cross_model_parity_execution.execute_trial_unit",
+            side_effect=fake_exec,
+        ):
+            summary = execute_cross_model_plan(
+                plan,
+                output_dir=out_dir,
+                workspace_root=ws_root,
+                local_adapter_context=mock_local_context,
+            )
+
+        assert summary["status"] == "aborted"
+        assert summary["total_tokens"] is None
+        cand_agg = summary["aggregates_by_candidate"]["qwen25_7b_q4km"]
+        assert cand_agg["total_tokens"] is None

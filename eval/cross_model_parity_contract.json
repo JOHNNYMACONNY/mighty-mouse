@@ -30,7 +30,8 @@
           "const": "1.0.0"
         },
         "experiment_id": {
-          "type": "string"
+          "type": "string",
+          "const": "m13-cross-model-pilot-01"
         },
         "plan_design": {
           "type": "string",
@@ -53,7 +54,8 @@
           "const": 32768
         },
         "canonical_config_path": {
-          "type": "string"
+          "type": "string",
+          "const": "configs/mighty_mouse_v1.yaml"
         },
         "canonical_config_sha256": {
           "type": "string",

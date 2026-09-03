@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -672,13 +673,10 @@ def test_preflight_fails_on_mcp_tool_count_mismatch() -> None:
                     "eval.cross_model_parity.HostAdapter."
                     "resolve_ollama_model_digest"
                 )
+                sig_fn = "mighty_mouse_mcp.server._get_mcp_tool_signatures"
                 with patch("urllib.request.urlopen", return_value=mock_resp):
                     with patch(resolve_fn, side_effect=mock_digest):
-                        tool_py = '@mcp.tool(name="tool1")\n'
-                        with patch(
-                            "pathlib.Path.read_text",
-                            return_value=tool_py,
-                        ):
+                        with patch(sig_fn, return_value={"tool1": None}):
                             report = run_preflight()
                             assert report["status"] == "FAILED"
                             assert report["mcp_tools_count"] == 1
@@ -727,6 +725,125 @@ def test_preflight_fails_on_mcp_contract_version_mismatch() -> None:
                             assert report["mcp_contract_version"] == "v99"
                             assert any(
                                 "mcp contract version mismatch" in b.lower()
+                                for b in report["blocking_reasons"]
+                            )
+                            validate_payload_against_schema(
+                                report, "preflight_report"
+                            )
+
+
+def test_plan_survives_json_roundtrip() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    serialized = json.dumps(plan)
+    reloaded = json.loads(serialized)
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            reloaded, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is True, f"Errors: {report['errors']}"
+        assert reloaded == plan
+
+
+def test_validate_plan_rejects_altered_experiment_id() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    plan["experiment_id"] = "tampered_id"
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is False
+        assert any("experiment_id" in e for e in report["errors"])
+
+
+def test_validate_plan_rejects_non_canonical_cfg_path(
+    tmp_path: Path,
+) -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXPERIMENT_BASE_SHA)
+    # Even if byte-identical, path must be configs/mighty_mouse_v1.yaml
+    alt_cfg = tmp_path / "mighty_mouse_v1.yaml"
+    alt_cfg.write_bytes(DEFAULT_CONFIG_PATH.read_bytes())
+    plan["canonical_config_path"] = str(alt_cfg)
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        report = validate_execution_plan(
+            plan, current_head=M13_EXPERIMENT_BASE_SHA
+        )
+        assert report["valid"] is False
+        assert any("canonical_config_path" in e for e in report["errors"])
+
+
+def test_preflight_uses_mcp_signature_map() -> None:
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        with patch(
+            "eval.cross_model_parity.get_current_git_sha",
+            return_value=M13_EXPERIMENT_BASE_SHA,
+        ):
+            with patch(
+                "eval.cross_model_parity.check_git_clean_except_prototype"
+            ):
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = b'{"version": "0.33.2"}'
+                mock_resp.__enter__.return_value = mock_resp
+
+                def mock_digest(tag: str) -> str:
+                    if "llama" in tag:
+                        return FROZEN_CANDIDATES[
+                            "llama31_8b_q4km"
+                        ].model_digest
+                    return FROZEN_CANDIDATES["qwen25_7b_q4km"].model_digest
+
+                resolve_fn = (
+                    "eval.cross_model_parity.HostAdapter."
+                    "resolve_ollama_model_digest"
+                )
+                sig_fn = "mighty_mouse_mcp.server._get_mcp_tool_signatures"
+                two_tools = {"t1": None, "t2": None}
+                with patch("urllib.request.urlopen", return_value=mock_resp):
+                    with patch(resolve_fn, side_effect=mock_digest):
+                        with patch(sig_fn, return_value=two_tools) as mock_sig:
+                            report = run_preflight()
+                            mock_sig.assert_called_once()
+                            assert report["status"] == "FAILED"
+                            assert report["mcp_tools_count"] == 2
+                            assert any(
+                                "mcp tool count mismatch" in b.lower()
+                                for b in report["blocking_reasons"]
+                            )
+
+
+def test_preflight_fails_on_mcp_signature_inspection_error() -> None:
+    with patch("eval.cross_model_parity.verify_base_to_harness_delta"):
+        with patch(
+            "eval.cross_model_parity.get_current_git_sha",
+            return_value=M13_EXPERIMENT_BASE_SHA,
+        ):
+            with patch(
+                "eval.cross_model_parity.check_git_clean_except_prototype"
+            ):
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = b'{"version": "0.33.2"}'
+                mock_resp.__enter__.return_value = mock_resp
+
+                def mock_digest(tag: str) -> str:
+                    if "llama" in tag:
+                        return FROZEN_CANDIDATES[
+                            "llama31_8b_q4km"
+                        ].model_digest
+                    return FROZEN_CANDIDATES["qwen25_7b_q4km"].model_digest
+
+                resolve_fn = (
+                    "eval.cross_model_parity.HostAdapter."
+                    "resolve_ollama_model_digest"
+                )
+                sig_fn = "mighty_mouse_mcp.server._get_mcp_tool_signatures"
+                mcp_err = RuntimeError("MCP import error")
+                with patch("urllib.request.urlopen", return_value=mock_resp):
+                    with patch(resolve_fn, side_effect=mock_digest):
+                        with patch(sig_fn, side_effect=mcp_err):
+                            report = run_preflight()
+                            assert report["status"] == "FAILED"
+                            assert report["mcp_tools_count"] is None
+                            assert any(
+                                "failed to inspect mcp" in b.lower()
                                 for b in report["blocking_reasons"]
                             )
                             validate_payload_against_schema(

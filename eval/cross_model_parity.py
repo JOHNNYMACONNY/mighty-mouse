@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
-import re
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple
 import urllib.request
@@ -19,6 +19,7 @@ from eval.runner_lock import LOCK_FILE_PATH, SingleInstanceLock
 from mighty_mouse.host.adapter import HostAdapter, MCP_TOOL_CONTRACT_VERSION
 
 M13_SCHEMA_VERSION = "1.0.0"
+M13_EXPERIMENT_ID = "m13-cross-model-pilot-01"
 M13_EXPERIMENT_BASE_SHA = "e396d1960208673679d7aac8d2f9e6f5d10f2545"
 M13_PLAN_DESIGN = "m13-cross-model-pilot-v1"
 M13_ORDER_SEED = "m13-cross-model-pilot-v1"
@@ -148,6 +149,14 @@ FROZEN_ANCHOR_TASKS: Dict[str, CrossModelAnchorTask] = {
         expected_files=("file_proxy.py",),
     ),
 }
+
+
+FROZEN_CANDIDATES_JSON: Dict[str, Any] = json.loads(
+    json.dumps({k: asdict(v) for k, v in FROZEN_CANDIDATES.items()})
+)
+FROZEN_ANCHOR_TASKS_JSON: Dict[str, Any] = json.loads(
+    json.dumps({k: asdict(v) for k, v in FROZEN_ANCHOR_TASKS.items()})
+)
 
 
 def load_contract_schema(
@@ -341,7 +350,7 @@ def materialize_execution_plan(
 
     plan = {
         "schema_version": M13_SCHEMA_VERSION,
-        "experiment_id": "m13-cross-model-pilot-01",
+        "experiment_id": M13_EXPERIMENT_ID,
         "plan_design": M13_PLAN_DESIGN,
         "experiment_base_sha": M13_EXPERIMENT_BASE_SHA,
         "harness_sha": harness_sha,
@@ -349,8 +358,8 @@ def materialize_execution_plan(
         "effective_context_limit": M13_EFFECTIVE_CONTEXT_LIMIT,
         "canonical_config_path": str(config_path),
         "canonical_config_sha256": canonical_config_sha256,
-        "candidates": {k: asdict(v) for k, v in FROZEN_CANDIDATES.items()},
-        "anchor_tasks": {k: asdict(v) for k, v in FROZEN_ANCHOR_TASKS.items()},
+        "candidates": copy.deepcopy(FROZEN_CANDIDATES_JSON),
+        "anchor_tasks": copy.deepcopy(FROZEN_ANCHOR_TASKS_JSON),
         "arms": list(M13_ALLOWED_ARMS),
         "replicates": 1,
         "trial_count": len(final_units),
@@ -383,6 +392,12 @@ def validate_execution_plan(
             f"found {plan.get('schema_version')}"
         )
 
+    if plan.get("experiment_id") != M13_EXPERIMENT_ID:
+        errors.append(
+            f"experiment_id mismatch: expected {M13_EXPERIMENT_ID}, "
+            f"found {plan.get('experiment_id')}"
+        )
+
     if plan.get("plan_design") != M13_PLAN_DESIGN:
         errors.append(
             f"plan_design mismatch: expected {M13_PLAN_DESIGN}, "
@@ -405,6 +420,12 @@ def validate_execution_plan(
             f"{plan.get('effective_context_limit')}"
         )
 
+    if plan.get("canonical_config_path") != str(DEFAULT_CONFIG_PATH):
+        errors.append(
+            f"canonical_config_path mismatch: expected "
+            f"{DEFAULT_CONFIG_PATH}, found {plan.get('canonical_config_path')}"
+        )
+
     cfg_path_str = plan.get("canonical_config_path", "")
     cfg_path = Path(cfg_path_str) if cfg_path_str else DEFAULT_CONFIG_PATH
     if not cfg_path.exists():
@@ -417,16 +438,10 @@ def validate_execution_plan(
                 f"{plan.get('canonical_config_sha256')}, disk has {disk_sha}"
             )
 
-    exp_candidates = {
-        k: asdict(v) for k, v in FROZEN_CANDIDATES.items()
-    }
-    if plan.get("candidates") != exp_candidates:
+    if plan.get("candidates") != FROZEN_CANDIDATES_JSON:
         errors.append("Top-level candidates do not match frozen definitions")
 
-    exp_tasks = {
-        k: asdict(v) for k, v in FROZEN_ANCHOR_TASKS.items()
-    }
-    if plan.get("anchor_tasks") != exp_tasks:
+    if plan.get("anchor_tasks") != FROZEN_ANCHOR_TASKS_JSON:
         errors.append(
             "Top-level anchor_tasks do not match frozen definitions"
         )
@@ -712,26 +727,19 @@ def run_preflight(
                 f"MCP contract version mismatch: expected v6, found {mcp_ver}"
             )
 
-        server_path = Path("mcp/src/mighty_mouse_mcp/server.py")
         mcp_count: Optional[int] = None
-        if not server_path.exists():
-            blocking_reasons.append(
-                "MCP server file missing: mcp/src/mighty_mouse_mcp/server.py"
-            )
-        else:
-            try:
-                server_content = server_path.read_text(encoding="utf-8")
-                mcp_tools = re.findall(
-                    r'@mcp\.tool\(name="([^"]+)"\)', server_content
+        try:
+            from mighty_mouse_mcp.server import _get_mcp_tool_signatures
+            sigs = _get_mcp_tool_signatures()
+            mcp_count = len(sigs)
+            if mcp_count != 15:
+                blocking_reasons.append(
+                    f"MCP tool count mismatch: expected 15, found {mcp_count}"
                 )
-                mcp_count = len(mcp_tools)
-                if mcp_count != 15:
-                    blocking_reasons.append(
-                        f"MCP tool count mismatch: expected 15, "
-                        f"found {mcp_count}"
-                    )
-            except Exception as e:
-                blocking_reasons.append(f"Failed to inspect MCP server: {e}")
+        except Exception as e:
+            blocking_reasons.append(
+                f"Failed to inspect MCP tool signatures: {e}"
+            )
 
         plan_report: Dict[str, Any]
         if not cfg_ok:

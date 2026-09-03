@@ -1447,3 +1447,269 @@ def test_truthful_token_aggregation_when_coverage_incomplete(
         assert summary["total_tokens"] is None
         cand_agg = summary["aggregates_by_candidate"]["qwen25_7b_q4km"]
         assert cand_agg["total_tokens"] is None
+
+
+# --- 9. Final Bounded Review Repairs (Stage Separation & Continuity) ---
+
+
+def test_control_application_error_records_single_generation_and_analyzable(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    ctrl_units = [u for u in plan["trial_units"] if u["arm"] == "control_once"]
+    unit = ctrl_units[0]
+    assert unit["arm"] == "control_once"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        sup_root = Path(tmp) / "sup"
+        out_dir = Path(tmp) / "out"
+
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            return_value=(
+                "```python:invalid.py\n# Traversal or invalid\n```",
+                {
+                    "prompt_tokens": 50,
+                    "completion_tokens": 25,
+                    "total_tokens": 75,
+                },
+            ),
+        ):
+            with patch(
+                "eval.cross_model_parity_execution._apply_response",
+                side_effect=ValueError("write not permitted: invalid.py"),
+            ):
+                with patch(
+                    "eval.cross_model_parity_execution.verify_task",
+                    return_value={"status": "fail", "scope": "FAIL"},
+                ):
+                    rec = execute_trial_unit(
+                        unit,
+                        workspace_root=ws_root,
+                        support_root=sup_root,
+                        output_dir=out_dir,
+                        local_adapter_context=mock_local_context,
+                        ollama_version="0.33.2",
+                    )
+
+        assert rec["generation_call_count"] == 1
+        assert rec["token_coverage_complete"] is True
+        assert rec["prompt_tokens"] == 50
+        assert rec["completion_tokens"] == 25
+        assert rec["total_tokens"] == 75
+        assert len(rec["raw_response_relpaths"]) == 1
+        assert len(rec["raw_response_sha256s"]) == 1
+        assert rec["failure_category"] == "application_error"
+        assert rec["infrastructure_error"] is False
+        assert rec["passed"] is False
+        assert rec["verifier_completed"] is True
+        assert rec["verifier_payload"] == {"status": "fail", "scope": "FAIL"}
+
+
+def test_mm_single_application_and_schema_exceptions_not_infrastructure(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    mm_units = [u for u in plan["trial_units"] if u["arm"] == "mm_single"]
+    mm_unit = mm_units[0]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        sup_root = Path(tmp) / "sup"
+        out_dir = Path(tmp) / "out"
+
+        with patch(
+            "mighty_mouse.host.adapter.HostAdapter.solve",
+            side_effect=ValueError(
+                "No valid file markers found in model response"
+            ),
+        ):
+            with patch(
+                "eval.cross_model_parity_execution.verify_task",
+                return_value={"status": "fail"},
+            ):
+                rec = execute_trial_unit(
+                    mm_unit,
+                    workspace_root=ws_root,
+                    support_root=sup_root,
+                    output_dir=out_dir,
+                    local_adapter_context=mock_local_context,
+                    ollama_version="0.33.2",
+                )
+
+        assert rec["infrastructure_error"] is False
+        assert rec["failure_category"] == "response_schema_error"
+        assert rec["passed"] is False
+
+
+def test_swallowed_mm_failure_missing_tokens_is_infra_excluded(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        out_dir = Path(tmp) / "out"
+
+        first_unit = plan["trial_units"][0]
+
+        def fake_exec(unit, *args, **kwargs):
+            return {
+                "schema_version": "1.0.0",
+                "experiment_id": M13_EXPERIMENT_ID,
+                "trial_id": unit.trial_id,
+                "generation_call_count": 1,
+                "total_tokens": None,
+                "token_coverage_complete": False,
+                "infrastructure_error": False,
+                "passed": False,
+                "failure_category": None,
+                "candidate_id": unit.candidate_id,
+                "arm": unit.arm,
+                "provenance_complete": True,
+            }
+
+        with patch(
+            "eval.cross_model_parity_execution.execute_trial_unit",
+            side_effect=fake_exec,
+        ):
+            summary = execute_cross_model_plan(
+                plan,
+                output_dir=out_dir,
+                workspace_root=ws_root,
+                local_adapter_context=mock_local_context,
+            )
+
+        assert summary["status"] == "aborted"
+        assert summary["total_analyzable"] == 0
+        assert summary["total_infrastructure_excluded"] >= 1
+        cand_agg = summary["aggregates_by_candidate"][
+            first_unit["candidate_id"]
+        ]
+        assert cand_agg["analyzable"] == 0
+        assert cand_agg["infrastructure_excluded"] >= 1
+        assert cand_agg["total_tokens"] is None
+
+
+def test_ollama_version_drift_or_unavailability_aborts_before_generation(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        out_dir = Path(tmp) / "out"
+
+        with patch(
+            "eval.cross_model_parity_execution.query_ollama_version",
+            return_value="0.34.0",
+        ):
+            summary = execute_cross_model_plan(
+                plan,
+                output_dir=out_dir,
+                workspace_root=ws_root,
+                local_adapter_context=mock_local_context,
+            )
+            assert summary["status"] == "aborted"
+            assert "version drift" in summary["stop_reason"].lower()
+            assert summary["generation_calls"] == 0
+            assert summary["executed_trial_count"] == 0
+
+
+def test_control_transport_error_single_gen_and_infrastructure_invalid(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    ctrl_units = [u for u in plan["trial_units"] if u["arm"] == "control_once"]
+    unit = ctrl_units[0]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        sup_root = Path(tmp) / "sup"
+        out_dir = Path(tmp) / "out"
+
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            side_effect=TimeoutError("Request timed out"),
+        ):
+            rec = execute_trial_unit(
+                unit,
+                workspace_root=ws_root,
+                support_root=sup_root,
+                output_dir=out_dir,
+                local_adapter_context=mock_local_context,
+                ollama_version="0.33.2",
+            )
+
+        assert rec["generation_call_count"] == 1
+        assert rec["token_coverage_complete"] is False
+        assert rec["prompt_tokens"] is None
+        assert rec["completion_tokens"] is None
+        assert rec["failure_category"] == "timeout"
+        assert rec["infrastructure_error"] is True
+        assert rec["passed"] is False
+        assert rec["verifier_completed"] is False
+
+
+def test_ollama_version_unchanged_proceeds(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        out_dir = Path(tmp) / "out"
+
+        first_unit = plan["trial_units"][0]
+
+        with patch(
+            "eval.cross_model_parity_execution.query_ollama_version",
+            return_value="0.33.2",
+        ):
+            with patch(
+                "eval.cross_model_parity_execution.execute_trial_unit",
+                return_value={
+                    "schema_version": "1.0.0",
+                    "experiment_id": M13_EXPERIMENT_ID,
+                    "trial_id": first_unit["trial_id"],
+                    "generation_call_count": 1,
+                    "total_tokens": 100,
+                    "token_coverage_complete": True,
+                    "infrastructure_error": False,
+                    "passed": True,
+                    "failure_category": None,
+                    "candidate_id": first_unit["candidate_id"],
+                    "arm": first_unit["arm"],
+                    "provenance_complete": True,
+                },
+            ):
+                summary = execute_cross_model_plan(
+                    plan,
+                    output_dir=out_dir,
+                    workspace_root=ws_root,
+                    local_adapter_context=mock_local_context,
+                )
+                assert summary["executed_trial_count"] == 12
+                assert summary["status"] == "completed"
+
+
+def test_ollama_version_unavailable_aborts_before_generation(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        out_dir = Path(tmp) / "out"
+
+        with patch(
+            "eval.cross_model_parity_execution.query_ollama_version",
+            side_effect=RuntimeError("Connection refused to 11434"),
+        ):
+            summary = execute_cross_model_plan(
+                plan,
+                output_dir=out_dir,
+                workspace_root=ws_root,
+                local_adapter_context=mock_local_context,
+            )
+            assert summary["status"] == "aborted"
+            assert "query failed" in summary["stop_reason"].lower()
+            assert summary["generation_calls"] == 0
+            assert summary["executed_trial_count"] == 0

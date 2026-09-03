@@ -88,6 +88,20 @@ def _atomic_write_json(
             temp_path.unlink()
 
 
+DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434"
+
+
+def query_ollama_version(host: str = DEFAULT_OLLAMA_HOST) -> str:
+    """Query current Ollama API version for continuity attestation."""
+    req = urllib.request.Request(f"{host.rstrip('/')}/api/version")
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        ver = data.get("version")
+        if not ver or ver == "unknown":
+            raise RuntimeError(f"Ollama API returned invalid version: {data}")
+        return str(ver)
+
+
 def prepare_candidate_runtime(
     candidate: CrossModelCandidate,
     local_adapter_context: AdapterRuntimeContext,
@@ -330,10 +344,13 @@ def execute_trial_unit(
 
     t_wall_start = time.monotonic()
     primary_exception: Optional[Exception] = None
+    execution_stage: Optional[str] = None
 
     if unit.arm == "control_once":
         prompt = build_bare_prompt(task_json)
         t_gen_start = time.monotonic()
+        raw_text: Optional[str] = None
+        gen_exc: Optional[Exception] = None
         try:
             raw_text, meta = request_control_generation(
                 prompt=prompt,
@@ -354,14 +371,6 @@ def execute_trial_unit(
                 latency_seconds=t_gen_dur,
                 raw_response_text=raw_text,
             )
-            _apply_response(
-                ResponseApplicationRequest(
-                    raw_response=raw_text,
-                    policy=ResponseApplicationPolicy(
-                        workspace_root=str(trial_ws),
-                    ),
-                )
-            )
         except Exception as exc:
             t_gen_dur = time.monotonic() - t_gen_start
             capture.generation_calls += 1
@@ -377,7 +386,37 @@ def execute_trial_unit(
                 "raw_response_sha256": None,
                 "error": str(exc),
             })
+            gen_exc = exc
             primary_exception = exc
+            execution_stage = "generation"
+
+        if gen_exc is None and raw_text is not None:
+            try:
+                _apply_response(
+                    ResponseApplicationRequest(
+                        raw_response=raw_text,
+                        policy=ResponseApplicationPolicy(
+                            workspace_root=str(trial_ws),
+                        ),
+                    )
+                )
+            except Exception as exc:
+                primary_exception = exc
+                exc_s = str(exc).lower()
+                if any(
+                    k in exc_s
+                    for k in (
+                        "schema",
+                        "ambiguous",
+                        "no valid file",
+                        "xml leakage",
+                        "oversized",
+                        "parse",
+                    )
+                ):
+                    execution_stage = "schema"
+                else:
+                    execution_stage = "application"
 
     elif unit.arm == "mm_single":
         adapter = HostAdapter()
@@ -395,6 +434,34 @@ def execute_trial_unit(
                 )
             except Exception as exc:
                 primary_exception = exc
+                exc_s = str(exc).lower()
+                if isinstance(exc, TimeoutError) or "timeout" in exc_s:
+                    execution_stage = "generation"
+                elif any(
+                    k in exc_s
+                    for k in (
+                        "generate",
+                        "ollama",
+                        "connection refused",
+                        "connection reset",
+                        "timed out",
+                    )
+                ) or isinstance(exc, (urllib.error.URLError, ConnectionError)):
+                    execution_stage = "generation"
+                elif any(
+                    k in exc_s
+                    for k in (
+                        "schema",
+                        "ambiguous",
+                        "no valid file",
+                        "xml leakage",
+                        "oversized",
+                        "parse",
+                    )
+                ):
+                    execution_stage = "schema"
+                else:
+                    execution_stage = "application"
 
     output_files = sorted(
         str(p.relative_to(trial_ws))
@@ -408,17 +475,60 @@ def execute_trial_unit(
     verifier_payload: Optional[Dict[str, Any]] = None
     infra_error = False
 
+    has_incomplete_attempt = any(
+        e.get("prompt_tokens") is None or e.get("completion_tokens") is None
+        for e in capture.events
+    )
+    if capture.events:
+        token_cov = not has_incomplete_attempt
+    else:
+        token_cov = (
+            primary_exception is not None
+            and execution_stage in ("schema", "application")
+        )
+
     if primary_exception is not None:
         exc_str = str(primary_exception).lower()
-        if (
-            isinstance(primary_exception, TimeoutError)
-            or "timed out" in exc_str
-        ):
-            failure_category = "timeout"
+        if execution_stage == "generation":
             infra_error = True
+            if (
+                isinstance(primary_exception, TimeoutError)
+                or "timed out" in exc_str
+            ):
+                failure_category = "timeout"
+            else:
+                failure_category = "generation_error"
+        elif execution_stage == "schema":
+            infra_error = False
+            failure_category = "response_schema_error"
         else:
-            failure_category = "generation_error"
-            infra_error = True
+            infra_error = False
+            failure_category = classify_failure(
+                None, exception=primary_exception, stage="application"
+            )
+            if not failure_category:
+                failure_category = "application_error"
+
+        if not infra_error and trial_ws.is_dir():
+            try:
+                v_res = verify_task(task_json, workspace=str(trial_ws))
+                if (
+                    isinstance(v_res, dict)
+                    and v_res.get("status") in ("success", "fail")
+                ):
+                    verifier_completed = True
+                    verifier_payload = v_res
+                else:
+                    verifier_completed = False
+                    verifier_payload = (
+                        v_res
+                        if isinstance(v_res, dict)
+                        else {"error": "Invalid verifier output"}
+                    )
+            except Exception as exc:
+                verifier_completed = False
+                verifier_payload = {"error": str(exc)}
+            passed = False
     else:
         try:
             v_res = verify_task(task_json, workspace=str(trial_ws))
@@ -446,16 +556,17 @@ def execute_trial_unit(
             failure_category = "verifier_error"
             verifier_payload = {"error": str(exc)}
 
+    if (
+        has_incomplete_attempt
+        or (not token_cov and execution_stage == "generation")
+    ):
+        infra_error = True
+        passed = False
+        if failure_category is None:
+            failure_category = "generation_error"
+
     wall_lat = round(time.monotonic() - t_wall_start, 4)
 
-    token_cov = (
-        bool(capture.events)
-        and all(
-            e.get("prompt_tokens") is not None
-            and e.get("completion_tokens") is not None
-            for e in capture.events
-        )
-    )
     prompt_toks = (
         sum(e["prompt_tokens"] for e in capture.events)
         if token_cov
@@ -592,6 +703,7 @@ def execute_cross_model_plan(
     dry_run: bool = False,
     harness_sha: Optional[str] = None,
     local_adapter_context: Optional[AdapterRuntimeContext] = None,
+    ollama_host: str = DEFAULT_OLLAMA_HOST,
 ) -> Dict[str, Any]:
     """Execute complete cross-model plan under SingleInstanceLock."""
     if harness_sha is None:
@@ -761,6 +873,25 @@ def execute_cross_model_plan(
                 break
 
             try:
+                current_ver = query_ollama_version(host=ollama_host)
+            except Exception as exc:
+                stop_reason = (
+                    f"Ollama version query failed before trial "
+                    f"{unit.trial_id}: {exc}"
+                )
+                status = "aborted"
+                break
+
+            if current_ver != observed_ollama_ver:
+                stop_reason = (
+                    f"Ollama version drift detected before trial "
+                    f"{unit.trial_id}: preflight was '{observed_ollama_ver}', "
+                    f"observed '{current_ver}'"
+                )
+                status = "aborted"
+                break
+
+            try:
                 record = execute_trial_unit(
                     unit,
                     workspace_root=workspace_root,
@@ -771,6 +902,7 @@ def execute_cross_model_plan(
                     contract_path=contract_path,
                     harness_sha=harness_sha,
                     ollama_version=observed_ollama_ver,
+                    ollama_host=ollama_host,
                 )
             except Exception as exc:
                 stop_reason = (
@@ -808,6 +940,24 @@ def execute_cross_model_plan(
 
         total_gens = sum(r["generation_call_count"] for r in trial_records)
 
+        def _is_analyzable(r: Dict[str, Any]) -> bool:
+            return (
+                not r.get("infrastructure_error")
+                and bool(r.get("token_coverage_complete"))
+                and r.get("failure_category") not in (
+                    "verifier_error", "generation_error", "timeout"
+                )
+            )
+
+        def _is_infra_excluded(r: Dict[str, Any]) -> bool:
+            return (
+                bool(r.get("infrastructure_error"))
+                or not bool(r.get("token_coverage_complete"))
+                or r.get("failure_category") in (
+                    "verifier_error", "generation_error", "timeout"
+                )
+            )
+
         cand_aggs: Dict[str, Any] = {}
         for cid in FROZEN_CANDIDATES:
             c_recs = [r for r in trial_records if r["candidate_id"] == cid]
@@ -819,11 +969,9 @@ def execute_cross_model_plan(
             cand_aggs[cid] = {
                 "executed": len(c_recs),
                 "passed": sum(1 for r in c_recs if r["passed"]),
-                "analyzable": sum(
-                    1 for r in c_recs if not r["infrastructure_error"]
-                ),
+                "analyzable": sum(1 for r in c_recs if _is_analyzable(r)),
                 "infrastructure_excluded": sum(
-                    1 for r in c_recs if r["infrastructure_error"]
+                    1 for r in c_recs if _is_infra_excluded(r)
                 ),
                 "generation_calls": sum(
                     r["generation_call_count"] for r in c_recs
@@ -846,11 +994,9 @@ def execute_cross_model_plan(
             arm_aggs[arm] = {
                 "executed": len(a_recs),
                 "passed": sum(1 for r in a_recs if r["passed"]),
-                "analyzable": sum(
-                    1 for r in a_recs if not r["infrastructure_error"]
-                ),
+                "analyzable": sum(1 for r in a_recs if _is_analyzable(r)),
                 "infrastructure_excluded": sum(
-                    1 for r in a_recs if r["infrastructure_error"]
+                    1 for r in a_recs if _is_infra_excluded(r)
                 ),
                 "generation_calls": sum(
                     r["generation_call_count"] for r in a_recs
@@ -887,11 +1033,11 @@ def execute_cross_model_plan(
             "generation_calls": total_gens,
             "total_tokens": sum_tokens,
             "total_analyzable": sum(
-                1 for r in trial_records if not r["infrastructure_error"]
+                1 for r in trial_records if _is_analyzable(r)
             ),
             "total_passed": sum(1 for r in trial_records if r["passed"]),
             "total_infrastructure_excluded": sum(
-                1 for r in trial_records if r["infrastructure_error"]
+                1 for r in trial_records if _is_infra_excluded(r)
             ),
             "aggregates_by_candidate": cand_aggs,
             "aggregates_by_arm": arm_aggs,

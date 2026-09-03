@@ -35,6 +35,7 @@ from eval.reliability_matrix import (
     compute_sha256_bytes,
     compute_sha256_file,
     resolve_harness_sha,
+    select_deterministic_p2_tasks,
     select_deterministic_task,
     validate_payload_against_schema,
     verify_baseline_harness_delta,
@@ -72,6 +73,17 @@ logger = logging.getLogger(__name__)
 
 ARM_ORDER_SEED_PREFIX = "m12-arm-order-v1"
 P1_TIERS = ("tier_1", "tier_5", "tier_7")
+P2_TIERS = (
+    "tier_1",
+    "tier_overnight",
+    "tier_3",
+    "tier_4",
+    "tier_5",
+    "tier_6",
+    "tier_7",
+)
+P2_ARMS = ("control_once", "mm_single")
+P2_PLAN_DESIGN = "m12-p2-v1"
 CANONICAL_MODEL_CONFIG_PATH = Path("configs/mighty_mouse_v1.yaml")
 
 
@@ -90,7 +102,9 @@ class CaptureOllamaUsage:
         self.token_coverage_complete: bool = True
         self.active_phase: str = "primary"
         self._original_generate: Any = None
-        self.output_dir: Path | None = output_dir
+        self.output_dir: Path | None = (
+            Path(output_dir).resolve() if output_dir is not None else None
+        )
         self.trial_id: str | None = trial_id
 
     def configure_trial(
@@ -99,7 +113,9 @@ class CaptureOllamaUsage:
         trial_id: str | None,
     ) -> None:
         with self._lock:
-            self.output_dir = output_dir
+            self.output_dir = (
+                Path(output_dir).resolve() if output_dir is not None else None
+            )
             self.trial_id = trial_id
 
     def set_phase(self, phase: str) -> None:
@@ -147,8 +163,9 @@ class CaptureOllamaUsage:
                 raw_bytes = raw_response_text.encode("utf-8")
                 sha256_val = hashlib.sha256(raw_bytes).hexdigest()
                 if self.output_dir is not None and self.trial_id is not None:
+                    canonical_output_dir = Path(self.output_dir).resolve()
                     raw_dir = (
-                        self.output_dir / "raw_responses" / self.trial_id
+                        canonical_output_dir / "raw_responses" / self.trial_id
                     )
                     raw_dir.mkdir(parents=True, exist_ok=True)
                     fname = (
@@ -330,9 +347,10 @@ class TrialPlanUnit:
     replicate: int
     experiment_base_sha: str
     harness_sha: str
+    task_slot: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "order_index": self.order_index,
             "trial_order_index": self.trial_order_index,
             "trial_id": self.trial_id,
@@ -344,6 +362,9 @@ class TrialPlanUnit:
             "experiment_base_sha": self.experiment_base_sha,
             "harness_sha": self.harness_sha,
         }
+        if self.task_slot is not None:
+            d["task_slot"] = self.task_slot
+        return d
 
 
 def materialize_p1_plan(
@@ -443,6 +464,178 @@ def materialize_p1_plan(
 
     validate_payload_against_schema(
         plan, "execution_plan", resolved_contract
+    )
+
+    if output_dir is not None:
+        resolved_out = (
+            output_dir
+            if output_dir.is_absolute()
+            else (resolved_root / output_dir)
+        )
+        resolved_out.mkdir(parents=True, exist_ok=True)
+        plan_file = resolved_out / "execution_plan.json"
+        plan_file.write_text(json.dumps(plan, indent=2), encoding="utf-8")
+
+    return plan
+
+
+def materialize_p2_plan(
+    experiment_id: str = "m12-pilot-02",
+    base_sha: str = EXPERIMENT_BASE_SHA,
+    harness_sha: str | None = None,
+    config_path: Path = DEFAULT_CONFIG_PATH,
+    tasks_dir: Path = DEFAULT_TASKS_DIR,
+    contract_path: Path = DEFAULT_CONTRACT_PATH,
+    output_dir: Path | None = None,
+    replicates: int = 1,
+    tiers: Sequence[str] = P2_TIERS,
+    arms: Sequence[str] = P2_ARMS,
+    repo_root: Path = Path("."),
+    check_git_tracking: bool = True,
+) -> dict[str, Any]:
+    """Deterministically materialize bounded P2 execution plan.
+
+    For each tier in `tiers`, verifies non-rollup status, selects
+    exactly 2 distinct deterministic baseline-tracked tasks (slot 1
+    matching P1 selector, slot 2 from remaining tasks with versioned seed),
+    orders approved arms deterministically, and assembles trial units.
+
+    Replicates defaults to 1.
+    Tiers defaults to P2_TIERS (7 concrete tiers).
+    Arms defaults to P2_ARMS (control_once, mm_single).
+    Total units = len(tiers) * 2 * len(arms) * replicates = 28.
+    """
+    resolved_root = Path(repo_root).resolve()
+    resolved_cfg = (
+        config_path
+        if config_path.is_absolute()
+        else (resolved_root / config_path)
+    )
+    if not resolved_cfg.is_file():
+        raise FileNotFoundError(f"Config file not found: {resolved_cfg}")
+    cfg = json.loads(resolved_cfg.read_text(encoding="utf-8"))
+    tiers_cfg = cfg.get("tiers", {})
+
+    resolved_tasks_dir = (
+        tasks_dir
+        if tasks_dir.is_absolute()
+        else (resolved_root / tasks_dir)
+    )
+    resolved_contract = (
+        contract_path
+        if contract_path.is_absolute()
+        else (resolved_root / contract_path)
+    )
+
+    if not tiers:
+        raise ValueError("P2 tiers list cannot be empty")
+    if len(tiers) != len(set(tiers)):
+        raise ValueError(f"P2 tiers contain duplicates: {tiers}")
+
+    # Validate arm restriction
+    unsupported_arms = set(arms) - set(P2_ARMS)
+    if unsupported_arms:
+        raise ValueError(
+            f"P2 execution plan strictly rejects unsupported arms: "
+            f"{sorted(unsupported_arms)}. Only {list(P2_ARMS)} are permitted."
+        )
+
+    tracked_tasks: set[str] | None = None
+    if check_git_tracking:
+        from eval.reliability_matrix import get_baseline_tracked_tasks
+
+        tracked_tasks = get_baseline_tracked_tasks(
+            base_sha, resolved_tasks_dir, repo_root=resolved_root
+        )
+
+    target_harness = harness_sha or resolve_harness_sha(
+        repo_root=resolved_root
+    )
+    trial_units: list[dict[str, Any]] = []
+    order_index = 0
+
+    for tier in tiers:
+        if tier not in tiers_cfg:
+            raise ValueError(f"Tier '{tier}' not configured in {resolved_cfg}")
+        tier_tasks = tiers_cfg[tier]
+        if tier_tasks == "all" or not isinstance(tier_tasks, list):
+            raise ValueError(
+                f"Tier '{tier}' is a rollup tier ('{tier_tasks}') and cannot "
+                "be used as a concrete P2 tier"
+            )
+        if len(tier_tasks) < 2:
+            raise ValueError(
+                f"Tier '{tier}' has fewer than 2 tasks ({len(tier_tasks)})"
+            )
+
+        slot1, slot2 = select_deterministic_p2_tasks(
+            base_sha, tier, tier_tasks
+        )
+
+        for slot_idx, selected_file in ((1, slot1), (2, slot2)):
+            if (
+                tracked_tasks is not None
+                and selected_file not in tracked_tasks
+            ):
+                raise ValueError(
+                    f"Selected task '{selected_file}' for tier '{tier}' "
+                    f"slot {slot_idx} is not tracked in baseline Git "
+                    f"provenance '{base_sha}'"
+                )
+
+            task_json_path = resolved_tasks_dir / selected_file
+            if not task_json_path.is_file():
+                raise FileNotFoundError(
+                    f"Selected task file not found on disk: {task_json_path}"
+                )
+            task_data = json.loads(task_json_path.read_text(encoding="utf-8"))
+            task_id = str(task_data.get("id", Path(selected_file).stem))
+
+            for rep in range(1, replicates + 1):
+                ordered_arms = deterministic_arm_order(
+                    base_sha, task_id, rep, arms=arms
+                )
+                for arm_name in ordered_arms:
+                    trial_id = (
+                        f"trial_{tier}_{task_id}_{arm_name}"
+                        f"_slot{slot_idx}_rep{rep}"
+                    )
+                    unit = TrialPlanUnit(
+                        order_index=order_index,
+                        trial_order_index=order_index,
+                        trial_id=trial_id,
+                        tier=tier,
+                        task_id=task_id,
+                        task_file=selected_file,
+                        arm=arm_name,
+                        replicate=rep,
+                        experiment_base_sha=base_sha,
+                        harness_sha=target_harness,
+                        task_slot=slot_idx,
+                    )
+                    trial_units.append(unit.to_dict())
+                    order_index += 1
+
+    plan: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "experiment_id": experiment_id,
+        "experiment_base_sha": base_sha,
+        "base_sha": base_sha,
+        "harness_sha": target_harness,
+        "replicates": replicates,
+        "tiers": list(tiers),
+        "trial_units": trial_units,
+        "arm_order_seed": ARM_ORDER_SEED_PREFIX,
+        "plan_design": P2_PLAN_DESIGN,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+    validate_execution_plan(
+        plan,
+        contract_path=resolved_contract,
+        config_path=resolved_cfg,
+        tasks_dir=resolved_tasks_dir,
+        repo_root=resolved_root,
     )
 
     if output_dir is not None:
@@ -663,6 +856,8 @@ def validate_execution_plan(
     seen_tuples: set[tuple[str, str, str, int]] = set()
     group_map: dict[tuple[str, int], list[dict[str, Any]]] = {}
 
+    is_p2 = plan.get("plan_design") == P2_PLAN_DESIGN
+
     for i, unit in enumerate(trial_units):
         ord_idx = unit.get("order_index")
         t_ord_idx = unit.get("trial_order_index")
@@ -727,14 +922,40 @@ def validate_execution_plan(
                 f"Unit {i} task_file '{task_file}' not in tier '{tier}' list"
             )
 
-        det_selected = select_deterministic_task(
-            EXPERIMENT_BASE_SHA, tier, tiers_cfg[tier]
-        )
-        if task_file != det_selected:
-            raise ValueError(
-                f"Unit {i} task_file '{task_file}' does not match "
-                f"deterministic selection '{det_selected}' for tier '{tier}'"
+        if is_p2:
+            if arm not in P2_ARMS:
+                raise ValueError(
+                    f"Unit {i} arm '{arm}' is not permitted in P2 plan "
+                    f"design. Only {list(P2_ARMS)} allowed."
+                )
+            task_slot = unit.get("task_slot")
+            if task_slot not in (1, 2):
+                raise ValueError(
+                    f"Unit {i} missing or invalid task_slot '{task_slot}' "
+                    "in P2 plan"
+                )
+            slot1, slot2 = select_deterministic_p2_tasks(
+                EXPERIMENT_BASE_SHA, tier, tiers_cfg[tier]
             )
+            expected_file = slot1 if task_slot == 1 else slot2
+            if task_file != expected_file:
+                raise ValueError(
+                    f"Unit {i} task_file '{task_file}' does not match "
+                    f"deterministic P2 slot {task_slot} selection "
+                    f"'{expected_file}' for tier '{tier}'"
+                )
+            group_key: Any = (tier, task_slot, replicate)
+        else:
+            det_selected = select_deterministic_task(
+                EXPERIMENT_BASE_SHA, tier, tiers_cfg[tier]
+            )
+            if task_file != det_selected:
+                raise ValueError(
+                    f"Unit {i} task_file '{task_file}' does not match "
+                    f"deterministic selection '{det_selected}' for tier "
+                    f"'{tier}'"
+                )
+            group_key = (tier, replicate)
 
         t_path = resolved_tasks_dir / task_file
         if not t_path.is_file():
@@ -749,7 +970,6 @@ def validate_execution_plan(
                 f"'{expected_task_id}'"
             )
 
-        group_key = (tier, replicate)
         group_map.setdefault(group_key, []).append(unit)
 
     unit_tiers_ordered: list[str] = []
@@ -765,36 +985,72 @@ def validate_execution_plan(
             f"do not match plan tiers {plan_tiers}"
         )
 
-    for pt in plan_tiers:
-        for r in range(1, plan_replicates + 1):
-            key = (pt, r)
-            if key not in group_map:
+    if is_p2:
+        for pt in plan_tiers:
+            for slot in (1, 2):
+                for r in range(1, plan_replicates + 1):
+                    key = (pt, slot, r)
+                    if key not in group_map:
+                        raise ValueError(
+                            f"Execution plan missing group for tier '{pt}' "
+                            f"slot {slot} replicate {r}"
+                        )
+        if len(group_map) != len(plan_tiers) * 2 * plan_replicates:
+            raise ValueError(
+                f"Execution plan has {len(group_map)} groups, "
+                f"expected {len(plan_tiers) * 2 * plan_replicates}"
+            )
+        for (tier, slot, replicate), group in group_map.items():
+            if len(group) != len(P2_ARMS):
                 raise ValueError(
-                    f"Execution plan missing group for tier '{pt}' "
-                    f"replicate {r}"
+                    f"Tier '{tier}' slot {slot} rep {replicate} has "
+                    f"{len(group)} arms, expected {len(P2_ARMS)}"
                 )
-    if len(group_map) != len(plan_tiers) * plan_replicates:
-        raise ValueError(
-            f"Execution plan has {len(group_map)} groups, "
-            f"expected {len(plan_tiers) * plan_replicates}"
-        )
+            group_task_id = group[0]["task_id"]
+            expected_arm_order = deterministic_arm_order(
+                EXPERIMENT_BASE_SHA, group_task_id, replicate, list(P2_ARMS)
+            )
+            actual_arms = [u["arm"] for u in group]
+            if actual_arms != expected_arm_order:
+                raise ValueError(
+                    f"Tier '{tier}' slot {slot} rep {replicate} arms "
+                    f"{actual_arms} do not match canonical deterministic "
+                    f"order {expected_arm_order}"
+                )
+    else:
+        for pt in plan_tiers:
+            for r in range(1, plan_replicates + 1):
+                key = (pt, r)
+                if key not in group_map:
+                    raise ValueError(
+                        f"Execution plan missing group for tier '{pt}' "
+                        f"replicate {r}"
+                    )
+        if len(group_map) != len(plan_tiers) * plan_replicates:
+            raise ValueError(
+                f"Execution plan has {len(group_map)} groups, "
+                f"expected {len(plan_tiers) * plan_replicates}"
+            )
 
-    for (tier, replicate), group in group_map.items():
-        if len(group) != len(ARMS):
-            raise ValueError(
-                f"Tier '{tier}' rep {replicate} has {len(group)} arms, "
-                f"expected {len(ARMS)}"
+        for (tier, replicate), group in group_map.items():
+            if len(group) != len(ARMS):
+                raise ValueError(
+                    f"Tier '{tier}' rep {replicate} has {len(group)} arms, "
+                    f"expected {len(ARMS)}"
+                )
+            group_task_id = group[0]["task_id"]
+            expected_arm_order = deterministic_arm_order(
+                EXPERIMENT_BASE_SHA,
+                group_task_id,
+                replicate,
+                list(ARMS.keys()),
             )
-        group_task_id = group[0]["task_id"]
-        expected_arm_order = deterministic_arm_order(
-            EXPERIMENT_BASE_SHA, group_task_id, replicate, list(ARMS.keys())
-        )
-        actual_arms = [u["arm"] for u in group]
-        if actual_arms != expected_arm_order:
-            raise ValueError(
-                f"Tier '{tier}' rep {replicate} arms {actual_arms} do not "
-                f"match canonical deterministic order {expected_arm_order}"
-            )
+            actual_arms = [u["arm"] for u in group]
+            if actual_arms != expected_arm_order:
+                raise ValueError(
+                    f"Tier '{tier}' rep {replicate} arms {actual_arms} do not "
+                    f"match canonical deterministic order {expected_arm_order}"
+                )
 
 
 def resolve_canonical_adapter_context(
@@ -973,10 +1229,15 @@ def execute_trial_unit(
     recovery_gate_reason: str | None = None
     recovery_attempted = False
     recovery_completed = False
-    terminal_failure_cat: str | None = None
-
-    active_capture = usage_capture or CaptureOllamaUsage()
-    active_capture.configure_trial(output_dir, trial_id)
+    canonical_output_dir = (
+        (repo_root / output_dir).resolve()
+        if (output_dir is not None and not output_dir.is_absolute())
+        else (output_dir.resolve() if output_dir is not None else None)
+    )
+    active_capture = usage_capture or CaptureOllamaUsage(
+        output_dir=canonical_output_dir, trial_id=trial_id
+    )
+    active_capture.configure_trial(canonical_output_dir, trial_id)
     ctx_mgr = active_capture if usage_capture is None else None
 
     wall_start = time.monotonic()
@@ -1396,6 +1657,11 @@ def execute_trial_unit(
             "task_id": plan_unit["task_id"],
             "task_file": task_file_name,
             "task_sha256": task_sha256,
+            **(
+                {"task_slot": plan_unit["task_slot"]}
+                if plan_unit.get("task_slot") is not None
+                else {}
+            ),
         },
         "provenance": prov_record,
         "execution": {
@@ -1459,9 +1725,9 @@ def execute_trial_unit(
         trial_record, "trial_record", resolved_contract
     )
 
-    if output_dir is not None:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        record_file = output_dir / f"{trial_id}.json"
+    if canonical_output_dir is not None:
+        canonical_output_dir.mkdir(parents=True, exist_ok=True)
+        record_file = canonical_output_dir / f"{trial_id}.json"
         record_file.write_text(
             json.dumps(trial_record, indent=2), encoding="utf-8"
         )
@@ -1488,6 +1754,11 @@ def execute_matrix_plan(
     from eval.reliability_matrix import run_preflight
 
     repo_root = Path(repo_root).resolve()
+    output_dir = (
+        (repo_root / output_dir).resolve()
+        if not output_dir.is_absolute()
+        else output_dir.resolve()
+    )
     resolved_contract = (
         contract_path
         if contract_path.is_absolute()

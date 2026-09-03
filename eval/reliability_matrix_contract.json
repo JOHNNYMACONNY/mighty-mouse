@@ -64,7 +64,8 @@
             "configured_tier": { "type": "string" },
             "task_id": { "type": "string" },
             "task_file": { "type": "string" },
-            "task_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            "task_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "task_slot": { "type": "integer", "minimum": 1, "maximum": 2 }
           }
         },
         "provenance": {
@@ -524,11 +525,13 @@
               },
               "replicate": { "type": "integer", "minimum": 1 },
               "experiment_base_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-              "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+              "harness_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+              "task_slot": { "type": "integer", "minimum": 1, "maximum": 2 }
             }
           }
         },
         "arm_order_seed": { "type": "string", "enum": ["m12-arm-order-v1"] },
+        "plan_design": { "type": "string" },
         "timestamp": { "type": "string" }
       }
     }

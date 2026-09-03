@@ -202,6 +202,41 @@ def select_deterministic_task(
     return tasks[idx]
 
 
+P2_SELECTION_VERSION = "m12-p2-v1"
+
+
+def select_deterministic_p2_tasks(
+    base_sha: str,
+    tier_name: str,
+    tasks: Sequence[str],
+    version: str = P2_SELECTION_VERSION,
+) -> tuple[str, str]:
+    """Select exactly 2 distinct deterministic tasks for a tier.
+
+    Slot 1 preserves P1 continuity:
+    select_deterministic_task(base_sha, tier_name, tasks).
+    Slot 2 is deterministically selected from remaining tasks using
+    versioned seed. Asserts slot 1 != slot 2.
+    """
+    if not tasks or len(tasks) < 2:
+        raise ValueError(
+            f"Tier '{tier_name}' must contain at least 2 tasks for P2 "
+            f"selection, got {len(tasks)}"
+        )
+    slot1 = select_deterministic_task(base_sha, tier_name, tasks)
+    remaining = [t for t in tasks if t != slot1]
+    if not remaining:
+        raise ValueError(f"No distinct remaining tasks for tier '{tier_name}'")
+    seed2 = f"{base_sha}:{version}:{tier_name}:slot2".encode("utf-8")
+    hash_hex = hashlib.sha256(seed2).hexdigest()
+    idx2 = int(hash_hex, 16) % len(remaining)
+    slot2 = remaining[idx2]
+    assert slot1 != slot2, (
+        f"Slot 1 ({slot1}) and Slot 2 ({slot2}) must be distinct"
+    )
+    return slot1, slot2
+
+
 def get_baseline_tracked_tasks(
     base_sha: str,
     tasks_dir: Path,

@@ -520,6 +520,8 @@ def execute_trial_unit(
                     verifier_payload = v_res
                 else:
                     verifier_completed = False
+                    infra_error = True
+                    failure_category = "verifier_error"
                     verifier_payload = (
                         v_res
                         if isinstance(v_res, dict)
@@ -527,6 +529,8 @@ def execute_trial_unit(
                     )
             except Exception as exc:
                 verifier_completed = False
+                infra_error = True
+                failure_category = "verifier_error"
                 verifier_payload = {"error": str(exc)}
             passed = False
     else:
@@ -861,9 +865,18 @@ def execute_cross_model_plan(
 
         for unit in trial_units:
             cand = FROZEN_CANDIDATES[unit.candidate_id]
-            current_digest = HostAdapter.resolve_ollama_model_digest(
-                cand.model_tag
-            )
+            try:
+                current_digest = HostAdapter.resolve_ollama_model_digest(
+                    cand.model_tag
+                )
+            except Exception as exc:
+                stop_reason = (
+                    f"Model digest resolution failed before trial "
+                    f"{unit.trial_id}: {exc}"
+                )
+                status = "aborted"
+                break
+
             if current_digest != cand.model_digest:
                 stop_reason = (
                     f"Model digest changed before trial {unit.trial_id}: "

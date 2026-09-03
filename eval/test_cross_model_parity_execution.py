@@ -1713,3 +1713,194 @@ def test_ollama_version_unavailable_aborts_before_generation(
             assert "query failed" in summary["stop_reason"].lower()
             assert summary["generation_calls"] == 0
             assert summary["executed_trial_count"] == 0
+
+
+def test_control_app_error_with_verifier_exception_is_infra_invalid(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    ctrl_units = [u for u in plan["trial_units"] if u["arm"] == "control_once"]
+    unit = ctrl_units[0]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        sup_root = Path(tmp) / "sup"
+        out_dir = Path(tmp) / "out"
+
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            return_value=(
+                "output code",
+                {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                },
+            ),
+        ):
+            with patch(
+                "eval.cross_model_parity_execution._apply_response",
+                side_effect=ValueError("Application write failure"),
+            ):
+                with patch(
+                    "eval.cross_model_parity_execution.verify_task",
+                    side_effect=RuntimeError("Verifier crashed"),
+                ):
+                    rec = execute_trial_unit(
+                        unit,
+                        workspace_root=ws_root,
+                        support_root=sup_root,
+                        output_dir=out_dir,
+                        local_adapter_context=mock_local_context,
+                        ollama_version="0.33.2",
+                    )
+
+        assert rec["generation_call_count"] == 1
+        assert rec["token_coverage_complete"] is True
+        assert rec["passed"] is False
+        assert rec["verifier_completed"] is False
+        assert rec["infrastructure_error"] is True
+        assert rec["failure_category"] == "verifier_error"
+        assert "Verifier crashed" in str(rec["verifier_payload"])
+
+
+def test_mm_schema_error_with_malformed_verifier_is_infra_invalid(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    mm_units = [u for u in plan["trial_units"] if u["arm"] == "mm_single"]
+    unit = mm_units[0]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        sup_root = Path(tmp) / "sup"
+        out_dir = Path(tmp) / "out"
+
+        with patch(
+            "mighty_mouse.host.adapter.HostAdapter.solve",
+            side_effect=ValueError(
+                "No valid file markers found in model response"
+            ),
+        ):
+            with patch(
+                "eval.cross_model_parity_execution.verify_task",
+                return_value="malformed string response",
+            ):
+                rec = execute_trial_unit(
+                    unit,
+                    workspace_root=ws_root,
+                    support_root=sup_root,
+                    output_dir=out_dir,
+                    local_adapter_context=mock_local_context,
+                    ollama_version="0.33.2",
+                )
+
+        assert rec["passed"] is False
+        assert rec["verifier_completed"] is False
+        assert rec["infrastructure_error"] is True
+        assert rec["failure_category"] == "verifier_error"
+
+
+def test_digest_resolver_exception_before_first_trial_aborts_controlled(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        out_dir = Path(tmp) / "out"
+
+        with patch(
+            "eval.cross_model_parity_execution.run_preflight",
+            return_value={
+                "status": "PASSED",
+                "blocking_reasons": [],
+                "ollama_version": "0.33.2",
+            },
+        ):
+            with patch.object(
+                HostAdapter,
+                "resolve_ollama_model_digest",
+                side_effect=RuntimeError(
+                    "Ollama daemon unavailable for digest query"
+                ),
+            ):
+                summary = execute_cross_model_plan(
+                    plan,
+                    output_dir=out_dir,
+                    workspace_root=ws_root,
+                    local_adapter_context=mock_local_context,
+                )
+
+        assert summary["status"] == "aborted"
+        assert "digest resolution failed" in summary["stop_reason"].lower()
+        assert summary["generation_calls"] == 0
+        assert summary["executed_trial_count"] == 0
+        assert (out_dir / "run_summary.json").is_file()
+
+
+def test_digest_resolver_exception_after_completed_trial_preserves_records(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_execution_plan()
+    with tempfile.TemporaryDirectory() as tmp:
+        ws_root = Path(tmp) / "ws"
+        out_dir = Path(tmp) / "out"
+
+        first_unit = plan["trial_units"][0]
+        call_count = [0]
+
+        def dynamic_resolve(model_tag):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return FROZEN_CANDIDATES[
+                    first_unit["candidate_id"]
+                ].model_digest
+            raise RuntimeError("Ollama crashed before trial 2")
+
+        with patch(
+            "eval.cross_model_parity_execution.run_preflight",
+            return_value={
+                "status": "PASSED",
+                "blocking_reasons": [],
+                "ollama_version": "0.33.2",
+            },
+        ):
+            with patch.object(
+                HostAdapter,
+                "resolve_ollama_model_digest",
+                side_effect=dynamic_resolve,
+            ):
+                with patch(
+                    "eval.cross_model_parity_execution.query_ollama_version",
+                    return_value="0.33.2",
+                ):
+                    with patch(
+                        "eval.cross_model_parity_execution.execute_trial_unit",
+                        return_value={
+                            "schema_version": "1.0.0",
+                            "experiment_id": M13_EXPERIMENT_ID,
+                            "trial_id": first_unit["trial_id"],
+                            "generation_call_count": 1,
+                            "total_tokens": 100,
+                            "token_coverage_complete": True,
+                            "infrastructure_error": False,
+                            "passed": True,
+                            "failure_category": None,
+                            "candidate_id": first_unit["candidate_id"],
+                            "arm": first_unit["arm"],
+                            "provenance_complete": True,
+                        },
+                    ):
+                        summary = execute_cross_model_plan(
+                            plan,
+                            output_dir=out_dir,
+                            workspace_root=ws_root,
+                            local_adapter_context=mock_local_context,
+                        )
+
+        assert summary["status"] == "aborted"
+        assert "digest resolution failed" in summary["stop_reason"].lower()
+        assert summary["executed_trial_count"] == 1
+        t_json = out_dir / "trials" / f"{first_unit['trial_id']}.json"
+        assert t_json.is_file()
+        assert (out_dir / "run_summary.json").is_file()

@@ -16,6 +16,7 @@ import pytest
 from eval.reliability_matrix import (
     DEFAULT_TASKS_DIR,
     EXPERIMENT_BASE_SHA,
+    M12_HARNESS_ALLOWED_PATHS,
     SCHEMA_VERSION,
     SWARM_CONCURRENCY,
     compute_sha256_bytes,
@@ -53,6 +54,12 @@ from mighty_mouse.host.hooks import (
 )
 from mighty_mouse.host.recovery import evaluate_recovery_gate
 from mighty_mouse.orchestrator.ollama_client import OllamaClient
+
+# M12 experiment execution is bound to an immutable qualified harness SHA.
+# Future repository HEADs may legitimately contain unrelated changes.
+# Tests exercising frozen M12 execution must use explicit historical
+# provenance, not mutable current repository HEAD.
+M12_QUALIFIED_HARNESS_SHA = "e56d25f48e592fceda56c19fb6ffcd6cf4bf04c8"
 
 
 def test_deterministic_arm_ordering_invariants() -> None:
@@ -461,11 +468,18 @@ def mock_trial_environment(tmp_path: Path):
             "model_digest": test_digest,
         }
 
-        try:
-            yield ws_root, out_dir, tasks_dir, prov_info
-        finally:
-            if created_adapter and adapter_path.is_file():
-                adapter_path.unlink()
+        with patch(
+            "eval.reliability_matrix_execution.resolve_harness_sha",
+            return_value=M12_QUALIFIED_HARNESS_SHA,
+        ), patch(
+            "eval.reliability_matrix.resolve_harness_sha",
+            return_value=M12_QUALIFIED_HARNESS_SHA,
+        ):
+            try:
+                yield ws_root, out_dir, tasks_dir, prov_info
+            finally:
+                if created_adapter and adapter_path.is_file():
+                    adapter_path.unlink()
 
 
 def test_execute_trial_arm_control_once(mock_trial_environment) -> None:
@@ -1092,7 +1106,7 @@ def test_preexisting_trial_workspace_blocks_execution_and_preserves_evidence(
         "arm": "control_once",
         "replicate": 1,
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": resolve_harness_sha(),
+        "harness_sha": M12_QUALIFIED_HARNESS_SHA,
     }
 
     def poison_generator(*args, **kwargs):
@@ -1125,7 +1139,7 @@ def test_canonical_adapter_provenance_and_truthful_control(
 ) -> None:
     """Control has null agent fields; MM arms have real values."""
     ws_root, out_dir, tasks_dir, prov_info = mock_trial_environment
-    harness_sha = resolve_harness_sha()
+    harness_sha = M12_QUALIFIED_HARNESS_SHA
 
     # 1. Test control_once truthful provenance
     plan_unit_control = {
@@ -1227,7 +1241,7 @@ def test_fail_closed_on_unapproved_harness_delta(
         "arm": "control_once",
         "replicate": 1,
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": resolve_harness_sha(),
+        "harness_sha": M12_QUALIFIED_HARNESS_SHA,
     }
 
     with patch(
@@ -1342,7 +1356,7 @@ def test_failed_generation_attempt_accounting(
         "arm": "control_once",
         "replicate": 1,
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": resolve_harness_sha(),
+        "harness_sha": M12_QUALIFIED_HARNESS_SHA,
     }
 
     with patch(
@@ -1389,7 +1403,7 @@ def test_authoritative_first_verification_verifier_crash_and_no_recovery(
         "arm": "mm_single_recovery",
         "replicate": 1,
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": resolve_harness_sha(),
+        "harness_sha": M12_QUALIFIED_HARNESS_SHA,
     }
 
     with patch.object(
@@ -1433,7 +1447,7 @@ def test_control_once_single_generation_when_application_fails(
         "arm": "control_once",
         "replicate": 1,
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": resolve_harness_sha(),
+        "harness_sha": M12_QUALIFIED_HARNESS_SHA,
     }
 
     mock_resp = "```python:legacy_link.py\npass\n```"
@@ -1491,7 +1505,7 @@ def test_missing_model_digest_fails_closed_zero_generation(
         "arm": "control_once",
         "replicate": 1,
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": resolve_harness_sha(),
+        "harness_sha": M12_QUALIFIED_HARNESS_SHA,
     }
 
     def poison(*args, **kwargs):
@@ -1568,7 +1582,7 @@ def test_primary_execution_exception_cannot_yield_trial_success(
         "arm": "control_once",
         "replicate": 1,
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": resolve_harness_sha(),
+        "harness_sha": M12_QUALIFIED_HARNESS_SHA,
     }
 
     mock_resp = "```python:legacy_link.py\npass\n```"
@@ -1622,7 +1636,7 @@ def test_recovery_reverifier_crash_classified_as_verifier_error(
         "arm": "mm_single_recovery",
         "replicate": 1,
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": resolve_harness_sha(),
+        "harness_sha": M12_QUALIFIED_HARNESS_SHA,
     }
 
     first_verif = {"status": "fail", "reason": "Syntax error in unit"}
@@ -1682,7 +1696,7 @@ def test_stage_aware_response_schema_error_classification(
         "arm": "control_once",
         "replicate": 1,
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": resolve_harness_sha(),
+        "harness_sha": M12_QUALIFIED_HARNESS_SHA,
     }
 
     mock_resp = "I have thought about the problem and here is advice: ..."
@@ -2002,7 +2016,7 @@ def test_directive_5_strict_canonical_verifier_failure_check(
         "arm": "mm_single_recovery",
         "replicate": 1,
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": resolve_harness_sha(),
+        "harness_sha": M12_QUALIFIED_HARNESS_SHA,
     }
 
     # Case A: status is 'error' (not 'fail') -> verifier_error, no recovery
@@ -2066,7 +2080,7 @@ def test_directive_6_recovery_executor_exception_boundedness(
         "arm": "mm_single_recovery",
         "replicate": 1,
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": resolve_harness_sha(),
+        "harness_sha": M12_QUALIFIED_HARNESS_SHA,
     }
 
     first_verif = {"status": "fail", "reason": "First attempt syntax error"}
@@ -2201,7 +2215,7 @@ def test_directive_10_authoritative_frozen_provenance_mismatch(
         "arm": "control_once",
         "replicate": 1,
         "experiment_base_sha": EXPERIMENT_BASE_SHA,
-        "harness_sha": resolve_harness_sha(),
+        "harness_sha": M12_QUALIFIED_HARNESS_SHA,
     }
 
     with pytest.raises(
@@ -2495,3 +2509,27 @@ def test_p1_materialization_and_semantics_strictly_unchanged() -> None:
     assert "plan_design" not in p1 or p1.get("plan_design") is None
     for u in p1["trial_units"]:
         assert "task_slot" not in u
+
+
+def test_m12_qualified_harness_provenance_contract() -> None:
+    """Verify frozen qualified M12 harness passes M12 allowlist,
+
+    while current repository HEAD (containing post-M12 changes) is
+    correctly rejected by the fail-closed baseline-to-harness gate.
+    """
+    # 1. Frozen qualified M12 harness delta strictly passes M12 allowlist
+    ok_frozen, changed_frozen = verify_baseline_harness_delta(
+        EXPERIMENT_BASE_SHA, M12_QUALIFIED_HARNESS_SHA
+    )
+    assert ok_frozen is True
+    assert set(changed_frozen).issubset(M12_HARNESS_ALLOWED_PATHS)
+
+    # 2. Current repository HEAD (including post-M12 docs/test commits)
+    # fails closed
+    head_sha = resolve_harness_sha()
+    if head_sha != M12_QUALIFIED_HARNESS_SHA:
+        ok_head, unapproved = verify_baseline_harness_delta(
+            EXPERIMENT_BASE_SHA, head_sha
+        )
+        assert ok_head is False
+        assert len(unapproved) > 0

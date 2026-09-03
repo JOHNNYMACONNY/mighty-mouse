@@ -30,6 +30,8 @@ from eval.reliability_matrix import (
 )
 from eval.runner_lock import SingleInstanceLock, SingleInstanceLockError
 
+M12_QUALIFIED_HARNESS_SHA = "e56d25f48e592fceda56c19fb6ffcd6cf4bf04c8"
+
 
 def test_schema_contract_validity() -> None:
     schema = load_contract_schema(DEFAULT_CONTRACT_PATH)
@@ -695,6 +697,7 @@ def test_clean_mocked_preflight_passes(
         experiment_id="test-clean-pass",
         output_dir=out_dir,
         lock_path=lock_file,
+        harness_sha=M12_QUALIFIED_HARNESS_SHA,
     )
     assert report["preflight_passed"] is True
     assert report["blocking_reasons"] == []

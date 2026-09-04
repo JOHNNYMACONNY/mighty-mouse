@@ -24,11 +24,14 @@ from eval.cross_model_parity import (
     DEFAULT_CONTRACT_PATH,
     FROZEN_ANCHOR_TASKS,
     FROZEN_CANDIDATES,
+    FROZEN_PHASE_B_TASKS,
     LOCK_FILE_PATH,
     M13_EFFECTIVE_CONTEXT_LIMIT,
     M13_EXECUTION_BASE_SHA,
     M13_EXPERIMENT_BASE_SHA,
     M13_EXPERIMENT_ID,
+    M13_PHASE_B_EXECUTION_BASE_SHA,
+    M13_PHASE_B_EXPERIMENT_ID,
     CrossModelCandidate,
     CrossModelPlanUnit,
     get_current_git_sha,
@@ -243,10 +246,43 @@ def execute_trial_unit(
     contract_path: Path = DEFAULT_CONTRACT_PATH,
     harness_sha: Optional[str] = None,
     ollama_version: Optional[str] = None,
+    experiment_id: Optional[str] = None,
+    execution_base_sha: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Execute one cross-model trial unit with verification."""
+    unit_exp_id = None
+    unit_exec_base = None
     if isinstance(unit, dict):
-        unit = CrossModelPlanUnit(**unit)
+        unit_exp_id = unit.get("experiment_id")
+        unit_exec_base = unit.get("execution_base_sha")
+        clean_unit = {
+            k: v
+            for k, v in unit.items()
+            if k not in ("experiment_id", "execution_base_sha")
+        }
+        unit = CrossModelPlanUnit(**clean_unit)
+    else:
+        unit_exp_id = getattr(unit, "experiment_id", None)
+        unit_exec_base = getattr(unit, "execution_base_sha", None)
+
+    active_exp_id = experiment_id or unit_exp_id or M13_EXPERIMENT_ID
+    if active_exp_id == M13_PHASE_B_EXPERIMENT_ID:
+        expected_exec_base = M13_PHASE_B_EXECUTION_BASE_SHA
+        task_registry = FROZEN_PHASE_B_TASKS
+    elif active_exp_id == M13_EXPERIMENT_ID:
+        expected_exec_base = M13_EXECUTION_BASE_SHA
+        task_registry = FROZEN_ANCHOR_TASKS
+    else:
+        raise ValueError(f"Unsupported experiment_id: {active_exp_id}")
+
+    if (
+        execution_base_sha is not None
+        and execution_base_sha != expected_exec_base
+    ):
+        raise ValueError(
+            f"execution_base_sha mismatch for {active_exp_id}: "
+            f"expected {expected_exec_base}, got {execution_base_sha}"
+        )
 
     if harness_sha is None:
         harness_sha = get_current_git_sha()
@@ -267,9 +303,11 @@ def execute_trial_unit(
     cand = FROZEN_CANDIDATES.get(unit.candidate_id)
     if cand is None:
         raise ValueError(f"Unknown candidate {unit.candidate_id}")
-    task_def = FROZEN_ANCHOR_TASKS.get(unit.task_id)
+    task_def = task_registry.get(unit.task_id)
     if task_def is None:
-        raise ValueError(f"Unknown anchor task {unit.task_id}")
+        raise ValueError(
+            f"Unknown task {unit.task_id} for experiment {active_exp_id}"
+        )
 
     task_file_path = Path(unit.task_file)
     if not task_file_path.exists():
@@ -289,7 +327,7 @@ def execute_trial_unit(
         )
 
     changed_paths = verify_base_to_harness_delta(
-        M13_EXECUTION_BASE_SHA, harness_sha
+        expected_exec_base, harness_sha
     )
 
     trial_ws = workspace_root / unit.trial_id / "workspace"
@@ -603,11 +641,10 @@ def execute_trial_unit(
         if e.get("raw_response_sha256")
     ]
 
+    expected_unit_base = unit_exec_base or expected_exec_base
     prov_complete = (
         M13_EXPERIMENT_BASE_SHA == unit.experiment_base_sha
-        and getattr(
-            unit, "execution_base_sha", M13_EXECUTION_BASE_SHA
-        ) == M13_EXECUTION_BASE_SHA
+        and expected_exec_base == expected_unit_base
         and bool(harness_sha)
         and bool(unit.candidate_id)
         and bool(unit.model_tag)
@@ -633,11 +670,11 @@ def execute_trial_unit(
 
     record: Dict[str, Any] = {
         "schema_version": "1.0.0",
-        "experiment_id": M13_EXPERIMENT_ID,
+        "experiment_id": active_exp_id,
         "trial_id": unit.trial_id,
         "order_index": unit.order_index,
         "experiment_base_sha": M13_EXPERIMENT_BASE_SHA,
-        "execution_base_sha": M13_EXECUTION_BASE_SHA,
+        "execution_base_sha": expected_exec_base,
         "harness_sha": harness_sha,
         "candidate_id": unit.candidate_id,
         "arm": unit.arm,
@@ -696,7 +733,7 @@ def execute_trial_unit(
 
 
 def execute_cross_model_plan(
-    plan: Optional[List[CrossModelPlanUnit]] = None,
+    plan: Optional[Any] = None,
     *,
     output_dir: Optional[Path] = None,
     workspace_root: Optional[Path] = None,
@@ -708,6 +745,7 @@ def execute_cross_model_plan(
     harness_sha: Optional[str] = None,
     local_adapter_context: Optional[AdapterRuntimeContext] = None,
     ollama_host: str = DEFAULT_OLLAMA_HOST,
+    experiment_id: str = M13_EXPERIMENT_ID,
 ) -> Dict[str, Any]:
     """Execute complete cross-model plan under SingleInstanceLock."""
     if harness_sha is None:
@@ -715,8 +753,25 @@ def execute_cross_model_plan(
 
     if plan is None:
         plan = materialize_execution_plan(
-            harness_sha=harness_sha, config_path=config_path
+            harness_sha=harness_sha,
+            config_path=config_path,
+            experiment_id=experiment_id,
         )
+
+    exp_id = (
+        plan.get("experiment_id")
+        if isinstance(plan, dict)
+        else getattr(plan, "experiment_id", experiment_id)
+    )
+    if not exp_id:
+        exp_id = experiment_id
+
+    if exp_id == M13_PHASE_B_EXPERIMENT_ID:
+        exec_base = M13_PHASE_B_EXECUTION_BASE_SHA
+    elif exp_id == M13_EXPERIMENT_ID:
+        exec_base = M13_EXECUTION_BASE_SHA
+    else:
+        raise ValueError(f"Unsupported experiment_id: {exp_id}")
 
     if not dry_run:
         if output_dir is not None and output_dir.exists():
@@ -729,7 +784,7 @@ def execute_cross_model_plan(
             )
 
     changed_paths = verify_base_to_harness_delta(
-        M13_EXECUTION_BASE_SHA, harness_sha
+        exec_base, harness_sha
     )
 
     with SingleInstanceLock(lock_path):
@@ -746,6 +801,7 @@ def execute_cross_model_plan(
             config_path=config_path,
             contract_path=contract_path,
             lock_already_held=True,
+            experiment_id=exp_id,
         )
         if preflight["status"] != "PASSED":
             raise RuntimeError(
@@ -798,9 +854,13 @@ def execute_cross_model_plan(
 
             dry_summary: Dict[str, Any] = {
                 "schema_version": "1.0.0",
-                "experiment_id": M13_EXPERIMENT_ID,
-                "experiment_base_sha": M13_EXPERIMENT_BASE_SHA,
-                "execution_base_sha": M13_EXECUTION_BASE_SHA,
+                "experiment_id": exp_id,
+                "experiment_base_sha": plan.get(
+                    "experiment_base_sha", M13_EXPERIMENT_BASE_SHA
+                ) if isinstance(plan, dict) else getattr(
+                    plan, "experiment_base_sha", M13_EXPERIMENT_BASE_SHA
+                ),
+                "execution_base_sha": exec_base,
                 "harness_sha": harness_sha,
                 "execution_base_to_harness_changed_paths": changed_paths,
                 "planned_trial_count": len(trial_units),
@@ -916,6 +976,8 @@ def execute_cross_model_plan(
                     harness_sha=harness_sha,
                     ollama_version=observed_ollama_ver,
                     ollama_host=ollama_host,
+                    experiment_id=exp_id,
+                    execution_base_sha=exec_base,
                 )
             except Exception as exc:
                 stop_reason = (
@@ -1034,9 +1096,13 @@ def execute_cross_model_plan(
 
         summary: Dict[str, Any] = {
             "schema_version": "1.0.0",
-            "experiment_id": M13_EXPERIMENT_ID,
-            "experiment_base_sha": M13_EXPERIMENT_BASE_SHA,
-            "execution_base_sha": M13_EXECUTION_BASE_SHA,
+            "experiment_id": exp_id,
+            "experiment_base_sha": plan.get(
+                "experiment_base_sha", M13_EXPERIMENT_BASE_SHA
+            ) if isinstance(plan, dict) else getattr(
+                plan, "experiment_base_sha", M13_EXPERIMENT_BASE_SHA
+            ),
+            "execution_base_sha": exec_base,
             "harness_sha": harness_sha,
             "execution_base_to_harness_changed_paths": changed_paths,
             "planned_trial_count": len(trial_units),

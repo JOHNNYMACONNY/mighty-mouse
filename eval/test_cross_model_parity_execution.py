@@ -25,9 +25,14 @@ from eval.cross_model_parity import (
     M13_EXECUTION_BASE_SHA,
     M13_EXPERIMENT_BASE_SHA,
     M13_EXPERIMENT_ID,
+    M13_PHASE_B_EXECUTION_BASE_SHA,
+    M13_PHASE_B_EXPERIMENT_ID,
     CrossModelPlanUnit,
     get_current_git_sha,
     materialize_execution_plan,
+    materialize_phase_b_plan,
+    summarize_cross_model_results,
+    validate_payload_against_schema,
     verify_base_to_harness_delta,
 )
 from eval.cross_model_parity_execution import (
@@ -41,6 +46,7 @@ from mighty_mouse.host.adapter import (
     HostAdapter,
     MCP_TOOL_CONTRACT_VERSION,
 )
+from mighty_mouse.orchestrator.ollama_client import OllamaClient
 from mighty_mouse_mcp.server import _get_mcp_tool_signatures
 
 
@@ -1904,3 +1910,463 @@ def test_digest_resolver_exception_after_completed_trial_preserves_records(
         t_json = out_dir / "trials" / f"{first_unit['trial_id']}.json"
         assert t_json.is_file()
         assert (out_dir / "run_summary.json").is_file()
+
+
+def test_phase_b_dry_run_zero_generation_guarantee(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    current_head = get_current_git_sha()
+    plan = materialize_phase_b_plan(harness_sha=current_head)
+    assert plan["trial_count"] == 56
+    assert len(plan["trial_units"]) == 56
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out_dir = Path(tmp) / "dry_run_phase_b"
+        ws_root = Path(tmp) / "ws_root"
+
+        # Trap any attempt at live inference or execution
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            side_effect=RuntimeError(
+                "PROHIBITED: Control generation called"
+            ),
+        ) as mock_control_gen:
+            with patch.object(
+                HostAdapter,
+                "solve",
+                side_effect=RuntimeError(
+                    "PROHIBITED: HostAdapter.solve called"
+                ),
+            ) as mock_solve:
+                with patch(
+                    "eval.cross_model_parity.check_git_clean_except_prototype"
+                ):
+                    with patch(
+                        "eval.cross_model_parity.verify_base_to_harness_delta",
+                        return_value=[],
+                    ):
+                        with patch(
+                            "eval.cross_model_parity_execution."
+                            "verify_base_to_harness_delta",
+                            return_value=[],
+                        ):
+                            summary = execute_cross_model_plan(
+                                plan,
+                                output_dir=out_dir,
+                                workspace_root=ws_root,
+                                local_adapter_context=mock_local_context,
+                                dry_run=True,
+                                harness_sha=current_head,
+                            )
+
+        mock_control_gen.assert_not_called()
+        mock_solve.assert_not_called()
+
+        assert summary["status"] == "dry_run"
+        assert summary["experiment_id"] == M13_PHASE_B_EXPERIMENT_ID
+        assert summary["execution_base_sha"] == M13_PHASE_B_EXECUTION_BASE_SHA
+        assert summary["planned_trial_count"] == 56
+        assert summary["executed_trial_count"] == 0
+        assert summary["generation_calls"] == 0
+        assert summary["total_tokens"] is None
+        assert summary["total_analyzable"] == 0
+        assert summary["total_passed"] == 0
+        assert summary["total_infrastructure_excluded"] == 0
+
+        # Validate run_summary against schema
+        validate_payload_against_schema(summary, "run_summary")
+        assert (out_dir / "run_summary.json").is_file()
+        assert not (out_dir / "trials").exists()
+
+
+def test_summarize_cross_model_results_on_phase_a_evidence() -> None:
+    # Synthetic records ensure hermetic CI execution
+    synthetic_records = [
+        {
+            "candidate_id": "llama31_8b_q4km",
+            "arm": "control_once",
+            "task_id": "task_003",
+            "passed": False,
+            "failure_category": "tests_failed",
+            "total_tokens": 100,
+            "generation_call_count": 1,
+            "wall_latency_seconds": 10.0,
+            "token_coverage_complete": True,
+            "infrastructure_error": False,
+        },
+        {
+            "candidate_id": "llama31_8b_q4km",
+            "arm": "mm_single",
+            "task_id": "task_003",
+            "passed": True,
+            "failure_category": None,
+            "total_tokens": 500,
+            "generation_call_count": 1,
+            "wall_latency_seconds": 20.0,
+            "token_coverage_complete": True,
+            "infrastructure_error": False,
+        },
+    ]
+    syn_summary = summarize_cross_model_results(synthetic_records)
+    assert syn_summary["total_records"] == 2
+    assert syn_summary["total_analyzable"] == 2
+    assert syn_summary["total_passed"] == 1
+    assert syn_summary["total_infrastructure_excluded"] == 0
+    assert syn_summary["total_generation_calls"] == 2
+    assert syn_summary["total_tokens"] == 600
+
+    # If gitignored pilot evidence is present on disk, verify reconciliation
+    phase_a_dir = Path("eval/results/m13/m13-cross-model-pilot-01/trials")
+    if phase_a_dir.is_dir() and list(phase_a_dir.glob("*.json")):
+        records = [
+            json.loads(p.read_text())
+            for p in sorted(phase_a_dir.glob("*.json"))
+        ]
+        assert len(records) == 12
+
+        summary = summarize_cross_model_results(records)
+        assert summary["total_records"] == 12
+        assert summary["total_analyzable"] == 12
+        assert summary["total_passed"] == 5
+        assert summary["total_infrastructure_excluded"] == 0
+        assert summary["total_generation_calls"] == 13
+        assert summary["total_tokens"] == 25040
+
+        # Arm summaries
+        assert summary["by_arm"]["control_once"]["passed"] == 0
+        assert summary["by_arm"]["control_once"]["executed"] == 6
+        assert summary["by_arm"]["mm_single"]["passed"] == 5
+        assert summary["by_arm"]["mm_single"]["executed"] == 6
+
+        # Candidate summaries
+        assert summary["by_candidate"]["llama31_8b_q4km"]["passed"] == 3
+        assert summary["by_candidate"]["qwen25_7b_q4km"]["passed"] == 2
+
+        # Paired task outcomes
+        assert len(summary["paired_task_outcomes"]) == 6
+
+
+def test_execute_trial_unit_phase_b_only_task_live_seam(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    current_head = get_current_git_sha()
+    plan = materialize_phase_b_plan(harness_sha=current_head)
+    # Pick task_001 (Phase B only task)
+    c_unit = next(
+        u for u in plan["trial_units"]
+        if u["task_id"] == "task_001" and u["arm"] == "control_once"
+    )
+    mm_unit = next(
+        u for u in plan["trial_units"]
+        if u["task_id"] == "task_001" and u["arm"] == "mm_single"
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        out_dir = root / "out"
+        out_dir.mkdir(parents=True)
+
+        # 1. Test control_once on Phase-B-only task
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            return_value=(
+                "print('hello world')",
+                {
+                    "prompt_tokens": 120,
+                    "completion_tokens": 30,
+                    "total_tokens": 150,
+                },
+            ),
+        ):
+            with patch(
+                "eval.cross_model_parity_execution._apply_response",
+                return_value=[Path("solution.py")],
+            ):
+                with patch(
+                    "eval.cross_model_parity_execution.verify_task",
+                    return_value={"status": "success"},
+                ):
+                    c_rec = execute_trial_unit(
+                        c_unit,
+                        workspace_root=root / "c_work",
+                        support_root=root / "c_supp",
+                        output_dir=out_dir,
+                        local_adapter_context=mock_local_context,
+                        experiment_id=M13_PHASE_B_EXPERIMENT_ID,
+                        execution_base_sha=M13_PHASE_B_EXECUTION_BASE_SHA,
+                        harness_sha=current_head,
+                        ollama_version="0.33.2",
+                    )
+                    assert c_rec["experiment_id"] == M13_PHASE_B_EXPERIMENT_ID
+                    assert (
+                        c_rec["execution_base_sha"]
+                        == M13_PHASE_B_EXECUTION_BASE_SHA
+                    )
+                    assert (
+                        c_rec["experiment_base_sha"]
+                        == M13_EXPERIMENT_BASE_SHA
+                    )
+                    assert c_rec["task_id"] == "task_001"
+                    assert c_rec["arm"] == "control_once"
+                    assert c_rec["passed"] is True
+                    assert c_rec["provenance_complete"] is True
+                    assert c_rec["token_coverage_complete"] is True
+                    validate_payload_against_schema(c_rec, "trial_record")
+
+        # 2. Test mm_single on Phase-B-only task
+        def fake_solve(*args, **kwargs):
+            client = OllamaClient({"model": "test_model"})
+            client.last_metadata = {
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 50,
+                    "total_tokens": 150,
+                },
+                "latency_seconds": 0.05,
+            }
+            return OllamaClient.generate_content(client, "sys", "user")
+
+        with patch.object(
+            OllamaClient, "generate_content", return_value="fake mm"
+        ):
+            with patch.object(HostAdapter, "solve", side_effect=fake_solve):
+                with patch(
+                    "eval.cross_model_parity_execution.verify_task",
+                    return_value={"status": "success"},
+                ):
+                    mm_rec = execute_trial_unit(
+                        mm_unit,
+                        workspace_root=root / "mm_work",
+                        support_root=root / "mm_supp",
+                        output_dir=out_dir,
+                        local_adapter_context=mock_local_context,
+                        experiment_id=M13_PHASE_B_EXPERIMENT_ID,
+                        execution_base_sha=M13_PHASE_B_EXECUTION_BASE_SHA,
+                        harness_sha=current_head,
+                        ollama_version="0.33.2",
+                    )
+                    assert mm_rec["experiment_id"] == M13_PHASE_B_EXPERIMENT_ID
+                    assert (
+                        mm_rec["execution_base_sha"]
+                        == M13_PHASE_B_EXECUTION_BASE_SHA
+                    )
+                    assert (
+                        mm_rec["experiment_base_sha"]
+                        == M13_EXPERIMENT_BASE_SHA
+                    )
+                    assert mm_rec["task_id"] == "task_001"
+                    assert mm_rec["arm"] == "mm_single"
+                    assert mm_rec["passed"] is True
+                    assert mm_rec["provenance_complete"] is True
+                    assert mm_rec["token_coverage_complete"] is True
+                    validate_payload_against_schema(mm_rec, "trial_record")
+
+
+def test_execute_trial_unit_phase_a_backward_compatibility(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    current_head = get_current_git_sha()
+    plan = materialize_execution_plan(harness_sha=current_head)
+    unit = plan["trial_units"][0]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        out_dir = root / "out"
+        out_dir.mkdir(parents=True)
+
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            return_value=(
+                "print('phase_a')",
+                {
+                    "prompt_tokens": 90,
+                    "completion_tokens": 30,
+                    "total_tokens": 120,
+                },
+            ),
+        ):
+            with patch(
+                "eval.cross_model_parity_execution._apply_response",
+                return_value=[Path("solution.py")],
+            ):
+                with patch(
+                    "eval.cross_model_parity_execution.verify_task",
+                    return_value={"status": "success"},
+                ):
+                    rec = execute_trial_unit(
+                        unit,
+                        workspace_root=root / "work",
+                        support_root=root / "supp",
+                        output_dir=out_dir,
+                        local_adapter_context=mock_local_context,
+                        harness_sha=current_head,
+                        ollama_version="0.33.2",
+                    )
+                    assert rec["experiment_id"] == M13_EXPERIMENT_ID
+                    assert rec["execution_base_sha"] == M13_EXECUTION_BASE_SHA
+                    assert rec["provenance_complete"] is True
+                    validate_payload_against_schema(rec, "trial_record")
+
+
+def test_execute_trial_unit_fails_closed_on_unsupported_experiment(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    current_head = get_current_git_sha()
+    plan = materialize_execution_plan(harness_sha=current_head)
+    unit = plan["trial_units"][0]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        out_dir = root / "out"
+        out_dir.mkdir(parents=True)
+
+        with pytest.raises(ValueError, match="Unsupported experiment_id"):
+            execute_trial_unit(
+                unit,
+                workspace_root=root / "work",
+                support_root=root / "supp",
+                output_dir=out_dir,
+                local_adapter_context=mock_local_context,
+                experiment_id="unsupported_experiment",
+                harness_sha=current_head,
+                ollama_version="0.33.2",
+            )
+
+
+def test_phase_b_mocked_56_unit_live_qualification(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    current_head = get_current_git_sha()
+    plan = materialize_phase_b_plan(harness_sha=current_head)
+    assert len(plan["trial_units"]) == 56
+
+    with tempfile.TemporaryDirectory() as run_tmp:
+        out_dir = Path(run_tmp) / "out"
+        ws_root = Path(run_tmp) / "ws"
+
+        def fake_solve(*args, **kwargs):
+            client = OllamaClient({"model": "test_model"})
+            client.last_metadata = {
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 50,
+                    "total_tokens": 150,
+                },
+                "latency_seconds": 0.05,
+            }
+            return OllamaClient.generate_content(client, "sys", "user")
+
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            return_value=(
+                "fake control response",
+                {
+                    "prompt_tokens": 80,
+                    "completion_tokens": 40,
+                    "total_tokens": 120,
+                },
+            ),
+        ):
+            with patch.object(
+                OllamaClient,
+                "generate_content",
+                return_value="fake mm response",
+            ):
+                with patch.object(
+                    HostAdapter, "solve", side_effect=fake_solve
+                ):
+                    with patch(
+                        "eval.cross_model_parity_execution._apply_response",
+                        return_value=[Path("solution.py")],
+                    ):
+                        with patch(
+                            "eval.cross_model_parity_execution.verify_task",
+                            return_value={"status": "success"},
+                        ):
+                            summary = execute_cross_model_plan(
+                                plan,
+                                output_dir=out_dir,
+                                workspace_root=ws_root,
+                                local_adapter_context=mock_local_context,
+                                harness_sha=current_head,
+                            )
+
+        assert summary["status"] == "completed"
+        assert summary["stop_reason"] is None
+        assert summary["planned_trial_count"] == 56
+        assert summary["executed_trial_count"] == 56
+        assert summary["total_passed"] == 56
+        assert summary["total_analyzable"] == 56
+        assert summary["total_infrastructure_excluded"] == 0
+        assert summary["generation_calls"] == 56
+        assert summary["total_tokens"] is not None
+        assert summary["total_tokens"] > 0
+        assert summary["execution_base_sha"] == M13_PHASE_B_EXECUTION_BASE_SHA
+        assert summary["experiment_id"] == M13_PHASE_B_EXPERIMENT_ID
+        validate_payload_against_schema(summary, "run_summary")
+
+        trials_dir = out_dir / "trials"
+        assert trials_dir.is_dir()
+        persisted_files = sorted(trials_dir.glob("*.json"))
+        assert len(persisted_files) == 56
+
+        observed_order_indices = []
+        for p in persisted_files:
+            rec = json.loads(p.read_text(encoding="utf-8"))
+            validate_payload_against_schema(rec, "trial_record")
+            assert rec["experiment_id"] == M13_PHASE_B_EXPERIMENT_ID
+            assert (
+                rec["execution_base_sha"] == M13_PHASE_B_EXECUTION_BASE_SHA
+            )
+            assert (
+                rec["experiment_base_sha"] == M13_EXPERIMENT_BASE_SHA
+            )
+            assert rec["provenance_complete"] is True
+            assert rec["token_coverage_complete"] is True
+            assert rec["swarm_enabled"] is False
+            assert rec["recovery_enabled"] is False
+            assert rec["passed"] is True
+            observed_order_indices.append(rec["order_index"])
+            expected_unit = plan["trial_units"][rec["order_index"]]
+            assert rec["trial_id"] == expected_unit["trial_id"]
+            assert rec["candidate_id"] == expected_unit["candidate_id"]
+            assert rec["arm"] == expected_unit["arm"]
+            assert rec["task_id"] == expected_unit["task_id"]
+
+        assert sorted(observed_order_indices) == list(range(56))
+
+
+def test_summarize_cross_model_results_truthful_incomplete_token_coverage(
+) -> None:
+    incomplete_records = [
+        {
+            "candidate_id": "llama31_8b_q4km",
+            "arm": "control_once",
+            "task_id": "task_003",
+            "passed": False,
+            "failure_category": "tests_failed",
+            "total_tokens": 100,
+            "generation_call_count": 1,
+            "wall_latency_seconds": 10.0,
+            "token_coverage_complete": True,
+            "infrastructure_error": False,
+        },
+        {
+            "candidate_id": "llama31_8b_q4km",
+            "arm": "mm_single",
+            "task_id": "task_003",
+            "passed": False,
+            "failure_category": "generation_error",
+            "total_tokens": None,
+            "generation_call_count": 1,
+            "wall_latency_seconds": 2.0,
+            "token_coverage_complete": False,
+            "infrastructure_error": True,
+        },
+    ]
+    summary = summarize_cross_model_results(incomplete_records)
+    assert summary["total_records"] == 2
+    assert summary["total_tokens"] is None
+    assert summary["by_candidate"]["llama31_8b_q4km"]["total_tokens"] is None
+    assert summary["by_arm"]["mm_single"]["total_tokens"] is None
+    assert summary["by_arm"]["control_once"]["total_tokens"] == 100

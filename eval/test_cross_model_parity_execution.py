@@ -25,6 +25,7 @@ from eval.cross_model_parity import (
     M13_EXECUTION_BASE_SHA,
     M13_EXPERIMENT_BASE_SHA,
     M13_EXPERIMENT_ID,
+    M13_HARNESS_ALLOWED_PATHS,
     M13_PHASE_B_EXECUTION_BASE_SHA,
     M13_PHASE_B_EXPERIMENT_ID,
     CrossModelPlanUnit,
@@ -95,6 +96,7 @@ def mock_ollama_daemon_for_tests():
                 return cand.model_digest
         return "sha256:" + "0" * 64
 
+    allowed_delta = sorted(M13_HARNESS_ALLOWED_PATHS)
     with patch("urllib.request.urlopen", return_value=mock_resp):
         target_fn = (
             "mighty_mouse.host.adapter.HostAdapter."
@@ -104,7 +106,16 @@ def mock_ollama_daemon_for_tests():
             with patch(
                 "eval.cross_model_parity.check_git_clean_except_prototype"
             ):
-                yield
+                with patch(
+                    "eval.cross_model_parity.verify_base_to_harness_delta",
+                    return_value=allowed_delta,
+                ):
+                    with patch(
+                        "eval.cross_model_parity_execution."
+                        "verify_base_to_harness_delta",
+                        return_value=allowed_delta,
+                    ):
+                        yield
 
 
 # --- 1. Provenance separation ---
@@ -154,6 +165,55 @@ def test_disallowed_file_outside_m13_harness_fails_closed() -> None:
                 base_sha=M13_EXECUTION_BASE_SHA,
                 harness_sha=get_current_git_sha(),
             )
+
+
+def test_unmocked_verify_base_to_harness_delta_rejects_unauthorized_docs(
+) -> None:
+    # verify_base_to_harness_delta imported at module scope retains its
+    # original fail-closed validator implementation.
+    with patch(
+        "subprocess.check_output",
+        return_value="docs/cross-model-frontier-parity-results.md\n",
+    ):
+        with pytest.raises(ValueError, match="Unauthorized file changes"):
+            verify_base_to_harness_delta(
+                base_sha=M13_EXECUTION_BASE_SHA,
+                harness_sha=get_current_git_sha(),
+            )
+
+
+def test_executor_isolation_preserves_historical_phase_a_and_b_plans(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    # Confirms plan materialization and dry-run execution succeed hermetically
+    # regardless of repository commits outside M13_HARNESS_ALLOWED_PATHS.
+    phase_a_plan = materialize_execution_plan(
+        harness_sha=get_current_git_sha()
+    )
+    assert len(phase_a_plan["trial_units"]) == 12
+
+    phase_b_plan = materialize_phase_b_plan(
+        harness_sha=get_current_git_sha()
+    )
+    assert len(phase_b_plan["trial_units"]) == 56
+
+    summary_a = execute_cross_model_plan(
+        phase_a_plan,
+        dry_run=True,
+        local_adapter_context=mock_local_context,
+    )
+    assert summary_a["status"] == "dry_run"
+    assert summary_a["planned_trial_count"] == 12
+    assert summary_a["generation_calls"] == 0
+
+    summary_b = execute_cross_model_plan(
+        phase_b_plan,
+        dry_run=True,
+        local_adapter_context=mock_local_context,
+    )
+    assert summary_b["status"] == "dry_run"
+    assert summary_b["planned_trial_count"] == 56
+    assert summary_b["generation_calls"] == 0
 
 
 # --- 2. Locking & Preflight ---

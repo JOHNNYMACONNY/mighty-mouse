@@ -37,7 +37,7 @@ Both candidate models were evaluated under strict frozen SHA-256 manifest digest
 
 ## 2. Phase A Pilot Evidence (`m13-cross-model-pilot-01`)
 
-The Phase A pilot evaluated 12 trial units across 3 anchor tasks (`task_003` / Tier 1, `task_047` / Tier 5, `task_1407` / Tier 7) with 1 replicate:
+The Phase A pilot evaluated 12 trial units across 3 anchor tasks (`task_003` / Tier 1, `task_047` / Tier 5, `task_1415` / Tier 7) with 1 replicate:
 - **Analyzable Units:** 12 / 12 (100.0%)
 - **Infrastructure Exclusions:** 0 / 12 (0.0%)
 - **Overall Completion:** 5 / 12 (41.7%)

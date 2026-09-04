@@ -50,7 +50,7 @@ Mighty Mouse acts as a high-reliability **cognitive exoskeleton** built around 4
 - [x] **Multi-Agent Swarm Orchestration**: Splitting execution into specialized Planner, Coder, and Reviewer subagents.
 - [x] **Antigravity Real-Time Hooks**: Host-native lifecycle hooks with deterministic composite PreToolUse, file-write-only PostToolUse, canonical verification, and bounded single-attempt self-healing recovery.
 - [ ] **Real-Time IDE & MCP Hooks (Cursor, Claude Code, Windsurf)**: Background self-healing across remaining host environments.
-- [ ] **Cross-Model Frontier Parity**: Expanding perpetual benchmark evaluation to Llama 3 and Qwen models.
+- [x] **Cross-Model Frontier Parity**: Expanding perpetual benchmark evaluation to Llama 3 and Qwen models.
 
 ---
 

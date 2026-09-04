@@ -31,11 +31,17 @@
         },
         "experiment_id": {
           "type": "string",
-          "const": "m13-cross-model-pilot-01"
+          "enum": [
+            "m13-cross-model-pilot-01",
+            "m13-cross-model-phase-b-01"
+          ]
         },
         "plan_design": {
           "type": "string",
-          "const": "m13-cross-model-pilot-v1"
+          "enum": [
+            "m13-cross-model-pilot-v1",
+            "m13-cross-model-phase-b-v1"
+          ]
         },
         "experiment_base_sha": {
           "type": "string",
@@ -47,7 +53,10 @@
         },
         "order_seed": {
           "type": "string",
-          "const": "m13-cross-model-pilot-v1"
+          "enum": [
+            "m13-cross-model-pilot-v1",
+            "m13-cross-model-phase-b-v1"
+          ]
         },
         "effective_context_limit": {
           "type": "integer",
@@ -83,12 +92,15 @@
         },
         "trial_count": {
           "type": "integer",
-          "const": 12
+          "enum": [
+            12,
+            56
+          ]
         },
         "trial_units": {
           "type": "array",
           "minItems": 12,
-          "maxItems": 12,
+          "maxItems": 56,
           "items": {
             "$ref": "#/definitions/plan_unit"
           }
@@ -127,7 +139,7 @@
         "order_index": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 11
+          "maximum": 55
         },
         "trial_id": {
           "type": "string"
@@ -175,15 +187,30 @@
           "type": "string",
           "enum": [
             "tier_1",
+            "tier_overnight",
+            "tier_3",
+            "tier_4",
             "tier_5",
+            "tier_6",
             "tier_7"
           ]
         },
         "task_id": {
           "type": "string",
           "enum": [
+            "task_001",
             "task_003",
+            "task_011",
+            "task_012",
+            "task_016",
+            "task_025",
+            "task_029",
+            "task_033",
+            "task_045",
             "task_047",
+            "task_1007",
+            "task_1014",
+            "task_1407",
             "task_1415"
           ]
         },
@@ -386,7 +413,10 @@
         },
         "experiment_id": {
           "type": "string",
-          "const": "m13-cross-model-pilot-01"
+          "enum": [
+            "m13-cross-model-pilot-01",
+            "m13-cross-model-phase-b-01"
+          ]
         },
         "trial_id": {
           "type": "string"
@@ -394,7 +424,7 @@
         "order_index": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 11
+          "maximum": 55
         },
         "experiment_base_sha": {
           "type": "string",
@@ -659,7 +689,10 @@
         },
         "experiment_id": {
           "type": "string",
-          "const": "m13-cross-model-pilot-01"
+          "enum": [
+            "m13-cross-model-pilot-01",
+            "m13-cross-model-phase-b-01"
+          ]
         },
         "experiment_base_sha": {
           "type": "string",
@@ -681,12 +714,15 @@
         },
         "planned_trial_count": {
           "type": "integer",
-          "const": 12
+          "enum": [
+            12,
+            56
+          ]
         },
         "executed_trial_count": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 12
+          "maximum": 56
         },
         "status": {
           "type": "string",

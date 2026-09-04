@@ -30,6 +30,12 @@ M13_CANONICAL_CONFIG_SHA256 = (
     "f846fec3c052c76ab6f944c889baf7e8ed217beffaaa47ed8c5851fb82cba8f3"
 )
 
+M13_PHASE_B_EXPERIMENT_ID = "m13-cross-model-phase-b-01"
+M13_PHASE_B_PLAN_DESIGN = "m13-cross-model-phase-b-v1"
+M13_PHASE_B_ORDER_SEED = "m13-cross-model-phase-b-v1"
+M13_PHASE_B_EXECUTION_BASE_SHA = "667fd939bbcc865d166d86a8dbd28c81272c4ecb"
+M13_PHASE_B_TRIAL_COUNT = 56
+
 DEFAULT_CONFIG_PATH = Path("configs/mighty_mouse_v1.yaml")
 DEFAULT_CONTRACT_PATH = Path("eval/cross_model_parity_contract.json")
 
@@ -164,6 +170,141 @@ FROZEN_ANCHOR_TASKS_JSON: Dict[str, Any] = json.loads(
     json.dumps({k: asdict(v) for k, v in FROZEN_ANCHOR_TASKS.items()})
 )
 
+FROZEN_PHASE_B_TASKS: Dict[str, CrossModelAnchorTask] = {
+    "task_003": CrossModelAnchorTask(
+        tier="tier_1",
+        task_id="task_003",
+        task_file="tasks/benchmark/task_003_legacy_link_circuitbreaker.json",
+        sha256=(
+            "d5ac92cf635fb9bb18340df6dc831d6b78fd0ccfaf046e4a79bfcd3657f49976"
+        ),
+        expected_files=("legacy_link.py",),
+    ),
+    "task_001": CrossModelAnchorTask(
+        tier="tier_1",
+        task_id="task_001",
+        task_file="tasks/benchmark/task_001_legacy_registry_ratelimiter.json",
+        sha256=(
+            "b711f6469a2870ff71d6831a2b9ee7af9659f0fc52ce5e329de90c508e803cc2"
+        ),
+        expected_files=("legacy_registry.py",),
+    ),
+    "task_011": CrossModelAnchorTask(
+        tier="tier_overnight",
+        task_id="task_011",
+        task_file=(
+            "tasks/benchmark/task_011_realtime_decorator_ratelimiter.json"
+        ),
+        sha256=(
+            "60c7f56233e6f87a69191247bc9cccf31697b90dec188c2bf690b5f133d2ca50"
+        ),
+        expected_files=("realtime_decorator.py",),
+    ),
+    "task_012": CrossModelAnchorTask(
+        tier="tier_overnight",
+        task_id="task_012",
+        task_file="tasks/benchmark/task_012_network_facade_retry.json",
+        sha256=(
+            "330b4888c625a01e8a9457c095fcd9785c7b5adc7a3cc7bd325f09d8db4f9c9c"
+        ),
+        expected_files=("network_facade.py",),
+    ),
+    "task_025": CrossModelAnchorTask(
+        tier="tier_3",
+        task_id="task_025",
+        task_file="tasks/benchmark/task_025_async_factory_transformer.json",
+        sha256=(
+            "1c71e53de1728f655f5fb870ef57094f6b436b22487638c6c9db183c543b7da6"
+        ),
+        expected_files=("async_factory.py",),
+    ),
+    "task_016": CrossModelAnchorTask(
+        tier="tier_3",
+        task_id="task_016",
+        task_file="tasks/benchmark/task_016_memory_stack_enricher.json",
+        sha256=(
+            "5e49f11dd2eb2b1547226c9b5a14277cb9ac9b918a5972e671a9122f9fa8085f"
+        ),
+        expected_files=("memory_stack.py",),
+    ),
+    "task_033": CrossModelAnchorTask(
+        tier="tier_4",
+        task_id="task_033",
+        task_file="tasks/benchmark/task_033_cloud_composite_retry.json",
+        sha256=(
+            "6ddaf8333466ccd336c4936d0f8d8d9787370348fa52bb42b70d9604108d212b"
+        ),
+        expected_files=("cloud_composite.py",),
+    ),
+    "task_029": CrossModelAnchorTask(
+        tier="tier_4",
+        task_id="task_029",
+        task_file="tasks/benchmark/task_029_stream_proxy_filter.json",
+        sha256=(
+            "1bd8fd93dafa2720ba891362f00ebef6b2b565f10b804a49caeb3f3f3053c2ed"
+        ),
+        expected_files=("stream_proxy.py",),
+    ),
+    "task_047": CrossModelAnchorTask(
+        tier="tier_5",
+        task_id="task_047",
+        task_file="tasks/benchmark/task_047_stream_stack_enricher.json",
+        sha256=(
+            "9e40f53e472658c6689f759b30f20b85b1f9cdcb6d27367115e99e0619b54b47"
+        ),
+        expected_files=("stream_stack.py",),
+    ),
+    "task_045": CrossModelAnchorTask(
+        tier="tier_5",
+        task_id="task_045",
+        task_file="tasks/benchmark/task_045_file_node_enricher.json",
+        sha256=(
+            "0ad0407e97e2bcc7ce06b99d9ae5586ea440b274de898f166828909efb75f88d"
+        ),
+        expected_files=("file_node.py",),
+    ),
+    "task_1014": CrossModelAnchorTask(
+        tier="tier_6",
+        task_id="task_1014",
+        task_file="tasks/benchmark/task_1014_async_bridge_transformer.json",
+        sha256=(
+            "52ad25c60bd876aa9c50c22896553fa142646c16dffc721eadc81d179aa22153"
+        ),
+        expected_files=("async_bridge.py",),
+    ),
+    "task_1007": CrossModelAnchorTask(
+        tier="tier_6",
+        task_id="task_1007",
+        task_file="tasks/benchmark/task_1007_legacy_cache_transformer.json",
+        sha256=(
+            "f3d40a60eb9b176f94a92f7974f6b0913a5c8de8e8a7b294efdfe9a40411eb86"
+        ),
+        expected_files=("legacy_cache.py",),
+    ),
+    "task_1415": CrossModelAnchorTask(
+        tier="tier_7",
+        task_id="task_1415",
+        task_file="tasks/benchmark/task_1415_file_proxy_retry.json",
+        sha256=(
+            "750bec2e8f6f1888fea1dc502d19a123f312f540dbbcfe93dbd5bac39a0db486"
+        ),
+        expected_files=("file_proxy.py",),
+    ),
+    "task_1407": CrossModelAnchorTask(
+        tier="tier_7",
+        task_id="task_1407",
+        task_file="tasks/benchmark/task_1407_memory_data_validator.json",
+        sha256=(
+            "da95501872193512a9853ecc37e78587cafbde6352128a0f15dfc302fc7268a7"
+        ),
+        expected_files=("memory_data.py",),
+    ),
+}
+
+FROZEN_PHASE_B_TASKS_JSON: Dict[str, Any] = json.loads(
+    json.dumps({k: asdict(v) for k, v in FROZEN_PHASE_B_TASKS.items()})
+)
+
 
 def load_contract_schema(
     contract_path: Path = DEFAULT_CONTRACT_PATH,
@@ -295,6 +436,7 @@ def verify_base_to_harness_delta(
 def materialize_execution_plan(
     harness_sha: Optional[str] = None,
     config_path: Path = DEFAULT_CONFIG_PATH,
+    experiment_id: str = M13_EXPERIMENT_ID,
 ) -> Dict[str, Any]:
     if harness_sha is None:
         harness_sha = get_current_git_sha()
@@ -309,6 +451,22 @@ def materialize_execution_plan(
             f"{M13_CANONICAL_CONFIG_SHA256}, found {canonical_config_sha256}"
         )
 
+    is_phase_b = experiment_id == M13_PHASE_B_EXPERIMENT_ID
+    if is_phase_b:
+        exp_id = M13_PHASE_B_EXPERIMENT_ID
+        plan_design = M13_PHASE_B_PLAN_DESIGN
+        order_seed = M13_PHASE_B_ORDER_SEED
+        tasks_dict = FROZEN_PHASE_B_TASKS
+        tasks_json = FROZEN_PHASE_B_TASKS_JSON
+        trial_prefix = "m13_b"
+    else:
+        exp_id = M13_EXPERIMENT_ID
+        plan_design = M13_PLAN_DESIGN
+        order_seed = M13_ORDER_SEED
+        tasks_dict = FROZEN_ANCHOR_TASKS
+        tasks_json = FROZEN_ANCHOR_TASKS_JSON
+        trial_prefix = "m13"
+
     projected_shas: Dict[str, str] = {}
     for cand_id, cand in FROZEN_CANDIDATES.items():
         _, proj_sha = project_candidate_config(cand.model_tag, config_path)
@@ -317,19 +475,20 @@ def materialize_execution_plan(
     raw_units: List[Dict[str, Any]] = []
 
     for cand_id, cand in FROZEN_CANDIDATES.items():
-        for task_id, task in FROZEN_ANCHOR_TASKS.items():
+        for task_id, task in tasks_dict.items():
             for arm in M13_ALLOWED_ARMS:
                 replicate = 1
                 sort_hash = compute_sort_hash(
                     M13_EXPERIMENT_BASE_SHA,
-                    M13_ORDER_SEED,
+                    order_seed,
                     cand_id,
                     task_id,
                     arm,
                     replicate,
                 )
                 trial_id = (
-                    f"m13_{cand_id}_{task.tier}_{task_id}_{arm}_rep{replicate}"
+                    f"{trial_prefix}_{cand_id}_{task.tier}_{task_id}_"
+                    f"{arm}_rep{replicate}"
                 )
                 proj_config_sha = (
                     projected_shas[cand_id] if arm == "mm_single" else None
@@ -367,16 +526,16 @@ def materialize_execution_plan(
 
     plan = {
         "schema_version": M13_SCHEMA_VERSION,
-        "experiment_id": M13_EXPERIMENT_ID,
-        "plan_design": M13_PLAN_DESIGN,
+        "experiment_id": exp_id,
+        "plan_design": plan_design,
         "experiment_base_sha": M13_EXPERIMENT_BASE_SHA,
         "harness_sha": harness_sha,
-        "order_seed": M13_ORDER_SEED,
+        "order_seed": order_seed,
         "effective_context_limit": M13_EFFECTIVE_CONTEXT_LIMIT,
         "canonical_config_path": str(config_path),
         "canonical_config_sha256": canonical_config_sha256,
         "candidates": copy.deepcopy(FROZEN_CANDIDATES_JSON),
-        "anchor_tasks": copy.deepcopy(FROZEN_ANCHOR_TASKS_JSON),
+        "anchor_tasks": copy.deepcopy(tasks_json),
         "arms": list(M13_ALLOWED_ARMS),
         "replicates": 1,
         "trial_count": len(final_units),
@@ -384,6 +543,18 @@ def materialize_execution_plan(
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     return plan
+
+
+def materialize_phase_b_plan(
+    harness_sha: Optional[str] = None,
+    config_path: Path = DEFAULT_CONFIG_PATH,
+) -> Dict[str, Any]:
+    """Materialize deterministic 56-unit Phase B execution plan."""
+    return materialize_execution_plan(
+        harness_sha=harness_sha,
+        config_path=config_path,
+        experiment_id=M13_PHASE_B_EXPERIMENT_ID,
+    )
 
 
 def validate_execution_plan(
@@ -403,27 +574,31 @@ def validate_execution_plan(
     except Exception as e:
         errors.append(f"Schema validation error: {e}")
 
-    if plan.get("schema_version") != M13_SCHEMA_VERSION:
+    exp_id = plan.get("experiment_id")
+    is_phase_b = exp_id == M13_PHASE_B_EXPERIMENT_ID
+    is_phase_a = exp_id == M13_EXPERIMENT_ID
+
+    if not (is_phase_a or is_phase_b):
         errors.append(
-            f"schema_version mismatch: expected {M13_SCHEMA_VERSION}, "
-            f"found {plan.get('schema_version')}"
+            f"experiment_id mismatch: expected '{M13_EXPERIMENT_ID}' or "
+            f"'{M13_PHASE_B_EXPERIMENT_ID}', found '{exp_id}'"
         )
 
-    if plan.get("experiment_id") != M13_EXPERIMENT_ID:
+    expected_plan_design = (
+        M13_PHASE_B_PLAN_DESIGN if is_phase_b else M13_PLAN_DESIGN
+    )
+    if plan.get("plan_design") != expected_plan_design:
         errors.append(
-            f"experiment_id mismatch: expected {M13_EXPERIMENT_ID}, "
-            f"found {plan.get('experiment_id')}"
-        )
-
-    if plan.get("plan_design") != M13_PLAN_DESIGN:
-        errors.append(
-            f"plan_design mismatch: expected {M13_PLAN_DESIGN}, "
+            f"plan_design mismatch: expected {expected_plan_design}, "
             f"found {plan.get('plan_design')}"
         )
 
-    if plan.get("order_seed") != M13_ORDER_SEED:
+    expected_order_seed = (
+        M13_PHASE_B_ORDER_SEED if is_phase_b else M13_ORDER_SEED
+    )
+    if plan.get("order_seed") != expected_order_seed:
         errors.append(
-            f"order_seed mismatch: expected {M13_ORDER_SEED}, "
+            f"order_seed mismatch: expected {expected_order_seed}, "
             f"found {plan.get('order_seed')}"
         )
 
@@ -465,7 +640,10 @@ def validate_execution_plan(
     if plan.get("candidates") != FROZEN_CANDIDATES_JSON:
         errors.append("Top-level candidates do not match frozen definitions")
 
-    if plan.get("anchor_tasks") != FROZEN_ANCHOR_TASKS_JSON:
+    expected_tasks_json = (
+        FROZEN_PHASE_B_TASKS_JSON if is_phase_b else FROZEN_ANCHOR_TASKS_JSON
+    )
+    if plan.get("anchor_tasks") != expected_tasks_json:
         errors.append(
             "Top-level anchor_tasks do not match frozen definitions"
         )
@@ -495,17 +673,29 @@ def validate_execution_plan(
             f"harness_sha mismatch: plan has {harness_sha}, "
             f"current HEAD is {current_head}"
         )
+
+    expected_exec_base = (
+        M13_PHASE_B_EXECUTION_BASE_SHA
+        if is_phase_b
+        else M13_EXECUTION_BASE_SHA
+    )
     try:
         verify_base_to_harness_delta(
-            M13_EXECUTION_BASE_SHA, harness_sha
+            expected_exec_base, harness_sha
         )
     except Exception as e:
         errors.append(f"Base to harness delta error: {e}")
 
+    expected_count = (
+        M13_PHASE_B_TRIAL_COUNT if is_phase_b else 12
+    )
     units = plan.get("trial_units", [])
-    if len(units) != 12 or plan.get("trial_count") != 12:
+    if (
+        len(units) != expected_count
+        or plan.get("trial_count") != expected_count
+    ):
         errors.append(
-            f"trial_count must be exactly 12, found {len(units)}"
+            f"trial_count must be exactly {expected_count}, found {len(units)}"
         )
 
     seen_order_indices = set()
@@ -522,6 +712,9 @@ def validate_execution_plan(
             except Exception as e:
                 projected_shas[cid] = None
                 errors.append(f"Config projection failed for {cid}: {e}")
+
+    tasks_dict = FROZEN_PHASE_B_TASKS if is_phase_b else FROZEN_ANCHOR_TASKS
+    trial_prefix = "m13_b" if is_phase_b else "m13"
 
     for idx, u in enumerate(units):
         ord_idx = u.get("order_index")
@@ -574,10 +767,10 @@ def validate_execution_plan(
                     f"{u.get('effective_context')} != {fc.effective_context}"
                 )
 
-        if task_id not in FROZEN_ANCHOR_TASKS:
+        if task_id not in tasks_dict:
             errors.append(f"Unknown task_id: {task_id}")
         else:
-            ft = FROZEN_ANCHOR_TASKS[task_id]
+            ft = tasks_dict[task_id]
             if u.get("tier") != ft.tier:
                 errors.append(
                     f"tier mismatch for {task_id}: {u.get('tier')} "
@@ -604,9 +797,9 @@ def validate_execution_plan(
                 f"{u.get('harness_sha')} != {harness_sha}"
             )
 
-        if cand_id in FROZEN_CANDIDATES and task_id in FROZEN_ANCHOR_TASKS:
+        if cand_id in FROZEN_CANDIDATES and task_id in tasks_dict:
             exp_tid = (
-                f"m13_{cand_id}_{FROZEN_ANCHOR_TASKS[task_id].tier}_"
+                f"{trial_prefix}_{cand_id}_{tasks_dict[task_id].tier}_"
                 f"{task_id}_{arm}_rep{rep}"
             )
             if tid != exp_tid:
@@ -632,7 +825,7 @@ def validate_execution_plan(
 
         expected_sh = compute_sort_hash(
             M13_EXPERIMENT_BASE_SHA,
-            M13_ORDER_SEED,
+            expected_order_seed,
             cand_id,
             task_id,
             arm,
@@ -651,6 +844,93 @@ def validate_execution_plan(
     return {
         "valid": len(errors) == 0,
         "errors": errors,
+    }
+
+
+def summarize_cross_model_results(
+    records: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Compute candidate x arm aggregates, paired outcomes, and overhead."""
+    by_cand_arm: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    by_arm: Dict[str, Dict[str, Any]] = {}
+    by_cand: Dict[str, Dict[str, Any]] = {}
+    paired: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    def _init_bucket() -> Dict[str, Any]:
+        return {
+            "executed": 0,
+            "passed": 0,
+            "analyzable": 0,
+            "infrastructure_excluded": 0,
+            "generation_calls": 0,
+            "total_tokens": 0,
+            "wall_time": 0.0,
+        }
+
+    for r in records:
+        cand_id = r["candidate_id"]
+        arm = r["arm"]
+        task_id = r["task_id"]
+        passed = bool(r.get("passed", False))
+        infra = bool(r.get("infrastructure_error", False))
+        token_coverage = bool(r.get("token_coverage_complete", True))
+        analyzable = (not infra) and token_coverage
+        tokens = r.get("total_tokens") or 0
+        gens = r.get("generation_call_count", 0)
+        wall = r.get("wall_latency_seconds", 0.0)
+
+        pair_key = (cand_id, task_id)
+        if pair_key not in paired:
+            paired[pair_key] = {}
+        paired[pair_key][arm] = {
+            "passed": passed,
+            "failure_category": r.get("failure_category"),
+            "tokens": tokens,
+            "generation_calls": gens,
+            "wall_latency_seconds": wall,
+        }
+
+        for k, d in (
+            ((cand_id, arm), by_cand_arm),
+            (arm, by_arm),
+            (cand_id, by_cand),
+        ):
+            if k not in d:
+                d[k] = _init_bucket()
+            b = d[k]
+            b["executed"] += 1
+            if passed:
+                b["passed"] += 1
+            if analyzable:
+                b["analyzable"] += 1
+            if infra:
+                b["infrastructure_excluded"] += 1
+            b["generation_calls"] += gens
+            b["total_tokens"] += tokens
+            b["wall_time"] += wall
+
+    return {
+        "by_candidate_and_arm": {
+            f"{c}_{a}": b for (c, a), b in sorted(by_cand_arm.items())
+        },
+        "by_arm": {a: b for a, b in sorted(by_arm.items())},
+        "by_candidate": {c: b for c, b in sorted(by_cand.items())},
+        "paired_task_outcomes": {
+            f"{c}_{t}": arms for (c, t), arms in sorted(paired.items())
+        },
+        "total_records": len(records),
+        "total_analyzable": sum(b["analyzable"] for b in by_arm.values()),
+        "total_passed": sum(b["passed"] for b in by_arm.values()),
+        "total_infrastructure_excluded": sum(
+            b["infrastructure_excluded"] for b in by_arm.values()
+        ),
+        "total_generation_calls": sum(
+            b["generation_calls"] for b in by_arm.values()
+        ),
+        "total_tokens": sum(b["total_tokens"] for b in by_arm.values()),
+        "total_wall_time": round(
+            sum(b["wall_time"] for b in by_arm.values()), 2
+        ),
     }
 
 

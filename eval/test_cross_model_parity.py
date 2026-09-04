@@ -25,10 +25,16 @@ from eval.cross_model_parity import (
     M13_EXPERIMENT_BASE_SHA,
     M13_HARNESS_ALLOWED_PATHS,
     M13_ORDER_SEED,
+    M13_PHASE_B_EXECUTION_BASE_SHA,
+    M13_PHASE_B_EXPERIMENT_ID,
+    M13_PHASE_B_ORDER_SEED,
+    M13_PHASE_B_PLAN_DESIGN,
     M13_SCHEMA_VERSION,
+    FROZEN_PHASE_B_TASKS,
     compute_sort_hash,
     load_contract_schema,
     materialize_execution_plan,
+    materialize_phase_b_plan,
     project_candidate_config,
     run_preflight,
     validate_execution_plan,
@@ -928,3 +934,196 @@ def test_verify_base_to_harness_delta_defaults_to_execution_base() -> None:
             ],
             text=True,
         )
+
+
+def test_phase_b_14_tasks_match_historical_m12_p2() -> None:
+    from eval.reliability_matrix_execution import materialize_p2_plan
+
+    p2_plan = materialize_p2_plan()
+    expected_p2_tasks = sorted(
+        list({u["task_id"] for u in p2_plan["trial_units"]})
+    )
+    assert len(expected_p2_tasks) == 14
+    assert len(FROZEN_PHASE_B_TASKS) == 14
+    assert sorted(list(FROZEN_PHASE_B_TASKS.keys())) == expected_p2_tasks
+
+    # Verify each task file and SHA against disk
+    for tid, t in FROZEN_PHASE_B_TASKS.items():
+        tf = Path(t.task_file)
+        assert tf.is_file(), f"Missing task file: {tf}"
+        content = tf.read_bytes()
+        computed_sha = hashlib.sha256(content).hexdigest()
+        assert computed_sha == t.sha256
+
+
+def test_phase_b_materialize_produces_56_units_cardinality() -> None:
+    plan = materialize_phase_b_plan(
+        harness_sha=M13_PHASE_B_EXECUTION_BASE_SHA
+    )
+    assert plan["schema_version"] == M13_SCHEMA_VERSION
+    assert plan["experiment_id"] == M13_PHASE_B_EXPERIMENT_ID
+    assert plan["plan_design"] == M13_PHASE_B_PLAN_DESIGN
+    assert plan["order_seed"] == M13_PHASE_B_ORDER_SEED
+    assert plan["trial_count"] == 56
+    assert len(plan["trial_units"]) == 56
+
+    # Verify Cartesian product 2 candidates x 2 arms x 14 tasks x 1 replicate
+    tuples = set()
+    for u in plan["trial_units"]:
+        tuples.add((u["candidate_id"], u["task_id"], u["arm"], u["replicate"]))
+    assert len(tuples) == 56
+
+
+def test_phase_b_deterministic_ordering() -> None:
+    p1 = materialize_phase_b_plan(harness_sha=M13_PHASE_B_EXECUTION_BASE_SHA)
+    p2 = materialize_phase_b_plan(harness_sha=M13_PHASE_B_EXECUTION_BASE_SHA)
+    p1_copy = copy.deepcopy(p1)
+    p2_copy = copy.deepcopy(p2)
+    p1_copy.pop("timestamp")
+    p2_copy.pop("timestamp")
+    assert p1_copy == p2_copy
+
+
+def test_phase_b_json_roundtrip_and_schema_validation() -> None:
+    plan = materialize_phase_b_plan(
+        harness_sha=M13_PHASE_B_EXECUTION_BASE_SHA
+    )
+    serialized = json.dumps(plan)
+    deserialized = json.loads(serialized)
+    validate_payload_against_schema(deserialized, "execution_plan")
+
+
+def test_phase_a_backward_compatibility_preserved() -> None:
+    plan = materialize_execution_plan(harness_sha=M13_EXECUTION_BASE_SHA)
+    assert plan["experiment_id"] == "m13-cross-model-pilot-01"
+    assert plan["plan_design"] == "m13-cross-model-pilot-v1"
+    assert plan["trial_count"] == 12
+    assert len(plan["trial_units"]) == 12
+
+    with patch(
+        "eval.cross_model_parity.verify_base_to_harness_delta",
+        return_value=[],
+    ):
+        res = validate_execution_plan(
+            plan, current_head=M13_EXECUTION_BASE_SHA
+        )
+        assert res["valid"] is True
+        assert res["errors"] == []
+
+
+def test_phase_b_validator_validates_clean_plan() -> None:
+    plan = materialize_phase_b_plan(
+        harness_sha=M13_PHASE_B_EXECUTION_BASE_SHA
+    )
+    with patch(
+        "eval.cross_model_parity.verify_base_to_harness_delta",
+        return_value=[],
+    ):
+        res = validate_execution_plan(
+            plan, current_head=M13_PHASE_B_EXECUTION_BASE_SHA
+        )
+        assert res["valid"] is True
+        assert res["errors"] == []
+
+
+def test_phase_b_validator_rejects_invalid_task_candidate_arm() -> None:
+    plan = materialize_phase_b_plan(
+        harness_sha=M13_PHASE_B_EXECUTION_BASE_SHA
+    )
+    # Tamper with unit 0 task_id
+    bad_plan = copy.deepcopy(plan)
+    bad_plan["trial_units"][0]["task_id"] = "task_999_fake"
+    with patch(
+        "eval.cross_model_parity.verify_base_to_harness_delta",
+        return_value=[],
+    ):
+        res = validate_execution_plan(
+            bad_plan, current_head=M13_PHASE_B_EXECUTION_BASE_SHA
+        )
+        assert res["valid"] is False
+        assert any("task" in e.lower() for e in res["errors"])
+
+
+def test_phase_b_validator_rejects_task_sha_drift() -> None:
+    plan = materialize_phase_b_plan(
+        harness_sha=M13_PHASE_B_EXECUTION_BASE_SHA
+    )
+    bad_plan = copy.deepcopy(plan)
+    bad_plan["trial_units"][0]["task_sha256"] = "0" * 64
+    with patch(
+        "eval.cross_model_parity.verify_base_to_harness_delta",
+        return_value=[],
+    ):
+        res = validate_execution_plan(
+            bad_plan, current_head=M13_PHASE_B_EXECUTION_BASE_SHA
+        )
+        assert res["valid"] is False
+        assert any("sha256" in e.lower() for e in res["errors"])
+
+
+def test_phase_b_validator_rejects_stale_harness_sha() -> None:
+    plan = materialize_phase_b_plan(
+        harness_sha=M13_PHASE_B_EXECUTION_BASE_SHA
+    )
+    res = validate_execution_plan(
+        plan, current_head="0" * 40
+    )
+    assert res["valid"] is False
+    assert any("harness_sha" in e.lower() for e in res["errors"])
+
+
+def test_phase_a_and_phase_b_candidate_digests_identical_immutable() -> None:
+    plan_a = materialize_execution_plan(
+        harness_sha=M13_EXECUTION_BASE_SHA
+    )
+    plan_b = materialize_phase_b_plan(
+        harness_sha=M13_PHASE_B_EXECUTION_BASE_SHA
+    )
+
+    # Canonical expected digests
+    exp_llama = (
+        "sha256:"
+        "667b0c1932bc6ffc593ed1d03f895bf2dc8dc6df21db3042284a6f4416b06a29"
+    )
+    exp_qwen = (
+        "sha256:"
+        "2bada8a7450677000f678be90653b85d364de7db25eb5ea54136ada5f3933730"
+    )
+
+    assert FROZEN_CANDIDATES["llama31_8b_q4km"].model_digest == exp_llama
+    assert FROZEN_CANDIDATES["qwen25_7b_q4km"].model_digest == exp_qwen
+
+    # Verify candidate definition equivalence in top-level plan structures
+    assert plan_a["candidates"] == plan_b["candidates"]
+    assert (
+        plan_b["candidates"]["llama31_8b_q4km"]["model_digest"] == exp_llama
+    )
+    assert (
+        plan_b["candidates"]["qwen25_7b_q4km"]["model_digest"] == exp_qwen
+    )
+
+    # Verify candidate digests across all trial units
+    for u in plan_a["trial_units"]:
+        if u["candidate_id"] == "llama31_8b_q4km":
+            assert u["model_digest"] == exp_llama
+        elif u["candidate_id"] == "qwen25_7b_q4km":
+            assert u["model_digest"] == exp_qwen
+
+    for u in plan_b["trial_units"]:
+        if u["candidate_id"] == "llama31_8b_q4km":
+            assert u["model_digest"] == exp_llama
+        elif u["candidate_id"] == "qwen25_7b_q4km":
+            assert u["model_digest"] == exp_qwen
+
+    # Verify validator rejects overridden candidate digest in Phase B
+    bad_plan_b = copy.deepcopy(plan_b)
+    bad_plan_b["trial_units"][0]["model_digest"] = "sha256:" + "f" * 64
+    with patch(
+        "eval.cross_model_parity.verify_base_to_harness_delta",
+        return_value=[],
+    ):
+        res = validate_execution_plan(
+            bad_plan_b, current_head=M13_PHASE_B_EXECUTION_BASE_SHA
+        )
+        assert res["valid"] is False
+        assert any("model_digest" in e.lower() for e in res["errors"])

@@ -29,6 +29,8 @@ from eval.cross_model_parity import (
     M13_EXECUTION_BASE_SHA,
     M13_EXPERIMENT_BASE_SHA,
     M13_EXPERIMENT_ID,
+    M13_PHASE_B_EXECUTION_BASE_SHA,
+    M13_PHASE_B_EXPERIMENT_ID,
     CrossModelCandidate,
     CrossModelPlanUnit,
     get_current_git_sha,
@@ -728,8 +730,13 @@ def execute_cross_model_plan(
                 f"Live workspace root already exists: {workspace_root}"
             )
 
+    exec_base = (
+        M13_PHASE_B_EXECUTION_BASE_SHA
+        if plan.get("experiment_id") == M13_PHASE_B_EXPERIMENT_ID
+        else M13_EXECUTION_BASE_SHA
+    )
     changed_paths = verify_base_to_harness_delta(
-        M13_EXECUTION_BASE_SHA, harness_sha
+        exec_base, harness_sha
     )
 
     with SingleInstanceLock(lock_path):
@@ -798,9 +805,11 @@ def execute_cross_model_plan(
 
             dry_summary: Dict[str, Any] = {
                 "schema_version": "1.0.0",
-                "experiment_id": M13_EXPERIMENT_ID,
-                "experiment_base_sha": M13_EXPERIMENT_BASE_SHA,
-                "execution_base_sha": M13_EXECUTION_BASE_SHA,
+                "experiment_id": plan.get("experiment_id", M13_EXPERIMENT_ID),
+                "experiment_base_sha": plan.get(
+                    "experiment_base_sha", M13_EXPERIMENT_BASE_SHA
+                ),
+                "execution_base_sha": exec_base,
                 "harness_sha": harness_sha,
                 "execution_base_to_harness_changed_paths": changed_paths,
                 "planned_trial_count": len(trial_units),
@@ -1034,9 +1043,11 @@ def execute_cross_model_plan(
 
         summary: Dict[str, Any] = {
             "schema_version": "1.0.0",
-            "experiment_id": M13_EXPERIMENT_ID,
-            "experiment_base_sha": M13_EXPERIMENT_BASE_SHA,
-            "execution_base_sha": M13_EXECUTION_BASE_SHA,
+            "experiment_id": plan.get("experiment_id", M13_EXPERIMENT_ID),
+            "experiment_base_sha": plan.get(
+                "experiment_base_sha", M13_EXPERIMENT_BASE_SHA
+            ),
+            "execution_base_sha": exec_base,
             "harness_sha": harness_sha,
             "execution_base_to_harness_changed_paths": changed_paths,
             "planned_trial_count": len(trial_units),

@@ -25,9 +25,14 @@ from eval.cross_model_parity import (
     M13_EXECUTION_BASE_SHA,
     M13_EXPERIMENT_BASE_SHA,
     M13_EXPERIMENT_ID,
+    M13_PHASE_B_EXECUTION_BASE_SHA,
+    M13_PHASE_B_EXPERIMENT_ID,
     CrossModelPlanUnit,
     get_current_git_sha,
     materialize_execution_plan,
+    materialize_phase_b_plan,
+    summarize_cross_model_results,
+    validate_payload_against_schema,
     verify_base_to_harness_delta,
 )
 from eval.cross_model_parity_execution import (
@@ -1904,3 +1909,100 @@ def test_digest_resolver_exception_after_completed_trial_preserves_records(
         t_json = out_dir / "trials" / f"{first_unit['trial_id']}.json"
         assert t_json.is_file()
         assert (out_dir / "run_summary.json").is_file()
+
+
+def test_phase_b_dry_run_zero_generation_guarantee(
+    mock_local_context: AdapterRuntimeContext,
+) -> None:
+    plan = materialize_phase_b_plan(
+        harness_sha=M13_PHASE_B_EXECUTION_BASE_SHA
+    )
+    assert plan["trial_count"] == 56
+    assert len(plan["trial_units"]) == 56
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out_dir = Path(tmp) / "dry_run_phase_b"
+        ws_root = Path(tmp) / "ws_root"
+
+        # Trap any attempt at live inference or execution
+        with patch(
+            "eval.cross_model_parity_execution.request_control_generation",
+            side_effect=RuntimeError(
+                "PROHIBITED: Control generation called"
+            ),
+        ) as mock_control_gen:
+            with patch.object(
+                HostAdapter,
+                "solve",
+                side_effect=RuntimeError(
+                    "PROHIBITED: HostAdapter.solve called"
+                ),
+            ) as mock_solve:
+                with patch(
+                    "eval.cross_model_parity.check_git_clean_except_prototype"
+                ):
+                    with patch(
+                        "eval.cross_model_parity.verify_base_to_harness_delta",
+                        return_value=[],
+                    ):
+                        with patch(
+                            "eval.cross_model_parity_execution."
+                            "verify_base_to_harness_delta",
+                            return_value=[],
+                        ):
+                            summary = execute_cross_model_plan(
+                                plan,
+                                output_dir=out_dir,
+                                workspace_root=ws_root,
+                                local_adapter_context=mock_local_context,
+                                dry_run=True,
+                            )
+
+        mock_control_gen.assert_not_called()
+        mock_solve.assert_not_called()
+
+        assert summary["status"] == "dry_run"
+        assert summary["experiment_id"] == M13_PHASE_B_EXPERIMENT_ID
+        assert summary["execution_base_sha"] == M13_PHASE_B_EXECUTION_BASE_SHA
+        assert summary["planned_trial_count"] == 56
+        assert summary["executed_trial_count"] == 0
+        assert summary["generation_calls"] == 0
+        assert summary["total_tokens"] is None
+        assert summary["total_analyzable"] == 0
+        assert summary["total_passed"] == 0
+        assert summary["total_infrastructure_excluded"] == 0
+
+        # Validate run_summary against schema
+        validate_payload_against_schema(summary, "run_summary")
+        assert (out_dir / "run_summary.json").is_file()
+        assert not (out_dir / "trials").exists()
+
+
+def test_summarize_cross_model_results_on_phase_a_evidence() -> None:
+    phase_a_dir = Path("eval/results/m13/m13-cross-model-pilot-01/trials")
+    records = [
+        json.loads(p.read_text())
+        for p in sorted(phase_a_dir.glob("*.json"))
+    ]
+    assert len(records) == 12
+
+    summary = summarize_cross_model_results(records)
+    assert summary["total_records"] == 12
+    assert summary["total_analyzable"] == 12
+    assert summary["total_passed"] == 5
+    assert summary["total_infrastructure_excluded"] == 0
+    assert summary["total_generation_calls"] == 13
+    assert summary["total_tokens"] == 25040
+
+    # Arm summaries
+    assert summary["by_arm"]["control_once"]["passed"] == 0
+    assert summary["by_arm"]["control_once"]["executed"] == 6
+    assert summary["by_arm"]["mm_single"]["passed"] == 5
+    assert summary["by_arm"]["mm_single"]["executed"] == 6
+
+    # Candidate summaries
+    assert summary["by_candidate"]["llama31_8b_q4km"]["passed"] == 3
+    assert summary["by_candidate"]["qwen25_7b_q4km"]["passed"] == 2
+
+    # Paired task outcomes
+    assert len(summary["paired_task_outcomes"]) == 6

@@ -1914,9 +1914,8 @@ def test_digest_resolver_exception_after_completed_trial_preserves_records(
 def test_phase_b_dry_run_zero_generation_guarantee(
     mock_local_context: AdapterRuntimeContext,
 ) -> None:
-    plan = materialize_phase_b_plan(
-        harness_sha=M13_PHASE_B_EXECUTION_BASE_SHA
-    )
+    current_head = get_current_git_sha()
+    plan = materialize_phase_b_plan(harness_sha=current_head)
     assert plan["trial_count"] == 56
     assert len(plan["trial_units"]) == 56
 
@@ -1956,6 +1955,7 @@ def test_phase_b_dry_run_zero_generation_guarantee(
                                 workspace_root=ws_root,
                                 local_adapter_context=mock_local_context,
                                 dry_run=True,
+                                harness_sha=current_head,
                             )
 
         mock_control_gen.assert_not_called()
@@ -1979,30 +1979,67 @@ def test_phase_b_dry_run_zero_generation_guarantee(
 
 
 def test_summarize_cross_model_results_on_phase_a_evidence() -> None:
-    phase_a_dir = Path("eval/results/m13/m13-cross-model-pilot-01/trials")
-    records = [
-        json.loads(p.read_text())
-        for p in sorted(phase_a_dir.glob("*.json"))
+    # Synthetic records ensure hermetic CI execution
+    synthetic_records = [
+        {
+            "candidate_id": "llama31_8b_q4km",
+            "arm": "control_once",
+            "task_id": "task_003",
+            "passed": False,
+            "failure_category": "tests_failed",
+            "total_tokens": 100,
+            "generation_call_count": 1,
+            "wall_latency_seconds": 10.0,
+            "token_coverage_complete": True,
+            "infrastructure_error": False,
+        },
+        {
+            "candidate_id": "llama31_8b_q4km",
+            "arm": "mm_single",
+            "task_id": "task_003",
+            "passed": True,
+            "failure_category": None,
+            "total_tokens": 500,
+            "generation_call_count": 1,
+            "wall_latency_seconds": 20.0,
+            "token_coverage_complete": True,
+            "infrastructure_error": False,
+        },
     ]
-    assert len(records) == 12
+    syn_summary = summarize_cross_model_results(synthetic_records)
+    assert syn_summary["total_records"] == 2
+    assert syn_summary["total_analyzable"] == 2
+    assert syn_summary["total_passed"] == 1
+    assert syn_summary["total_infrastructure_excluded"] == 0
+    assert syn_summary["total_generation_calls"] == 2
+    assert syn_summary["total_tokens"] == 600
 
-    summary = summarize_cross_model_results(records)
-    assert summary["total_records"] == 12
-    assert summary["total_analyzable"] == 12
-    assert summary["total_passed"] == 5
-    assert summary["total_infrastructure_excluded"] == 0
-    assert summary["total_generation_calls"] == 13
-    assert summary["total_tokens"] == 25040
+    # If gitignored pilot evidence is present on disk, verify reconciliation
+    phase_a_dir = Path("eval/results/m13/m13-cross-model-pilot-01/trials")
+    if phase_a_dir.is_dir() and list(phase_a_dir.glob("*.json")):
+        records = [
+            json.loads(p.read_text())
+            for p in sorted(phase_a_dir.glob("*.json"))
+        ]
+        assert len(records) == 12
 
-    # Arm summaries
-    assert summary["by_arm"]["control_once"]["passed"] == 0
-    assert summary["by_arm"]["control_once"]["executed"] == 6
-    assert summary["by_arm"]["mm_single"]["passed"] == 5
-    assert summary["by_arm"]["mm_single"]["executed"] == 6
+        summary = summarize_cross_model_results(records)
+        assert summary["total_records"] == 12
+        assert summary["total_analyzable"] == 12
+        assert summary["total_passed"] == 5
+        assert summary["total_infrastructure_excluded"] == 0
+        assert summary["total_generation_calls"] == 13
+        assert summary["total_tokens"] == 25040
 
-    # Candidate summaries
-    assert summary["by_candidate"]["llama31_8b_q4km"]["passed"] == 3
-    assert summary["by_candidate"]["qwen25_7b_q4km"]["passed"] == 2
+        # Arm summaries
+        assert summary["by_arm"]["control_once"]["passed"] == 0
+        assert summary["by_arm"]["control_once"]["executed"] == 6
+        assert summary["by_arm"]["mm_single"]["passed"] == 5
+        assert summary["by_arm"]["mm_single"]["executed"] == 6
 
-    # Paired task outcomes
-    assert len(summary["paired_task_outcomes"]) == 6
+        # Candidate summaries
+        assert summary["by_candidate"]["llama31_8b_q4km"]["passed"] == 3
+        assert summary["by_candidate"]["qwen25_7b_q4km"]["passed"] == 2
+
+        # Paired task outcomes
+        assert len(summary["paired_task_outcomes"]) == 6

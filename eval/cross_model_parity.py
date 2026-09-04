@@ -451,21 +451,22 @@ def materialize_execution_plan(
             f"{M13_CANONICAL_CONFIG_SHA256}, found {canonical_config_sha256}"
         )
 
-    is_phase_b = experiment_id == M13_PHASE_B_EXPERIMENT_ID
-    if is_phase_b:
+    if experiment_id == M13_PHASE_B_EXPERIMENT_ID:
         exp_id = M13_PHASE_B_EXPERIMENT_ID
         plan_design = M13_PHASE_B_PLAN_DESIGN
         order_seed = M13_PHASE_B_ORDER_SEED
         tasks_dict = FROZEN_PHASE_B_TASKS
         tasks_json = FROZEN_PHASE_B_TASKS_JSON
         trial_prefix = "m13_b"
-    else:
+    elif experiment_id == M13_EXPERIMENT_ID:
         exp_id = M13_EXPERIMENT_ID
         plan_design = M13_PLAN_DESIGN
         order_seed = M13_ORDER_SEED
         tasks_dict = FROZEN_ANCHOR_TASKS
         tasks_json = FROZEN_ANCHOR_TASKS_JSON
         trial_prefix = "m13"
+    else:
+        raise ValueError(f"Unsupported experiment_id: {experiment_id}")
 
     projected_shas: Dict[str, str] = {}
     for cand_id, cand in FROZEN_CANDIDATES.items():
@@ -864,6 +865,7 @@ def summarize_cross_model_results(
             "infrastructure_excluded": 0,
             "generation_calls": 0,
             "total_tokens": 0,
+            "token_coverage_complete": True,
             "wall_time": 0.0,
         }
 
@@ -873,9 +875,11 @@ def summarize_cross_model_results(
         task_id = r["task_id"]
         passed = bool(r.get("passed", False))
         infra = bool(r.get("infrastructure_error", False))
-        token_coverage = bool(r.get("token_coverage_complete", True))
-        analyzable = (not infra) and token_coverage
-        tokens = r.get("total_tokens") or 0
+        r_tok_cov = bool(r.get("token_coverage_complete", True)) and (
+            r.get("total_tokens") is not None
+        )
+        analyzable = (not infra) and r_tok_cov
+        tokens = r.get("total_tokens")
         gens = r.get("generation_call_count", 0)
         wall = r.get("wall_latency_seconds", 0.0)
 
@@ -906,8 +910,27 @@ def summarize_cross_model_results(
             if infra:
                 b["infrastructure_excluded"] += 1
             b["generation_calls"] += gens
-            b["total_tokens"] += tokens
+            if not r_tok_cov or tokens is None:
+                b["token_coverage_complete"] = False
+            elif b["token_coverage_complete"]:
+                b["total_tokens"] += tokens
             b["wall_time"] += wall
+
+    for d in (by_cand_arm, by_arm, by_cand):
+        for b in d.values():
+            if not b.pop("token_coverage_complete"):
+                b["total_tokens"] = None
+
+    all_cov = bool(records) and all(
+        bool(r.get("token_coverage_complete", True))
+        and r.get("total_tokens") is not None
+        for r in records
+    )
+    grand_total_tokens = (
+        sum(r["total_tokens"] for r in records)
+        if all_cov
+        else (0 if not records else None)
+    )
 
     return {
         "by_candidate_and_arm": {
@@ -927,7 +950,7 @@ def summarize_cross_model_results(
         "total_generation_calls": sum(
             b["generation_calls"] for b in by_arm.values()
         ),
-        "total_tokens": sum(b["total_tokens"] for b in by_arm.values()),
+        "total_tokens": grand_total_tokens,
         "total_wall_time": round(
             sum(b["wall_time"] for b in by_arm.values()), 2
         ),
@@ -939,17 +962,32 @@ def run_preflight(
     contract_path: Path = DEFAULT_CONTRACT_PATH,
     lock_path: Path = LOCK_FILE_PATH,
     lock_already_held: bool = False,
+    experiment_id: str = M13_EXPERIMENT_ID,
 ) -> Dict[str, Any]:
     if lock_already_held:
-        return _run_preflight_body(config_path, contract_path)
+        return _run_preflight_body(
+            config_path, contract_path, experiment_id=experiment_id
+        )
     with SingleInstanceLock(lock_path):
-        return _run_preflight_body(config_path, contract_path)
+        return _run_preflight_body(
+            config_path, contract_path, experiment_id=experiment_id
+        )
 
 
 def _run_preflight_body(
     config_path: Path,
     contract_path: Path,
+    experiment_id: str = M13_EXPERIMENT_ID,
 ) -> Dict[str, Any]:
+    if experiment_id == M13_PHASE_B_EXPERIMENT_ID:
+        expected_exec_base = M13_PHASE_B_EXECUTION_BASE_SHA
+        active_tasks = FROZEN_PHASE_B_TASKS
+    elif experiment_id == M13_EXPERIMENT_ID:
+        expected_exec_base = M13_EXECUTION_BASE_SHA
+        active_tasks = FROZEN_ANCHOR_TASKS
+    else:
+        raise ValueError(f"Unsupported experiment_id: {experiment_id}")
+
     blocking_reasons: List[str] = []
 
     harness_sha = get_current_git_sha()
@@ -961,7 +999,7 @@ def _run_preflight_body(
     changed_paths: List[str] = []
     try:
         res = verify_base_to_harness_delta(
-            M13_EXECUTION_BASE_SHA, harness_sha
+            expected_exec_base, harness_sha
         )
         if isinstance(res, list):
             changed_paths = res
@@ -1005,7 +1043,7 @@ def _run_preflight_body(
             cand_val[cid] = {"installed": False, "error": str(e)}
 
     task_val: Dict[str, Any] = {}
-    for tid, task in FROZEN_ANCHOR_TASKS.items():
+    for tid, task in active_tasks.items():
         tp = Path(task.task_file)
         if not tp.exists():
             blocking_reasons.append(
@@ -1071,7 +1109,9 @@ def _run_preflight_body(
     else:
         try:
             plan = materialize_execution_plan(
-                harness_sha=harness_sha, config_path=config_path
+                harness_sha=harness_sha,
+                config_path=config_path,
+                experiment_id=experiment_id,
             )
             plan_report = validate_execution_plan(
                 plan, contract_path=contract_path, current_head=harness_sha
@@ -1089,7 +1129,7 @@ def _run_preflight_body(
         "git_base_sha": M13_EXPERIMENT_BASE_SHA,
         "git_harness_sha": harness_sha,
         "experiment_base_sha": M13_EXPERIMENT_BASE_SHA,
-        "execution_base_sha": M13_EXECUTION_BASE_SHA,
+        "execution_base_sha": expected_exec_base,
         "harness_sha": harness_sha,
         "execution_base_to_harness_changed_paths": changed_paths,
         "ollama_version": ollama_ver,

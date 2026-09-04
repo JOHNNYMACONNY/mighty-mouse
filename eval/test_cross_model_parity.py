@@ -19,6 +19,7 @@ from eval.cross_model_parity import (
     DEFAULT_CONTRACT_PATH,
     FROZEN_ANCHOR_TASKS,
     FROZEN_CANDIDATES,
+    CrossModelAnchorTask,
     M13_ALLOWED_ARMS,
     M13_CANONICAL_CONFIG_SHA256,
     M13_EXECUTION_BASE_SHA,
@@ -1127,3 +1128,101 @@ def test_phase_a_and_phase_b_candidate_digests_identical_immutable() -> None:
         )
         assert res["valid"] is False
         assert any("model_digest" in e.lower() for e in res["errors"])
+
+
+def test_phase_b_preflight_validates_14_tasks_and_base() -> None:
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = b'{"version": "0.33.2"}'
+    mock_resp.__enter__.return_value = mock_resp
+
+    def mock_urlopen(req: Any, *args: Any, **kwargs: Any) -> Any:
+        return mock_resp
+
+    def mock_digest(tag: str) -> str:
+        for c in FROZEN_CANDIDATES.values():
+            if c.model_tag == tag:
+                return c.model_digest
+        return "sha256:" + "0" * 64
+
+    with patch(
+        "eval.cross_model_parity.verify_base_to_harness_delta",
+        return_value=[],
+    ):
+        with patch("eval.cross_model_parity.check_git_clean_except_prototype"):
+            with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+                with patch(
+                    "eval.cross_model_parity.HostAdapter."
+                    "resolve_ollama_model_digest",
+                    side_effect=mock_digest,
+                ):
+                    report = run_preflight(
+                        experiment_id=M13_PHASE_B_EXPERIMENT_ID
+                    )
+                    assert report["status"] == "PASSED"
+                    assert (
+                        report["execution_base_sha"]
+                        == M13_PHASE_B_EXECUTION_BASE_SHA
+                    )
+                    assert len(report["anchor_task_validation"]) == 14
+                    for tid, tval in report["anchor_task_validation"].items():
+                        assert tval["exists"] is True
+                        assert tval["matches"] is True
+                    validate_payload_against_schema(report, "preflight_report")
+
+
+def test_preflight_fails_on_drift_in_phase_b_only_task() -> None:
+    import eval.cross_model_parity as cmp_mod
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = b'{"version": "0.33.2"}'
+    mock_resp.__enter__.return_value = mock_resp
+
+    def mock_urlopen(req: Any, *args: Any, **kwargs: Any) -> Any:
+        return mock_resp
+
+    def mock_digest(tag: str) -> str:
+        for c in FROZEN_CANDIDATES.values():
+            if c.model_tag == tag:
+                return c.model_digest
+        return "sha256:" + "0" * 64
+
+    tampered_tasks = dict(cmp_mod.FROZEN_PHASE_B_TASKS)
+    orig_1407 = tampered_tasks["task_1407"]
+    tampered_tasks["task_1407"] = CrossModelAnchorTask(
+        tier=orig_1407.tier,
+        task_id=orig_1407.task_id,
+        task_file=orig_1407.task_file,
+        sha256="0" * 64,
+        expected_files=orig_1407.expected_files,
+    )
+
+    with patch.object(cmp_mod, "FROZEN_PHASE_B_TASKS", tampered_tasks):
+        with patch(
+            "eval.cross_model_parity.verify_base_to_harness_delta",
+            return_value=[],
+        ):
+            with patch(
+                "eval.cross_model_parity.check_git_clean_except_prototype"
+            ):
+                with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+                    with patch(
+                        "eval.cross_model_parity.HostAdapter."
+                        "resolve_ollama_model_digest",
+                        side_effect=mock_digest,
+                    ):
+                        report = run_preflight(
+                            experiment_id=M13_PHASE_B_EXPERIMENT_ID
+                        )
+                        assert report["status"] == "FAILED"
+                        assert any(
+                            "task_1407" in reason
+                            for reason in report["blocking_reasons"]
+                        )
+
+
+def test_unsupported_experiment_id_fails_closed() -> None:
+    with pytest.raises(ValueError, match="Unsupported experiment_id"):
+        materialize_execution_plan(experiment_id="unsupported_experiment")
+
+    with pytest.raises(ValueError, match="Unsupported experiment_id"):
+        run_preflight(experiment_id="unsupported_experiment")
